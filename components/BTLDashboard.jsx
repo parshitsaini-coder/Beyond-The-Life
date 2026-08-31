@@ -46,6 +46,9 @@ const PRIORITIES = [
 ];
 const prioInfo = (key) => PRIORITIES.find((p) => p.key === key) || PRIORITIES[1];
 
+/* ---------------- GOAL ICONS (emoji) ---------------- */
+const GOAL_EMOJIS = ["🎯","💪","🏋️","🧘","📚","💧","🥗","😴","💰","💼","❤️","🧠","✍️","🎨","🏃","🚭","📵","🙏","🧹","📅","☎️","🌱","🎵","🛏️"];
+
 function ensureGoalDefaults(g) {
   return {
     id: g.id, text: g.text, done: !!g.done,
@@ -53,6 +56,7 @@ function ensureGoalDefaults(g) {
     priority: g.priority || "medium",
     recurring: g.recurring !== undefined ? g.recurring : true,
     subtasks: g.subtasks || [],
+    icon: g.icon || "",
   };
 }
 
@@ -280,20 +284,42 @@ function TextList({ title, items, onAdd, onRemove }) {
 }
 
 /* ---------------- DAILY / EXTRY GOAL CHECKLIST (pro: categories, priority, recurring, subtasks) ---------------- */
-function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, accent }) {
+function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent }) {
   const [val, setVal] = useState("");
   const [category, setCategory] = useState("other");
   const [priority, setPriority] = useState("medium");
   const [recurring, setRecurring] = useState(true);
+  const [icon, setIcon] = useState("");
   const [openId, setOpenId] = useState(null);
   const [subVal, setSubVal] = useState("");
   const [showOptions, setShowOptions] = useState(false);
+  const [pickerFor, setPickerFor] = useState(null); // "new" | goal id | null
 
   const submit = () => {
     if (!val.trim()) return;
-    onAdd(val.trim(), { category, priority, recurring });
-    setVal("");
+    onAdd(val.trim(), { category, priority, recurring, icon });
+    setVal(""); setIcon("");
   };
+
+  const EmojiPicker = ({ onPick, onClose }) => (
+    <div style={{
+      position: "absolute", zIndex: 40, background: "#fff", border: "1px solid #ddd6c4", borderRadius: 8,
+      padding: 6, display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 2, boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
+      width: 150,
+    }}>
+      {GOAL_EMOJIS.map((e) => (
+        <button key={e} onClick={() => { onPick(e); onClose(); }}
+          style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14, padding: 2, borderRadius: 4 }}
+          onMouseEnter={(ev) => ev.currentTarget.style.background = "#f0ece0"}
+          onMouseLeave={(ev) => ev.currentTarget.style.background = "none"}
+        >{e}</button>
+      ))}
+      <button onClick={() => { onPick(""); onClose(); }}
+        style={{ gridColumn: "span 6", border: "none", background: "none", cursor: "pointer", fontSize: 9, color: "#a39c86", padding: "3px 0" }}>
+        Clear icon
+      </button>
+    </div>
+  );
 
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
@@ -314,6 +340,13 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                   type="checkbox" checked={g.done} onChange={() => onToggle(g.id)}
                   className="btl-check" style={{ accentColor: accent, width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
                 />
+                <span style={{ position: "relative", flexShrink: 0 }}>
+                  <span
+                    onClick={() => setPickerFor(pickerFor === g.id ? null : g.id)}
+                    title="Set icon" style={{ cursor: "pointer", fontSize: 12, width: 16, display: "inline-flex", justifyContent: "center" }}
+                  >{g.icon || "＋"}</span>
+                  {pickerFor === g.id && <EmojiPicker onPick={(e) => onSetIcon(g.id, e)} onClose={() => setPickerFor(null)} />}
+                </span>
                 <span style={{ flex: 1, fontSize: 11, cursor: "pointer" }} onClick={() => onToggle(g.id)}>{g.text}</span>
                 <span title={`Priority: ${prio.label}`} style={{
                   fontSize: 8, fontWeight: 900, color: "#fff", background: prio.color,
@@ -358,6 +391,13 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
 
       <div style={{ marginTop: 6 }}>
         <div style={{ display: "flex", gap: 4 }}>
+          <span style={{ position: "relative", flexShrink: 0 }}>
+            <button onClick={() => setPickerFor(pickerFor === "new" ? null : "new")} title="Pick an icon"
+              style={{ border: "1px solid #ddd6c4", background: "#fff", borderRadius: 6, width: 26, height: "100%", cursor: "pointer", fontSize: 12 }}>
+              {icon || "🙂"}
+            </button>
+            {pickerFor === "new" && <EmojiPicker onPick={(e) => setIcon(e)} onClose={() => setPickerFor(null)} />}
+          </span>
           <input
             value={val} onChange={(e) => setVal(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
@@ -517,6 +557,179 @@ function SettingsTab({ state, addItem, removeItem, onClose }) {
 }
 
 /* ---------------- ANALYTICS: heatmap ---------------- */
+/* ---------------- SHARE YOUR JOURNEY (downloadable card) ---------------- */
+function drawRoundedRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function computeBestCategory(state) {
+  const tally = {};
+  [...(state.dailyGoals || []), ...(state.extryGoals || [])].forEach((g) => {
+    const key = g.category || "other";
+    tally[key] = tally[key] || { done: 0, total: 0 };
+    tally[key].total++;
+    if (g.done) tally[key].done++;
+  });
+  let best = null, bestRate = -1;
+  Object.entries(tally).forEach(([key, v]) => {
+    const rate = v.total ? v.done / v.total : 0;
+    if (rate > bestRate) { bestRate = rate; best = key; }
+  });
+  return best ? catInfo(best) : null;
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = text.split(" ");
+  let line = "", lines = [];
+  words.forEach((w) => {
+    const test = line + w + " ";
+    if (ctx.measureText(test).width > maxWidth && line) { lines.push(line); line = w + " "; }
+    else line = test;
+  });
+  lines.push(line);
+  const startY = y - ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((l, i) => ctx.fillText(l.trim(), x, startY + i * lineHeight));
+}
+
+function generateShareCard(state, lifeScore) {
+  const W = 1080, H = 1350;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
+  // background
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, C.bg);
+  grad.addColorStop(1, "#fdf3e0");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // decorative circle accents
+  ctx.fillStyle = lifeScore.color + "22";
+  ctx.beginPath(); ctx.arc(W - 60, 60, 220, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(40, H - 80, 180, 0, Math.PI * 2); ctx.fill();
+
+  // header
+  ctx.fillStyle = C.dark;
+  ctx.font = "900 40px Inter, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Byound The Life", W / 2, 110);
+  ctx.font = "600 20px Inter, sans-serif";
+  ctx.fillStyle = "#a39c86";
+  ctx.fillText(new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }), W / 2, 145);
+
+  // Life score ring
+  const cx = W / 2, cy = 400, R = 150;
+  ctx.lineWidth = 22;
+  ctx.strokeStyle = "#ece7d8";
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = lifeScore.color;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * lifeScore.score) / 100);
+  ctx.stroke();
+  ctx.fillStyle = C.dark;
+  ctx.font = "900 72px Inter, sans-serif";
+  ctx.fillText(String(lifeScore.score), cx, cy + 22);
+  ctx.font = "700 22px Inter, sans-serif";
+  ctx.fillStyle = "#a39c86";
+  ctx.fillText("LIFE SCORE", cx, cy + 58);
+  ctx.font = "700 30px Inter, sans-serif";
+  ctx.fillStyle = lifeScore.color;
+  ctx.fillText(`${lifeScore.emoji} ${lifeScore.label}`, cx, cy + 210);
+
+  // stat row
+  const statY = 800;
+  const stats = [
+    { label: "Day Streak", value: String(state.streak || 0), emoji: "🔥" },
+    { label: "Total Earned", value: `₹${state.totalEarnLife || 0}`, emoji: "💰" },
+  ];
+  const bestCat = computeBestCategory(state);
+  if (bestCat) stats.push({ label: "Top Category", value: bestCat.label, emoji: "🏆" });
+
+  const colW = W / stats.length;
+  stats.forEach((s, i) => {
+    const x = colW * i + colW / 2;
+    ctx.font = "56px Inter, sans-serif";
+    ctx.fillText(s.emoji, x, statY);
+    ctx.font = "900 34px Inter, sans-serif";
+    ctx.fillStyle = C.dark;
+    ctx.fillText(s.value, x, statY + 55);
+    ctx.font = "600 18px Inter, sans-serif";
+    ctx.fillStyle = "#a39c86";
+    ctx.fillText(s.label, x, statY + 84);
+  });
+
+  // divider + footer quote
+  drawRoundedRect(ctx, 90, 980, W - 180, 200, 24);
+  ctx.fillStyle = "#ffffffaa";
+  ctx.fill();
+  ctx.font = "italic 600 26px Inter, sans-serif";
+  ctx.fillStyle = C.text;
+  const quote = (state.lifeRules && state.lifeRules[0]) ? `"${state.lifeRules[0]}"` : "Small steps, every single day.";
+  wrapText(ctx, quote, W / 2, 1070, W - 260, 34);
+
+  ctx.font = "700 20px Inter, sans-serif";
+  ctx.fillStyle = "#a39c86";
+  ctx.fillText("Made with Byound The Life", W / 2, H - 50);
+
+  return canvas.toDataURL("image/png");
+}
+
+function ShareJourneyModal({ state, lifeScore, onClose }) {
+  const [imgUrl, setImgUrl] = useState(null);
+
+  useEffect(() => {
+    const url = generateShareCard(state, lifeScore);
+    setImgUrl(url);
+  }, [state, lifeScore]);
+
+  const download = () => {
+    if (!imgUrl) return;
+    const a = document.createElement("a");
+    a.href = imgUrl;
+    a.download = `byound-the-life-${new Date().toISOString().slice(0, 10)}.png`;
+    a.click();
+  };
+
+  const share = async () => {
+    if (!imgUrl || !navigator.share) return download();
+    try {
+      const res = await fetch(imgUrl);
+      const blob = await res.blob();
+      const file = new File([blob], "btl-journey.png", { type: "image/png" });
+      await navigator.share({ files: [file], title: "My Byound The Life journey" });
+    } catch (e) { /* user cancelled or unsupported; ignore */ }
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(37,36,34,0.7)", zIndex: 200,
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+    }} onClick={onClose}>
+      <div style={{ background: "#fff", borderRadius: 14, padding: 16, maxWidth: 360, width: "100%" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>Share Your Journey</span>
+          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer" }}><X size={16} color={C.dark} /></button>
+        </div>
+        {imgUrl
+          ? <img src={imgUrl} alt="Your journey" style={{ width: "100%", borderRadius: 10, border: "1px solid #ece7d8" }} />
+          : <div style={{ padding: 60, textAlign: "center", fontSize: 11, color: "#a39c86" }}>Generating…</div>}
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <button onClick={download} style={{ flex: 1, border: `1px solid ${C.dark}`, background: "#fff", color: C.dark, borderRadius: 8, padding: "8px 0", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>Download</button>
+          <button onClick={share} style={{ flex: 1, border: "none", background: C.accent, color: "#fff", borderRadius: 8, padding: "8px 0", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>Share</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Heatmap({ completionHistory }) {
   const WEEKS = 12;
   const today = new Date();
@@ -579,6 +792,7 @@ function Heatmap({ completionHistory }) {
 function moodToNum(m) { return m === "happy" ? 1 : m === "neutral" ? 0.5 : m === "sad" ? 0 : null; }
 
 function AnalyticsTab({ state, onClose }) {
+  const [showShare, setShowShare] = useState(false);
   const moodData = useMemo(() => {
     const arr = [];
     for (let i = 29; i >= 0; i--) {
@@ -601,6 +815,131 @@ function AnalyticsTab({ state, onClose }) {
     return { best, worst, avg };
   }, [state.completionHistory]);
 
+  const lifeScore = useMemo(() => {    const hist = state.completionHistory || {};
+    const mood = state.moodLog || {};
+    let compSum = 0, compN = 0, moodSum = 0, moodN = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0, 10);
+      if (hist[iso] !== undefined) { compSum += hist[iso]; compN++; }
+      const mv = moodToNum(mood[iso]);
+      if (mv !== null) { moodSum += mv; moodN++; }
+    }
+    const compAvg = compN ? compSum / compN : 0;          // 0-100
+    const moodAvg = moodN ? (moodSum / moodN) * 100 : 50;  // 0-100, default neutral
+    const streakScore = Math.min((state.streak || 0) / 30, 1) * 100; // caps at 30-day streak
+
+    const score = Math.round(compAvg * 0.5 + streakScore * 0.3 + moodAvg * 0.2);
+    let label, emoji, color;
+    if (score >= 85) { label = "Unstoppable"; emoji = "🔥"; color = "#e07a5f"; }
+    else if (score >= 70) { label = "Solid Momentum"; emoji = "💪"; color = C.accent; }
+    else if (score >= 50) { label = "Building Up"; emoji = "🌱"; color = "#4a7c59"; }
+    else if (score >= 30) { label = "Finding Your Rhythm"; emoji = "🧭"; color = C.blue; }
+    else { label = "Fresh Start"; emoji = "🌙"; color = "#8a8579"; }
+    return { score, label, emoji, color };
+  }, [state.completionHistory, state.moodLog, state.streak]);
+
+  const smartInsights = useMemo(() => {
+    const cards = [];
+    const hist = state.completionHistory || {};
+    const mood = state.moodLog || {};
+    const entries = Object.entries(hist);
+
+    // 1. Best day of the week (needs at least 4 dated entries)
+    if (entries.length >= 4) {
+      const byDow = {}; // 0-6 -> {sum, n}
+      entries.forEach(([iso, pct]) => {
+        const dow = new Date(iso + "T00:00:00").getDay();
+        byDow[dow] = byDow[dow] || { sum: 0, n: 0 };
+        byDow[dow].sum += pct; byDow[dow].n++;
+      });
+      let bestDow = null, bestAvg = -1;
+      Object.entries(byDow).forEach(([dow, v]) => {
+        const avg = v.sum / v.n;
+        if (v.n >= 1 && avg > bestAvg) { bestAvg = avg; bestDow = dow; }
+      });
+      if (bestDow !== null) {
+        const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        cards.push({
+          icon: "📅", color: C.accent,
+          text: `You're most consistent on ${names[bestDow]}s — averaging ${Math.round(bestAvg)}% completion.`,
+        });
+      }
+    }
+
+    // 2. Mood vs completion correlation
+    const happyPcts = [], lowPcts = [];
+    entries.forEach(([iso, pct]) => {
+      const m = mood[iso];
+      if (m === "happy") happyPcts.push(pct);
+      else if (m === "sad") lowPcts.push(pct);
+    });
+    if (happyPcts.length >= 2 && lowPcts.length >= 2) {
+      const happyAvg = happyPcts.reduce((a, b) => a + b, 0) / happyPcts.length;
+      const lowAvg = lowPcts.reduce((a, b) => a + b, 0) / lowPcts.length;
+      const diff = Math.round(happyAvg - lowAvg);
+      if (Math.abs(diff) >= 10) {
+        cards.push({
+          icon: "😊", color: "#4a7c59",
+          text: diff > 0
+            ? `On days you feel happy, you complete ${diff}% more goals than on low-mood days.`
+            : `Mood dips seem linked to higher completion here — worth a closer look at what's driving that.`,
+        });
+      }
+    }
+
+    // 3. Week-over-week trend
+    const today = new Date();
+    const isoOf = (d) => d.toISOString().slice(0, 10);
+    let thisWeekSum = 0, thisWeekN = 0, lastWeekSum = 0, lastWeekN = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      const v = hist[isoOf(d)];
+      if (v !== undefined) { thisWeekSum += v; thisWeekN++; }
+    }
+    for (let i = 7; i < 14; i++) {
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      const v = hist[isoOf(d)];
+      if (v !== undefined) { lastWeekSum += v; lastWeekN++; }
+    }
+    if (thisWeekN >= 2 && lastWeekN >= 2) {
+      const thisAvg = thisWeekSum / thisWeekN, lastAvg = lastWeekSum / lastWeekN;
+      const delta = Math.round(thisAvg - lastAvg);
+      if (Math.abs(delta) >= 5) {
+        cards.push({
+          icon: delta > 0 ? "📈" : "📉", color: delta > 0 ? "#4a7c59" : "#e07a5f",
+          text: delta > 0
+            ? `Trending up — this week's completion is ${delta}% higher than last week.`
+            : `This week is ${Math.abs(delta)}% behind last week — small resets happen, keep going.`,
+        });
+      }
+    }
+
+    // 4. Weakest category right now
+    const tally = {};
+    [...(state.dailyGoals || []), ...(state.extryGoals || [])].forEach((g) => {
+      const key = g.category || "other";
+      tally[key] = tally[key] || { done: 0, total: 0 };
+      tally[key].total++;
+      if (g.done) tally[key].done++;
+    });
+    let weakest = null, weakestRate = 2;
+    Object.entries(tally).forEach(([key, v]) => {
+      if (v.total < 1) return;
+      const rate = v.done / v.total;
+      if (rate < weakestRate) { weakestRate = rate; weakest = key; }
+    });
+    if (weakest && weakestRate < 0.5) {
+      const cat = catInfo(weakest);
+      cards.push({
+        icon: "🎯", color: cat.color,
+        text: `${cat.label} goals are lagging today (${Math.round(weakestRate * 100)}% done) — maybe tackle one of those next.`,
+      });
+    }
+
+    return cards;
+  }, [state.completionHistory, state.moodLog, state.dailyGoals, state.extryGoals]);
+
   return (
     <div style={{
       border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff",
@@ -613,6 +952,10 @@ function AnalyticsTab({ state, onClose }) {
         <BarChart3 size={14} color={C.dark} />
         <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Analytics & Insights</span>
         <div style={{ flex: 1 }} />
+        <button onClick={() => setShowShare(true)} style={{
+          border: "none", borderRadius: 8, padding: "5px 10px", background: C.accent, color: "#fff",
+          fontSize: 10, fontWeight: 800, cursor: "pointer", marginRight: 6,
+        }}>📤 Share Journey</button>
         <button onClick={onClose} style={{
           border: "none", borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
           display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
@@ -620,6 +963,26 @@ function AnalyticsTab({ state, onClose }) {
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 14 }} className="btl-scroll">
+        {/* Life Score badge */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 14, marginBottom: 16,
+          border: `1px solid ${lifeScore.color}`, borderRadius: 12, padding: "12px 16px",
+          background: `linear-gradient(135deg, ${lifeScore.color}14, transparent)`,
+        }}>
+          <div style={{
+            width: 62, height: 62, borderRadius: "50%", flexShrink: 0,
+            border: `4px solid ${lifeScore.color}`, display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center", background: "#fff",
+          }}>
+            <span style={{ fontSize: 16, fontWeight: 900, color: lifeScore.color, lineHeight: 1 }}>{lifeScore.score}</span>
+            <span style={{ fontSize: 7, color: "#a39c86", fontWeight: 700 }}>/ 100</span>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>{lifeScore.emoji} {lifeScore.label}</div>
+            <div style={{ fontSize: 9, color: "#a39c86", marginTop: 2 }}>Life Score — last 7 days completion, streak & mood combined</div>
+          </div>
+        </div>
+
         {/* insights row */}
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 120, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
@@ -639,6 +1002,24 @@ function AnalyticsTab({ state, onClose }) {
           </div>
         </div>
 
+        {/* Smart insight cards */}
+        {smartInsights.length > 0 && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 6 }}>🧠 Smart Insights</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {smartInsights.map((c, i) => (
+                <div key={i} style={{
+                  display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px",
+                  borderRadius: 8, background: `${c.color}12`, border: `1px solid ${c.color}33`,
+                }}>
+                  <span style={{ fontSize: 15, flexShrink: 0 }}>{c.icon}</span>
+                  <span style={{ fontSize: 10.5, color: C.text, lineHeight: 1.4 }}>{c.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 6 }}>Daily goal completion — last 13 weeks</div>
         <Heatmap completionHistory={state.completionHistory || {}} />
 
@@ -655,9 +1036,11 @@ function AnalyticsTab({ state, onClose }) {
           </ResponsiveContainer>
         </div>
       </div>
+      {showShare && <ShareJourneyModal state={state} lifeScore={lifeScore} onClose={() => setShowShare(false)} />}
     </div>
   );
 }
+
 export default function App() {
   const { user: fbUser } = useAuth();
   const [state, setState] = useState(null);
@@ -667,6 +1050,7 @@ export default function App() {
   const [milestoneStreak, setMilestoneStreak] = useState(null);
   const [memOpen, setMemOpen] = useState(false);
   const [memVal, setMemVal] = useState("");
+  const [focusMode, setFocusMode] = useState(false);
   const fileRef = useRef(null);
   const loaded = useRef(false);
 
@@ -742,6 +1126,10 @@ export default function App() {
     s[listKey] = s[listKey].map((g) => g.id === goalId
       ? { ...g, subtasks: [...(g.subtasks || []), { id: `${Date.now()}-${Math.random()}`, text, done: false }] }
       : g);
+    return s;
+  });
+  const setGoalIcon = (listKey) => (goalId, icon) => update((s) => {
+    s[listKey] = s[listKey].map((g) => g.id === goalId ? { ...g, icon } : g);
     return s;
   });
 
@@ -835,6 +1223,10 @@ export default function App() {
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Goals</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Total Earn Money life :- ₹{state.totalEarnLife.toFixed(0)}</Oval>
             <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={11} style={{ marginRight: 4 }} />memor</Oval>
+            <button className="btl-oval-btn" onClick={() => setFocusMode((v) => !v)} title="Hide everything except today's incomplete goals" style={{
+              border: `1px solid ${focusMode ? C.accent : C.text}`, background: focusMode ? C.accent : C.bg, color: focusMode ? "#fff" : C.text,
+              borderRadius: 999, padding: "4px 14px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
+            }}><Target size={14} /> Focus Mode</button>
             <button className="btl-oval-btn" onClick={() => setTab("analytics")} style={{
               border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
               display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
@@ -864,22 +1256,33 @@ export default function App() {
           </div>
 
           {/* ---------- BIG GOALS + RULES ---------- */}
-          <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-            <TextList title="Life Big Goals" items={state.bigGoals} onAdd={(t) => addPlain("bigGoals", t)} onRemove={(i) => removePlain("bigGoals", i)} />
-            <TextList title="Life Rules" items={state.lifeRules} onAdd={(t) => addPlain("lifeRules", t)} onRemove={(i) => removePlain("lifeRules", i)} />
-          </div>
+          {!focusMode && (
+            <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+              <TextList title="Life Big Goals" items={state.bigGoals} onAdd={(t) => addPlain("bigGoals", t)} onRemove={(i) => removePlain("bigGoals", i)} />
+              <TextList title="Life Rules" items={state.lifeRules} onAdd={(t) => addPlain("lifeRules", t)} onRemove={(i) => removePlain("lifeRules", i)} />
+            </div>
+          )}
 
           {/* ---------- DAILY GOAL SECTION ---------- */}
-          <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12 }}>DAILY GOAL</Oval>
+          <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12 }}>
+            {focusMode ? "FOCUS MODE — TODAY'S REMAINING GOALS" : "DAILY GOAL"}
+          </Oval>
 
           <div style={{ display: "flex", gap: 12 }}>
             <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", gap: 12 }}>
-                <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} accent={C.accent} />
-                <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} accent={C.blue} />
+                <GoalChecklist title="Daily Goals" items={focusMode ? state.dailyGoals.filter((g) => !g.done) : state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />
+                <GoalChecklist title="Extry Goals" items={focusMode ? state.extryGoals.filter((g) => !g.done) : state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />
               </div>
 
+              {focusMode && state.dailyGoals.filter((g) => !g.done).length === 0 && state.extryGoals.filter((g) => !g.done).length === 0 && (
+                <div style={{ textAlign: "center", padding: 20, color: "#a39c86", fontSize: 12, fontWeight: 700 }}>
+                  🎉 Sab kuch done! Focus Mode se bahar aane ke liye button dabao.
+                </div>
+              )}
+
               {/* Earn money + notes + image */}
+              {!focusMode && (
               <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 8, background: "#fff" }}>
                 <div style={{ fontWeight: 800, fontSize: 11, marginBottom: 5 }}>Earn Money Today :-</div>
                 <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
@@ -906,9 +1309,10 @@ export default function App() {
                   </div>
                 </div>
               </div>
+              )}
             </div>
 
-            <DateMoodColumn moodLog={state.moodLog} onSetMood={setMood} />
+            {!focusMode && <DateMoodColumn moodLog={state.moodLog} onSetMood={setMood} />}
           </div>
         </>
       )}
