@@ -99,8 +99,8 @@ function Oval({ children, style, ...rest }) {
       {...rest}
       style={{
         display: "inline-flex", alignItems: "center", justifyContent: "center",
-        border: `1px solid ${C.text}`, borderRadius: 999, padding: "2px 9px",
-        fontSize: 10, fontWeight: 800, background: C.bg, color: C.text,
+        border: `1px solid ${C.text}`, borderRadius: 999, padding: "4px 14px",
+        fontSize: 14, fontWeight: 800, background: C.bg, color: C.text,
         whiteSpace: "nowrap", ...style,
       }}
     >
@@ -109,26 +109,26 @@ function Oval({ children, style, ...rest }) {
   );
 }
 
-function RingStat({ pct, size = 38, label, sub, color = C.accent }) {
+function RingStat({ pct, size = 54, label, sub, color = C.accent }) {
   const r = (size - 8) / 2;
   const circ = 2 * Math.PI * r;
   const offset = circ - (Math.min(100, Math.max(0, pct)) / 100) * circ;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} stroke="#e9e4d3" strokeWidth={4} fill="none" />
+        <circle cx={size / 2} cy={size / 2} r={r} stroke="#e9e4d3" strokeWidth={5} fill="none" />
         <circle
-          cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={4} fill="none"
+          cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={5} fill="none"
           strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
           style={{ transition: "stroke-dashoffset 420ms cubic-bezier(.4,1.6,.4,1)" }}
         />
         <text x={size / 2} y={size / 2} transform={`rotate(90 ${size / 2} ${size / 2})`}
-          textAnchor="middle" dominantBaseline="middle" fontSize={8} fontWeight={800} fill={C.dark}>
+          textAnchor="middle" dominantBaseline="middle" fontSize={11} fontWeight={800} fill={C.dark}>
           {Math.round(pct)}%
         </text>
       </svg>
-      <div style={{ fontSize: 7, fontWeight: 700, color: C.dark, textAlign: "center", lineHeight: 1.1 }}>{label}</div>
-      {sub && <div style={{ fontSize: 6, color: "#8a8579" }}>{sub}</div>}
+      <div style={{ fontSize: 9, fontWeight: 700, color: C.dark, textAlign: "center", lineHeight: 1.1 }}>{label}</div>
+      {sub && <div style={{ fontSize: 8, color: "#8a8579" }}>{sub}</div>}
     </div>
   );
 }
@@ -1165,7 +1165,7 @@ export default function App() {
       height: "100%", maxHeight: "100%", borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
       border: `1px solid #ece7d8`, fontSize: 11, boxSizing: "border-box",
       display: "flex", flexDirection: "column",
-      zoom: "65%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "55%" for smaller, "75%" for bigger.
+      zoom: "80%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "70%" for smaller, "90%" for bigger.
     }}>
       <style>{`
         .btl-scroll::-webkit-scrollbar { width: 6px; }
@@ -1220,31 +1220,31 @@ export default function App() {
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {/* ---------- HEADER ---------- */}
-          <div style={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap", marginBottom: 5, flexShrink: 0 }}>
-            <Oval style={{ background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 11, fontWeight: 900 }}>Byound The Life</Oval>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8, flexShrink: 0 }}>
+            <Oval style={{ background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 16, fontWeight: 900 }}>Byound The Life</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Goals</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Total Earn Money life :- ₹{state.totalEarnLife.toFixed(0)}</Oval>
-            <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={8} style={{ marginRight: 3 }} />memor</Oval>
+            <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={11} style={{ marginRight: 4 }} />memor</Oval>
             <button className="btl-oval-btn" onClick={() => setFocusMode((v) => !v)} title="Hide everything except today's incomplete goals" style={{
               border: `1px solid ${focusMode ? C.accent : C.text}`, background: focusMode ? C.accent : C.bg, color: focusMode ? "#fff" : C.text,
-              borderRadius: 999, padding: "2px 9px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, fontWeight: 800,
-            }}><Target size={10} /> Focus Mode</button>
+              borderRadius: 999, padding: "4px 14px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
+            }}><Target size={14} /> Focus Mode</button>
             <button className="btl-oval-btn" onClick={() => setTab("analytics")} style={{
-              border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "2px 9px",
-              display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, fontWeight: 800,
-            }}><BarChart3 size={10} /> Analytics</button>
+              border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
+              display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
+            }}><BarChart3 size={14} /> Analytics</button>
             <button className="btl-oval-btn" onClick={() => setTab("settings")} style={{
-              border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "2px 9px",
-              display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, fontWeight: 800,
-            }}><Settings size={10} /> Setting</button>
+              border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
+              display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
+            }}><Settings size={14} /> Setting</button>
 
             <div style={{ flex: 1 }} />
 
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ textAlign: "center" }}>
                 <div style={{
-                  width: 20, height: 20, borderRadius: "50%", background: C.dark, color: "#fff",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 800,
+                  width: 30, height: 30, borderRadius: "50%", background: C.dark, color: "#fff",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800,
                 }}>{String(state.streak).padStart(3, "0")}</div>
               </div>
               <RingStat pct={dailyPct} label="Daily Goal" sub="Staytus" color={C.accent} />
@@ -1252,7 +1252,7 @@ export default function App() {
               <RingStat pct={overallPct} label="Goal" color={C.dark} />
               <button onClick={signOutUser} title="Sign out"
                 style={{ border: "none", background: "transparent", cursor: "pointer", color: "#b3ac99" }}>
-                <LogOut size={11} />
+                <LogOut size={15} />
               </button>
             </div>
           </div>
