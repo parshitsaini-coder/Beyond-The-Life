@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Settings, X, Plus, Smile, Meh, Frown, Image as ImageIcon,
   LogOut, Trash2, ChevronRight, ChevronDown, ChevronUp, Flame, Target, BookOpen,
-  Repeat, RotateCcw, BarChart3, TrendingUp, Award, Tag,
+  Repeat, RotateCcw, BarChart3, TrendingUp, Award, Tag, Pencil,
   GripVertical, Pin, PinOff, LayoutGrid, RefreshCw, Maximize2, Move
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend } from "recharts";
@@ -600,10 +600,12 @@ function MoodBtn({ active, onClick, children, title }) {
   );
 }
 
-/* ---------------- SETTINGS TAB (image 2) ---------------- */
-function SettingsTab({ state, addItem, removeItem, onClose }) {
+/* ---------------- SETTINGS PANEL CONTENT (rendered inside the glass modal) ---------------- */
+function SettingsTab({ state, addItem, removeItem, editItem, onClose }) {
   const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | null
   const [val, setVal] = useState("");
+  const [editing, setEditing] = useState(null); // { colKey, id } | null
+  const [editVal, setEditVal] = useState("");
 
   const MODE_KEY = { goal: "dailyGoals", extry: "extryGoals", bigGoals: "bigGoals", lifeRules: "lifeRules" };
   const MODE_PLACEHOLDER = {
@@ -617,47 +619,57 @@ function SettingsTab({ state, addItem, removeItem, onClose }) {
     setVal(""); setMode(null);
   };
 
+  const startEdit = (colKey, id, text) => { setEditing({ colKey, id }); setEditVal(text); };
+  const saveEdit = () => {
+    if (!editing) return;
+    if (editVal.trim()) editItem(editing.colKey, editing.id, editVal.trim());
+    setEditing(null); setEditVal("");
+  };
+
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.97, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }}
-      transition={{ type: "spring", stiffness: 340, damping: 30 }}
+      onClick={(e) => e.stopPropagation()}
+      initial={{ opacity: 0, scale: 0.94, y: 16 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.94, y: 10 }}
+      transition={{ type: "spring", stiffness: 340, damping: 28 }}
       style={{
-        border: "1px solid rgba(255,255,255,0.6)", borderRadius: 14,
-        background: "rgba(255,255,255,0.62)",
+        width: "min(92%, 900px)", maxHeight: "88%", background: "rgba(255,255,255,0.68)",
         backdropFilter: "blur(16px) saturate(160%)", WebkitBackdropFilter: "blur(16px) saturate(160%)",
-        boxShadow: "0 12px 32px rgba(37,36,34,0.10)",
-        display: "flex", flexDirection: "column", height: "100%",
+        border: "1px solid rgba(255,255,255,0.6)", borderRadius: 14,
+        boxShadow: "0 12px 36px rgba(37,36,34,0.18)",
+        display: "flex", flexDirection: "column", overflow: "hidden",
       }}>
       <div style={{
-        display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
-        borderBottom: "1px solid rgba(64,61,57,0.15)", background: "rgba(255,252,242,0.5)", borderRadius: "14px 14px 0 0",
+        display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", flexWrap: "wrap",
+        borderBottom: "1px solid rgba(64,61,57,0.15)", background: "rgba(255,252,242,0.5)",
       }}>
         <span style={{ fontSize: 12, fontWeight: 800, color: C.dark }}>Setting</span>
-        <Oval onClick={() => setMode("goal")} style={{ cursor: "pointer", background: mode === "goal" ? C.accent : C.bg, color: mode === "goal" ? "#fff" : C.text }}>Add Goles</Oval>
-        <Oval onClick={() => setMode("extry")} style={{ cursor: "pointer", background: mode === "extry" ? C.accent : C.bg, color: mode === "extry" ? "#fff" : C.text }}>Add extry</Oval>
-        <Oval onClick={() => setMode("bigGoals")} style={{ cursor: "pointer", background: mode === "bigGoals" ? C.accent : C.bg, color: mode === "bigGoals" ? "#fff" : C.text }}>Add Big Goal</Oval>
-        <Oval onClick={() => setMode("lifeRules")} style={{ cursor: "pointer", background: mode === "lifeRules" ? C.accent : C.bg, color: mode === "lifeRules" ? "#fff" : C.text }}>Add Rule</Oval>
+        <Oval onClick={() => setMode("goal")} style={{ cursor: "pointer", background: mode === "goal" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "goal" ? "#fff" : C.text }}>Add Goles</Oval>
+        <Oval onClick={() => setMode("extry")} style={{ cursor: "pointer", background: mode === "extry" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "extry" ? "#fff" : C.text }}>Add extry</Oval>
+        <Oval onClick={() => setMode("bigGoals")} style={{ cursor: "pointer", background: mode === "bigGoals" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "bigGoals" ? "#fff" : C.text }}>Add Big Goal</Oval>
+        <Oval onClick={() => setMode("lifeRules")} style={{ cursor: "pointer", background: mode === "lifeRules" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "lifeRules" ? "#fff" : C.text }}>Add Rule</Oval>
         <div style={{ flex: 1 }} />
-        <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 1.15 }} onClick={onClose} title="Closed Butan" style={{
-          border: "none", borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
-          display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-        }}><X size={13} color={C.dark} /></motion.button>
+        <motion.span whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onClose} title="Close" style={{
+          borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
+          display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0,
+        }}><X size={13} color={C.dark} /></motion.span>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 12 }} className="btl-scroll">
+      <div style={{ flex: 1, overflowY: "auto", padding: 14 }} className="btl-scroll">
         {mode && (
           <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
             <input
               autoFocus value={val} onChange={(e) => setVal(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submit()}
               placeholder={MODE_PLACEHOLDER[mode]}
-              style={{ flex: 1, fontSize: 11, padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
+              style={{ flex: 1, fontSize: 11, padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", background: "rgba(255,255,255,0.75)" }}
             />
             <button onClick={submit} style={{ border: "none", background: C.accent, color: "#fff", borderRadius: 6, padding: "0 10px", cursor: "pointer", fontSize: 11 }}>Add</button>
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           {[
             { key: "dailyGoals", label: "Daily Goals" },
             { key: "extryGoals", label: "Extry Goals" },
@@ -666,23 +678,40 @@ function SettingsTab({ state, addItem, removeItem, onClose }) {
           ].map((col) => (
             <div key={col.key}>
               <div style={{ fontSize: 10, fontWeight: 800, color: C.dark, marginBottom: 4 }}>{col.label}</div>
-              <div style={{ border: "1px solid #ece7d8", borderRadius: 8, maxHeight: 130, overflowY: "auto" }} className="btl-scroll">
-                {(state[col.key] || []).map((item, i) => (
-                  <div key={col.plain ? i : item.id} style={{
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                    padding: "4px 7px", fontSize: 10, borderBottom: "1px solid #f5f1e6",
-                  }}>
-                    <span>{col.plain ? item : item.text}</span>
-                    <Trash2 size={11} style={{ cursor: "pointer", color: "#d8d2bf" }} onClick={() => removeItem(col.key, col.plain ? i : item.id)} />
-                  </div>
-                ))}
+              <div style={{ border: "1px solid rgba(64,61,57,0.15)", borderRadius: 8, maxHeight: 150, overflowY: "auto", background: "rgba(255,255,255,0.5)" }} className="btl-scroll">
+                {(state[col.key] || []).map((item, i) => {
+                  const id = col.plain ? i : item.id;
+                  const text = col.plain ? item : item.text;
+                  const isEditing = editing && editing.colKey === col.key && editing.id === id;
+                  return (
+                    <div key={id} style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6,
+                      padding: "4px 7px", fontSize: 10, borderBottom: "1px solid rgba(240,236,224,0.8)",
+                    }}>
+                      {isEditing ? (
+                        <input
+                          autoFocus value={editVal} onChange={(e) => setEditVal(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditing(null); }}
+                          onBlur={saveEdit}
+                          style={{ flex: 1, fontSize: 10, padding: "2px 5px", borderRadius: 4, border: "1px solid #ddd6c4", outline: "none" }}
+                        />
+                      ) : (
+                        <span style={{ flex: 1 }}>{text}</span>
+                      )}
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        {!isEditing && <Pencil size={11} style={{ cursor: "pointer", color: "#a39c86" }} onClick={() => startEdit(col.key, id, text)} />}
+                        <Trash2 size={11} style={{ cursor: "pointer", color: "#d8a29a" }} onClick={() => removeItem(col.key, id)} />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      <div style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: "#b3ac99", padding: "6px 0", borderTop: "1px solid #f0ece0" }}>
+      <div style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: "#b3ac99", padding: "6px 0", borderTop: "1px solid rgba(240,236,224,0.8)" }}>
         Setting Teb
       </div>
     </motion.div>
@@ -1646,6 +1675,7 @@ export default function App() {
   const [confetti, setConfetti] = useState(false);
   const [milestoneStreak, setMilestoneStreak] = useState(null);
   const [memOpen, setMemOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [memVal, setMemVal] = useState("");
   const [focusMode, setFocusMode] = useState(false);
   const [saveStatus, setSaveStatus] = useState("idle"); // "idle" | "saving" | "saved"
@@ -1739,6 +1769,8 @@ export default function App() {
 
   const addPlain = (listKey, text) => update((s) => { s[listKey] = [...s[listKey], text]; return s; });
   const removePlain = (listKey, idx) => update((s) => { s[listKey] = s[listKey].filter((_, i) => i !== idx); return s; });
+  const editPlain = (listKey, idx, text) => update((s) => { s[listKey] = s[listKey].map((t, i) => i === idx ? text : t); return s; });
+  const editGoalText = (listKey, id, text) => update((s) => { s[listKey] = s[listKey].map((g) => g.id === id ? { ...g, text } : g); return s; });
 
   const settingsAdd = (listKey, text) => {
     if (listKey === "bigGoals" || listKey === "lifeRules") addPlain(listKey, text);
@@ -1747,6 +1779,10 @@ export default function App() {
   const settingsRemove = (listKey, idOrIdx) => {
     if (listKey === "bigGoals" || listKey === "lifeRules") removePlain(listKey, idOrIdx);
     else removeGoal(listKey)(idOrIdx);
+  };
+  const settingsEdit = (listKey, idOrIdx, text) => {
+    if (listKey === "bigGoals" || listKey === "lifeRules") editPlain(listKey, idOrIdx, text);
+    else editGoalText(listKey, idOrIdx, text);
   };
 
   const setMood = (date, mood) => update((s) => { s.moodLog = { ...s.moodLog, [date]: mood }; return s; });
@@ -1851,11 +1887,7 @@ export default function App() {
       <Confetti active={confetti} />
       <MilestoneBanner streak={milestoneStreak} visible={!!milestoneStreak} />
 
-      {tab === "settings" ? (
-        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <SettingsTab state={state} addItem={settingsAdd} removeItem={settingsRemove} onClose={() => setTab("dashboard")} />
-        </div>
-      ) : tab === "layout" ? (
+      {tab === "layout" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <LayoutEditor layout={state.layout} widgets={widgetsMap} onChange={updateLayout} onReset={resetLayout} onClose={() => setTab("dashboard")} />
         </div>
@@ -1894,7 +1926,7 @@ export default function App() {
                 display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
               }}><BarChart3 size={14} /> Analytics</motion.button>
             <motion.button
-              onClick={() => setTab("settings")}
+              onClick={() => setSettingsOpen(true)}
               whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
               style={{
                 border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
@@ -1945,6 +1977,21 @@ export default function App() {
           )}
         </div>
       )}
+
+      {/* ---------- SETTINGS MODAL (Glassmorphism 2.0 / Liquid Glass — same style as Memories) ---------- */}
+      <AnimatePresence>
+        {settingsOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
+            style={{
+              position: "absolute", inset: 0, background: "rgba(37,36,34,0.28)", zIndex: 65,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)",
+            }} onClick={() => setSettingsOpen(false)}>
+            <SettingsTab state={state} addItem={settingsAdd} removeItem={settingsRemove} editItem={settingsEdit} onClose={() => setSettingsOpen(false)} />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ---------- MEMORY MODAL (Glassmorphism 2.0 / Liquid Glass) ---------- */}
       <AnimatePresence>
