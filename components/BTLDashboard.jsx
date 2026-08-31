@@ -443,8 +443,8 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, marginBottom: 6, textAlign: "center", flexShrink: 0 }}>{title}</div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }} className="btl-scroll">
+      <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, flexShrink: 0 }}>{title}</Oval>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: "#fff" }} className="btl-scroll">
         {items.map((g) => {
           const cat = catInfo(g.category);
           const prio = prioInfo(g.priority);
