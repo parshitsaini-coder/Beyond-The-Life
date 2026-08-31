@@ -6,7 +6,7 @@ import {
   Repeat, RotateCcw, BarChart3, TrendingUp, Award, Tag,
   GripVertical, Pin, PinOff, LayoutGrid, RefreshCw, Maximize2, Move
 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend } from "recharts";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { useAuth, signOutUser } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
@@ -63,8 +63,8 @@ const LEGACY_SIZE_HEIGHT = { sm: 150, md: 215, lg: 260 };
 const DEFAULT_LAYOUT = {
   order: WIDGETS.map((w) => w.id),
   sizes: {
-    bigGoals: { w: 3, h: 215 }, lifeRules: { w: 3, h: 215 }, dailyGoals: { w: 3, h: 215 }, extryGoals: { w: 3, h: 215 },
-    earnMoney: { w: 3, h: 215 }, mood: { w: 3, h: 215 }, analyticsSummary: { w: 6, h: 260 },
+    bigGoals: { w: 3, h: 172 }, lifeRules: { w: 3, h: 172 }, dailyGoals: { w: 3, h: 215 }, extryGoals: { w: 3, h: 215 },
+    earnMoney: { w: 3, h: 240 }, mood: { w: 3, h: 240 }, analyticsSummary: { w: 6, h: 260 },
   },
   pinned: { analyticsSummary: false },
 };
@@ -147,7 +147,10 @@ function makeDefaultState() {
     extryGoals: mk(["Learn something new", "Message a friend", "Save ₹100", "Fix one small thing", "Say no to a distraction", "Tidy workspace", "Review budget", "Reply pending messages"]),
     notes: "",
     earnToday: "",
+    spendToday: "",
     totalEarnLife: 0,
+    totalSpendLife: 0,
+    moneyHistory: {},   // { "2026-08-30": { earn: 100, spend: 40 } }
     memories: [],
     moodLog: {},        // { "2026-08-30": "happy" | "neutral" | "sad" }
     completionHistory: {}, // { "2026-08-30": 62.5 }  -- % of daily+extry goals done that day
@@ -372,39 +375,29 @@ function LoginScreen({ onLogin }) {
   );
 }
 
-/* ---------------- EDITABLE LIST (Life Big Goals / Life Rules) ---------------- */
-function TextList({ title, items, onAdd, onRemove }) {
-  const [val, setVal] = useState("");
+/* ---------------- READ-ONLY LIST (Life Big Goals / Life Rules) ----------------
+   Adding/removing items now happens only from Settings, so this widget is a
+   clean, fixed display card — no inline input row eating into the layout. */
+function TextList({ title, items }) {
   return (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 15, fontWeight: 900 }}>{title}</Oval>
+    <div style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column" }}>
+      <Oval style={{ display: "block", margin: "0 auto 8px", background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 15, fontWeight: 900 }}>{title}</Oval>
       <div style={{
-        border: `1px solid ${C.text}`, borderRadius: 8, maxHeight: 88, overflowY: "auto", background: "#fff",
+        border: `1px solid ${C.text}`, borderRadius: 8, flex: 1, overflowY: "auto", background: "#fff",
       }} className="btl-scroll">
-        {items.length === 0 && <div style={{ padding: 8, fontSize: 12, color: "#b3ac99" }}>Nothing yet — add one below.</div>}
+        {items.length === 0 && (
+          <div style={{ padding: 10, fontSize: 12, color: "#b3ac99", textAlign: "center" }}>
+            Nothing yet — add one from Setting.
+          </div>
+        )}
         {items.map((t, i) => (
           <div key={i} style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "7px 8px", borderBottom: i < items.length - 1 ? "1px solid #f0ece0" : "none", fontSize: 13, fontWeight: 700,
+            display: "flex", alignItems: "center",
+            padding: "8px 10px", borderBottom: i < items.length - 1 ? "1px solid #f0ece0" : "none", fontSize: 13, fontWeight: 700,
           }}>
             <span>{t}</span>
-            <Trash2 size={12} style={{ cursor: "pointer", color: "#c9c2ac", flexShrink: 0 }} onClick={() => onRemove(i)} />
           </div>
         ))}
-      </div>
-      <div style={{ display: "flex", gap: 4, marginTop: 5 }}>
-        <input
-          value={val} onChange={(e) => setVal(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && val.trim()) { onAdd(val.trim()); setVal(""); } }}
-          placeholder={`Add to ${title}...`}
-          style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
-        />
-        <button
-          onClick={() => { if (val.trim()) { onAdd(val.trim()); setVal(""); } }}
-          style={{ border: "none", background: C.accent, color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer" }}
-        >
-          <Plus size={13} />
-        </button>
       </div>
     </div>
   );
@@ -609,13 +602,18 @@ function MoodBtn({ active, onClick, children, title }) {
 
 /* ---------------- SETTINGS TAB (image 2) ---------------- */
 function SettingsTab({ state, addItem, removeItem, onClose }) {
-  const [mode, setMode] = useState(null); // "goal" | "extry" | null
+  const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | null
   const [val, setVal] = useState("");
 
+  const MODE_KEY = { goal: "dailyGoals", extry: "extryGoals", bigGoals: "bigGoals", lifeRules: "lifeRules" };
+  const MODE_PLACEHOLDER = {
+    goal: "New daily goal...", extry: "New entry goal...",
+    bigGoals: "New life big goal...", lifeRules: "New life rule...",
+  };
+
   const submit = () => {
-    if (!val.trim()) return;
-    if (mode === "goal") addItem("dailyGoals", val.trim());
-    if (mode === "extry") addItem("extryGoals", val.trim());
+    if (!val.trim() || !mode) return;
+    addItem(MODE_KEY[mode], val.trim());
     setVal(""); setMode(null);
   };
 
@@ -637,6 +635,8 @@ function SettingsTab({ state, addItem, removeItem, onClose }) {
         <span style={{ fontSize: 12, fontWeight: 800, color: C.dark }}>Setting</span>
         <Oval onClick={() => setMode("goal")} style={{ cursor: "pointer", background: mode === "goal" ? C.accent : C.bg, color: mode === "goal" ? "#fff" : C.text }}>Add Goles</Oval>
         <Oval onClick={() => setMode("extry")} style={{ cursor: "pointer", background: mode === "extry" ? C.accent : C.bg, color: mode === "extry" ? "#fff" : C.text }}>Add extry</Oval>
+        <Oval onClick={() => setMode("bigGoals")} style={{ cursor: "pointer", background: mode === "bigGoals" ? C.accent : C.bg, color: mode === "bigGoals" ? "#fff" : C.text }}>Add Big Goal</Oval>
+        <Oval onClick={() => setMode("lifeRules")} style={{ cursor: "pointer", background: mode === "lifeRules" ? C.accent : C.bg, color: mode === "lifeRules" ? "#fff" : C.text }}>Add Rule</Oval>
         <div style={{ flex: 1 }} />
         <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 1.15 }} onClick={onClose} title="Closed Butan" style={{
           border: "none", borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
@@ -650,7 +650,7 @@ function SettingsTab({ state, addItem, removeItem, onClose }) {
             <input
               autoFocus value={val} onChange={(e) => setVal(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder={mode === "goal" ? "New daily goal..." : "New entry goal..."}
+              placeholder={MODE_PLACEHOLDER[mode]}
               style={{ flex: 1, fontSize: 11, padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
             />
             <button onClick={submit} style={{ border: "none", background: C.accent, color: "#fff", borderRadius: 6, padding: "0 10px", cursor: "pointer", fontSize: 11 }}>Add</button>
@@ -938,6 +938,33 @@ function AnalyticsTab({ state, onClose }) {
     return arr;
   }, [state.moodLog]);
 
+  const moneyData = useMemo(() => {
+    const hist = state.moneyHistory || {};
+    const arr = [];
+    let running = 0;
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0, 10);
+      const rec = hist[iso] || { earn: 0, spend: 0 };
+      running += (rec.earn || 0) - (rec.spend || 0);
+      arr.push({
+        date: d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }),
+        earn: rec.earn || 0,
+        spend: rec.spend || 0,
+        net: running,
+      });
+    }
+    return arr;
+  }, [state.moneyHistory]);
+
+  const moneySummary = useMemo(() => {
+    const earn = state.totalEarnLife || 0;
+    const spend = state.totalSpendLife || 0;
+    return { earn, spend, net: earn - spend };
+  }, [state.totalEarnLife, state.totalSpendLife]);
+
+
   const insights = useMemo(() => {
     const entries = Object.entries(state.completionHistory || {});
     if (entries.length === 0) return null;
@@ -1168,27 +1195,107 @@ function AnalyticsTab({ state, onClose }) {
             </LineChart>
           </ResponsiveContainer>
         </div>
+
+        {/* ---------- Money analytics: pro-level earn vs spend graph ---------- */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "20px 0 8px" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>💰 Money — earn vs spend (last 14 days)</div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+          <div style={{
+            flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px",
+            background: "linear-gradient(135deg, #4a7c5918, transparent)", border: "1px solid #4a7c5940",
+          }}>
+            <div style={{ fontSize: 9, color: "#6b8f77", fontWeight: 700 }}>Total Earned</div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: "#4a7c59" }}>₹{moneySummary.earn.toFixed(0)}</div>
+          </div>
+          <div style={{
+            flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px",
+            background: "linear-gradient(135deg, #c0392b18, transparent)", border: "1px solid #c0392b40",
+          }}>
+            <div style={{ fontSize: 9, color: "#c0776b", fontWeight: 700 }}>Total Spent</div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: "#c0392b" }}>₹{moneySummary.spend.toFixed(0)}</div>
+          </div>
+          <div style={{
+            flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px",
+            background: `linear-gradient(135deg, ${moneySummary.net >= 0 ? C.accent : "#c0392b"}18, transparent)`,
+            border: `1px solid ${moneySummary.net >= 0 ? C.accent : "#c0392b"}40`,
+          }}>
+            <div style={{ fontSize: 9, color: "#a39c86", fontWeight: 700 }}>Net (life)</div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: moneySummary.net >= 0 ? C.accent : "#c0392b" }}>
+              {moneySummary.net >= 0 ? "+" : "−"}₹{Math.abs(moneySummary.net).toFixed(0)}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ height: 220, border: "1px solid #ece7d8", borderRadius: 10, padding: "10px 4px 4px" }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={moneyData} margin={{ top: 4, right: 10, bottom: 0, left: -18 }}>
+              <defs>
+                <linearGradient id="earnGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#4a7c59" stopOpacity={0.95} />
+                  <stop offset="100%" stopColor="#4a7c59" stopOpacity={0.55} />
+                </linearGradient>
+                <linearGradient id="spendGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#e07a5f" stopOpacity={0.95} />
+                  <stop offset="100%" stopColor="#e07a5f" stopOpacity={0.55} />
+                </linearGradient>
+                <linearGradient id="netGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={C.accent} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={C.accent} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="#f0ece0" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 8, fill: "#b3ac99" }} interval={1} />
+              <YAxis tick={{ fontSize: 9, fill: "#b3ac99" }} width={34} tickFormatter={(v) => `₹${v}`} />
+              <Tooltip
+                formatter={(v, key) => [`₹${Number(v).toFixed(0)}`, key === "earn" ? "Earned" : key === "spend" ? "Spent" : "Net"]}
+                labelStyle={{ fontSize: 10, fontWeight: 700 }} contentStyle={{ fontSize: 10, borderRadius: 8, border: "1px solid #ece7d8" }}
+              />
+              <Legend wrapperStyle={{ fontSize: 10 }} formatter={(v) => v === "earn" ? "Earned" : v === "spend" ? "Spent" : "Net trend"} />
+              <Area type="monotone" dataKey="net" stroke={C.accent} strokeWidth={2} fill="url(#netGrad)" dot={false} />
+              <Bar dataKey="earn" fill="url(#earnGrad)" radius={[4, 4, 0, 0]} barSize={9} />
+              <Bar dataKey="spend" fill="url(#spendGrad)" radius={[4, 4, 0, 0]} barSize={9} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
       </div>
       {showShare && <ShareJourneyModal state={state} lifeScore={lifeScore} onClose={() => setShowShare(false)} />}
     </div>
   );
 }
 
-/* ---------------- EARN MONEY / NOTES / IMAGE (extracted as a widget) ---------------- */
-function EarnMoneyNotesCard({ state, update, addEarnToday, onImageFile, fileRef }) {
+/* ---------------- EARN MONEY / SPEND MONEY / NOTES / IMAGE (extracted as a widget) ---------------- */
+function EarnMoneyNotesCard({ state, update, addEarnToday, addSpendToday, onImageFile, fileRef }) {
   return (
     <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box" }} className="btl-scroll">
-      <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 4 }}>Earn Money Today :-</div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-        <input
-          value={state.earnToday} onChange={(e) => update((s) => { s.earnToday = e.target.value; return s; })}
-          onKeyDown={(e) => e.key === "Enter" && addEarnToday()}
-          type="number" placeholder="₹ amount"
-          style={{ flex: 1, fontSize: 10, padding: "4px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
-        />
-        <button onClick={addEarnToday} style={{ border: "none", background: C.dark, color: "#fff", borderRadius: 6, padding: "0 10px", cursor: "pointer", fontSize: 9 }}>Add</button>
+      <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 4, color: "#4a7c59" }}>Earn Money Today :-</div>
+          <div style={{ display: "flex", gap: 4 }}>
+            <input
+              value={state.earnToday} onChange={(e) => update((s) => { s.earnToday = e.target.value; return s; })}
+              onKeyDown={(e) => e.key === "Enter" && addEarnToday()}
+              type="number" placeholder="₹ amount"
+              style={{ flex: 1, minWidth: 0, fontSize: 10, padding: "4px 6px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
+            />
+            <button onClick={addEarnToday} style={{ border: "none", background: "#4a7c59", color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer", fontSize: 9, flexShrink: 0 }}>Add</button>
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 4, color: "#c0392b" }}>Spend Money Today :-</div>
+          <div style={{ display: "flex", gap: 4 }}>
+            <input
+              value={state.spendToday} onChange={(e) => update((s) => { s.spendToday = e.target.value; return s; })}
+              onKeyDown={(e) => e.key === "Enter" && addSpendToday()}
+              type="number" placeholder="₹ amount"
+              style={{ flex: 1, minWidth: 0, fontSize: 10, padding: "4px 6px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
+            />
+            <button onClick={addSpendToday} style={{ border: "none", background: "#c0392b", color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer", fontSize: 9, flexShrink: 0 }}>Add</button>
+          </div>
+        </div>
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
         <textarea
           value={state.notes} onChange={(e) => update((s) => { s.notes = e.target.value; return s; })}
           placeholder="notes"
@@ -1633,7 +1740,10 @@ export default function App() {
   const addPlain = (listKey, text) => update((s) => { s[listKey] = [...s[listKey], text]; return s; });
   const removePlain = (listKey, idx) => update((s) => { s[listKey] = s[listKey].filter((_, i) => i !== idx); return s; });
 
-  const settingsAdd = (listKey, text) => addGoal(listKey)(text);
+  const settingsAdd = (listKey, text) => {
+    if (listKey === "bigGoals" || listKey === "lifeRules") addPlain(listKey, text);
+    else addGoal(listKey)(text);
+  };
   const settingsRemove = (listKey, idOrIdx) => {
     if (listKey === "bigGoals" || listKey === "lifeRules") removePlain(listKey, idOrIdx);
     else removeGoal(listKey)(idOrIdx);
@@ -1643,7 +1753,25 @@ export default function App() {
 
   const addEarnToday = () => update((s) => {
     const v = parseFloat(s.earnToday);
-    if (!isNaN(v)) { s.totalEarnLife = (s.totalEarnLife || 0) + v; s.earnToday = ""; }
+    if (!isNaN(v)) {
+      s.totalEarnLife = (s.totalEarnLife || 0) + v;
+      const day = todayISO();
+      const cur = (s.moneyHistory && s.moneyHistory[day]) || { earn: 0, spend: 0 };
+      s.moneyHistory = { ...(s.moneyHistory || {}), [day]: { ...cur, earn: cur.earn + v } };
+      s.earnToday = "";
+    }
+    return s;
+  });
+
+  const addSpendToday = () => update((s) => {
+    const v = parseFloat(s.spendToday);
+    if (!isNaN(v)) {
+      s.totalSpendLife = (s.totalSpendLife || 0) + v;
+      const day = todayISO();
+      const cur = (s.moneyHistory && s.moneyHistory[day]) || { earn: 0, spend: 0 };
+      s.moneyHistory = { ...(s.moneyHistory || {}), [day]: { ...cur, spend: cur.spend + v } };
+      s.spendToday = "";
+    }
     return s;
   });
 
@@ -1664,11 +1792,11 @@ export default function App() {
      a corner handle resizes the exact same widget the user sees on
      their normal dashboard. */
   const widgetsMap = {
-    bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} onAdd={(t) => addPlain("bigGoals", t)} onRemove={(i) => removePlain("bigGoals", i)} />,
-    lifeRules: <TextList title="Life Rules" items={state.lifeRules} onAdd={(t) => addPlain("lifeRules", t)} onRemove={(i) => removePlain("lifeRules", i)} />,
+    bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} />,
+    lifeRules: <TextList title="Life Rules" items={state.lifeRules} />,
     dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />,
     extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />,
-    earnMoney: <EarnMoneyNotesCard state={state} update={update} addEarnToday={addEarnToday} onImageFile={onImageFile} fileRef={fileRef} />,
+    earnMoney: <EarnMoneyNotesCard state={state} update={update} addEarnToday={addEarnToday} addSpendToday={addSpendToday} onImageFile={onImageFile} fileRef={fileRef} />,
     mood: <DateMoodColumn moodLog={state.moodLog} onSetMood={setMood} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} />,
   };
@@ -1742,6 +1870,7 @@ export default function App() {
             <Oval style={{ background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 16, fontWeight: 900 }}>Byound The Life</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Goals</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Total Earn Money life :- ₹{state.totalEarnLife.toFixed(0)}</Oval>
+            <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed", borderColor: "#c0392b", color: "#c0392b" }}>Total Spend Money life :- ₹{(state.totalSpendLife || 0).toFixed(0)}</Oval>
             <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={11} style={{ marginRight: 4 }} />memor</Oval>
             <motion.button
               onClick={() => setFocusMode((v) => !v)} title="Hide everything except today's incomplete goals"
