@@ -4,7 +4,7 @@ import {
   Settings, X, Plus, Smile, Meh, Frown, Image as ImageIcon,
   LogOut, Trash2, ChevronRight, ChevronDown, ChevronUp, Flame, Target, BookOpen,
   Repeat, RotateCcw, BarChart3, TrendingUp, Award, Tag,
-  GripVertical, Pin, PinOff, LayoutGrid, RefreshCw
+  GripVertical, Pin, PinOff, LayoutGrid, RefreshCw, Maximize2
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
@@ -31,14 +31,18 @@ const STORAGE_KEY = "btl_state_v1";
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
 /* ---------------- CUSTOMIZABLE WIDGET LAYOUT ----------------
-   2026 trend: user-controlled, rearrangeable + resizable dashboards.
-   Each widget has an id, a label (shown in the Layout editor), and a
-   size — "sm" (1/3 width, compact), "md" (1/2 width, default), or
-   "lg" (full width, taller) — which drives both column span and
-   height in the widget grid. Order is just an array of ids; dragging
-   in the Layout editor reorders this array, and the grid below
-   auto-flows widgets into rows based on their span, so reordering +
-   resizing both "just work" without manual row math. */
+   2026 trend: user-controlled, rearrangeable + FREE-FORM resizable
+   dashboards — like a desktop app, drag a widget's bottom-right corner
+   to resize it to any size you want (not locked to 3 fixed presets).
+   Each widget's size lives in state.layout.sizes[id] as { w, h }:
+     - w = column span out of a GRID_COLS-column grid (integer, snapped
+       while dragging so widgets always stay aligned to the grid)
+     - h = height in px (free-form, clamped between MIN_WIDGET_H and
+       MAX_WIDGET_H)
+   Order is just an array of ids; dragging in the Layout editor
+   reorders this array, and the grid auto-flows widgets into rows
+   based on their span, so reordering + resizing both "just work"
+   without manual row math. */
 const WIDGETS = [
   { id: "bigGoals", label: "Life Big Goals" },
   { id: "lifeRules", label: "Life Rules" },
@@ -48,31 +52,58 @@ const WIDGETS = [
   { id: "mood", label: "Date & Mood" },
   { id: "analyticsSummary", label: "Analytics Summary" },
 ];
+const GRID_COLS = 6;          // grid columns widget widths snap to
+const MIN_WIDGET_H = 120;     // px — minimum free-form height
+const MAX_WIDGET_H = 500;     // px — maximum free-form height
+/* Legacy "sm" | "md" | "lg" strings from before free-form resize —
+   kept only so ensureLayoutDefaults can migrate old saved layouts. */
+const LEGACY_SIZE_SPAN = { sm: 2, md: 3, lg: 6 };
+const LEGACY_SIZE_HEIGHT = { sm: 150, md: 215, lg: 260 };
+
 const DEFAULT_LAYOUT = {
   order: WIDGETS.map((w) => w.id),
   sizes: {
-    bigGoals: "md", lifeRules: "md", dailyGoals: "md", extryGoals: "md",
-    earnMoney: "md", mood: "md", analyticsSummary: "lg",
+    bigGoals: { w: 3, h: 215 }, lifeRules: { w: 3, h: 215 }, dailyGoals: { w: 3, h: 215 }, extryGoals: { w: 3, h: 215 },
+    earnMoney: { w: 3, h: 215 }, mood: { w: 3, h: 215 }, analyticsSummary: { w: 6, h: 260 },
   },
   pinned: { analyticsSummary: false },
 };
 function defaultLayout() {
-  return { order: DEFAULT_LAYOUT.order.slice(), sizes: { ...DEFAULT_LAYOUT.sizes }, pinned: { ...DEFAULT_LAYOUT.pinned } };
+  return {
+    order: DEFAULT_LAYOUT.order.slice(),
+    sizes: Object.fromEntries(Object.entries(DEFAULT_LAYOUT.sizes).map(([k, v]) => [k, { ...v }])),
+    pinned: { ...DEFAULT_LAYOUT.pinned },
+  };
+}
+/* Normalizes any stored size value into a valid { w, h } object:
+   - accepts old "sm"|"md"|"lg" strings (pre-free-form-resize saves)
+     and maps them through the legacy tables above
+   - accepts { w, h } objects and clamps/rounds them into range, so a
+     corrupted or hand-edited value can never break the grid layout */
+function normalizeSize(size) {
+  if (typeof size === "string") {
+    return { w: LEGACY_SIZE_SPAN[size] || 3, h: LEGACY_SIZE_HEIGHT[size] || 215 };
+  }
+  if (size && typeof size === "object") {
+    const w = Math.min(GRID_COLS, Math.max(1, Math.round(Number(size.w) || 3)));
+    const h = Math.min(MAX_WIDGET_H, Math.max(MIN_WIDGET_H, Math.round(Number(size.h) || 215)));
+    return { w, h };
+  }
+  return { w: 3, h: 215 };
 }
 /* Backfills missing fields on load — handles old saved states that
-   predate this feature, and any new widgets added later. */
+   predate this feature (string sizes get migrated to { w, h } via
+   normalizeSize), and any new widgets added later. */
 function ensureLayoutDefaults(s) {
   const layout = s.layout || {};
   const order = Array.isArray(layout.order) && layout.order.length ? layout.order.slice() : DEFAULT_LAYOUT.order.slice();
   WIDGETS.forEach((w) => { if (!order.includes(w.id)) order.push(w.id); });
-  const sizes = { ...DEFAULT_LAYOUT.sizes, ...(layout.sizes || {}) };
+  const rawSizes = { ...DEFAULT_LAYOUT.sizes, ...(layout.sizes || {}) };
+  const sizes = {};
+  WIDGETS.forEach((w) => { sizes[w.id] = normalizeSize(rawSizes[w.id]); });
   const pinned = { ...DEFAULT_LAYOUT.pinned, ...(layout.pinned || {}) };
   return { ...s, layout: { order, sizes, pinned } };
 }
-const SIZE_SPAN = { sm: 2, md: 3, lg: 6 };       // out of a 6-column grid
-const SIZE_HEIGHT = { sm: 150, md: 215, lg: 260 }; // px
-const SIZE_CYCLE = { sm: "md", md: "lg", lg: "sm" };
-const SIZE_LABEL = { sm: "Small", md: "Medium", lg: "Large" };
 
 /* ---------------- GOAL MANAGEMENT: categories & priorities ---------------- */
 const CATEGORIES = [
@@ -1202,43 +1233,142 @@ function AnalyticsSummaryWidget({ state, onOpen }) {
   );
 }
 
-/* ---------------- CUSTOMIZABLE WIDGET GRID (drag to reorder + resize in Layout editor) ----------------
-   Reads state.layout.order / .sizes / .pinned and lays widgets out in a
-   6-column CSS grid with row-dense auto-flow, so reordering the ids or
-   changing a widget's size (which changes its column span) both just
-   reflow naturally without any manual row math. The `layout` prop on
-   each motion.div animates widgets smoothly into their new spot
-   whenever the order/size changes. */
-function WidgetGrid({ layout, widgets }) {
-  const visible = layout.order.filter((id) => id !== "analyticsSummary" || layout.pinned.analyticsSummary);
+/* ---------------- FREE-FORM RESIZE HANDLE ----------------
+   Small "⋰"-style corner grip. Only rendered when the grid is in
+   editable (Layout tab) mode. Pointer-driven — no extra drag library:
+   pointerdown captures the pointer on the handle itself, pointermove
+   computes the new width/height, pointerup commits it. */
+function ResizeHandle({ onPointerDown, onPointerMove, onPointerUp }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gridAutoFlow: "row dense", gap: 12, paddingBottom: 6 }}>
-      {visible.map((id, i) => {
-        const size = layout.sizes[id] || "md";
-        return (
-          <motion.div
-            key={id}
-            layout
-            initial={{ opacity: 0, y: 14, scaleY: 0.94 }}
-            animate={{ opacity: 1, y: 0, scaleY: 1 }}
-            transition={{ duration: 0.4, delay: Math.min(i, 6) * 0.05, ease: [0.22, 1, 0.36, 1] }}
-            style={{
-              gridColumn: `span ${SIZE_SPAN[size]}`, height: SIZE_HEIGHT[size],
-              minWidth: 0, minHeight: 0, display: "flex", transformOrigin: "top center",
-            }}
-          >
-            {widgets[id]}
-          </motion.div>
-        );
-      })}
+    <div
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      title="Drag to resize"
+      style={{
+        position: "absolute", right: 3, bottom: 3, width: 18, height: 18, zIndex: 5,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "nwse-resize", touchAction: "none",
+        background: "rgba(255,255,255,0.92)", border: `1px solid ${C.text}`, borderRadius: 5,
+        color: C.dark, boxShadow: "0 1px 4px rgba(37,36,34,0.15)",
+      }}
+    >
+      <svg width="10" height="10" viewBox="0 0 10 10" style={{ display: "block", pointerEvents: "none" }}>
+        <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        <line x1="9" y1="5" x2="5" y2="9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      </svg>
     </div>
   );
 }
 
-/* ---------------- LAYOUT EDITOR (drag to reorder, tap to resize/pin) ---------------- */
-function LayoutEditor({ layout, onChange, onReset, onClose }) {
-  const cycleSize = (id) => onChange((l) => ({ ...l, sizes: { ...l.sizes, [id]: SIZE_CYCLE[l.sizes[id] || "md"] } }));
+/* ---------------- SINGLE RESIZABLE WIDGET TILE ----------------
+   Wraps one widget in the grid. While `editable` (Layout tab), shows
+   a corner ResizeHandle you can drag: width snaps to the nearest
+   grid column (out of GRID_COLS) so widgets stay aligned, height is
+   free-form px clamped between MIN_WIDGET_H and MAX_WIDGET_H. Resize
+   is live (the tile visibly grows/shrinks as you drag, other widgets
+   reflow around it) and only commits to state.layout.sizes on
+   pointerup, via onResize(id, {w,h}). */
+function ResizableWidgetTile({ id, index, size, editable, gridRef, onResize, children }) {
+  const [liveSize, setLiveSize] = useState(null); // live drag preview, null = not dragging
+  const dragRef = useRef(null);
+  const effective = liveSize || size;
+
+  const handlePointerDown = (e) => {
+    const rect = gridRef.current?.getBoundingClientRect();
+    if (!rect || !rect.width) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX, startY: e.clientY,
+      startW: size.w, startH: size.h,
+      containerWidth: rect.width,
+    };
+    setLiveSize({ ...size });
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+  };
+  const handlePointerMove = (e) => {
+    const d = dragRef.current;
+    if (!d || e.pointerId !== d.pointerId) return;
+    const deltaX = e.clientX - d.startX;
+    const deltaY = e.clientY - d.startY;
+    // Snap width to the nearest 1/GRID_COLS of the grid's pixel width.
+    const rawFraction = d.startW / GRID_COLS + deltaX / d.containerWidth;
+    const w = Math.min(GRID_COLS, Math.max(1, Math.round(rawFraction * GRID_COLS)));
+    // Height stays free-form (px), just clamped to a sane range.
+    const h = Math.min(MAX_WIDGET_H, Math.max(MIN_WIDGET_H, Math.round(d.startH + deltaY)));
+    setLiveSize({ w, h });
+  };
+  const handlePointerUp = (e) => {
+    const d = dragRef.current;
+    if (!d || e.pointerId !== d.pointerId) return;
+    dragRef.current = null;
+    const final = liveSize || size;
+    setLiveSize(null);
+    onResize?.(id, final);
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+  };
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 14, scaleY: 0.94 }}
+      animate={{ opacity: 1, y: 0, scaleY: 1 }}
+      transition={liveSize ? { duration: 0 } : { duration: 0.4, delay: Math.min(index, 6) * 0.05, ease: [0.22, 1, 0.36, 1] }}
+      style={{
+        gridColumn: `span ${effective.w}`, height: effective.h,
+        minWidth: 0, minHeight: 0, display: "flex", position: "relative", transformOrigin: "top center",
+        outline: editable ? `1px dashed ${liveSize ? C.accent : "rgba(64,61,57,0.25)"}` : "none",
+        outlineOffset: 2, borderRadius: 8,
+      }}
+    >
+      {children}
+      {editable && (
+        <ResizeHandle onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} />
+      )}
+    </motion.div>
+  );
+}
+
+/* ---------------- CUSTOMIZABLE WIDGET GRID (drag to reorder in the Layout tab list + free-form resize) ----------------
+   Reads state.layout.order / .sizes / .pinned and lays widgets out in
+   a GRID_COLS-column CSS grid with row-dense auto-flow, so reordering
+   the ids or changing a widget's size (column span + height) both
+   just reflow naturally without any manual row math. Pass
+   `editable` + `onResize` to turn on the corner drag-to-resize handles
+   (used in the Layout tab); omit them for the plain read-only
+   dashboard view. */
+function WidgetGrid({ layout, widgets, editable = false, onResize }) {
+  const gridRef = useRef(null);
+  const visible = layout.order.filter((id) => id !== "analyticsSummary" || layout.pinned.analyticsSummary);
+  return (
+    <div
+      ref={gridRef}
+      style={{ display: "grid", gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridAutoFlow: "row dense", gap: 12, paddingBottom: 6 }}
+    >
+      {visible.map((id, i) => (
+        <ResizableWidgetTile
+          key={id}
+          id={id}
+          index={i}
+          size={normalizeSize(layout.sizes[id])}
+          editable={editable}
+          gridRef={gridRef}
+          onResize={onResize}
+        >
+          {widgets[id]}
+        </ResizableWidgetTile>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------- LAYOUT EDITOR (drag to reorder / pin, drag corners below to free-form resize) ---------------- */
+function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
   const togglePin = (id) => onChange((l) => ({ ...l, pinned: { ...l.pinned, [id]: !l.pinned[id] } }));
+  const onWidgetResize = (id, size) => onChange((l) => ({ ...l, sizes: { ...l.sizes, [id]: normalizeSize(size) } }));
 
   return (
     <motion.div
@@ -1269,8 +1399,8 @@ function LayoutEditor({ layout, onChange, onReset, onClose }) {
 
       <div style={{ flex: 1, overflowY: "auto", padding: 12 }} className="btl-scroll">
         <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 10, lineHeight: 1.4 }}>
-          Drag <GripVertical size={10} style={{ verticalAlign: -1 }} /> to reorder widgets on your dashboard. Tap the size
-          pill to cycle Small → Medium → Large. Analytics Summary is hidden until you pin it.
+          Drag <GripVertical size={10} style={{ verticalAlign: -1 }} /> to reorder widgets on your dashboard. Analytics
+          Summary is hidden until you pin it.
         </div>
         <Reorder.Group
           axis="y" values={layout.order}
@@ -1280,7 +1410,7 @@ function LayoutEditor({ layout, onChange, onReset, onClose }) {
           {layout.order.map((id) => {
             const w = WIDGETS.find((w) => w.id === id);
             if (!w) return null;
-            const size = layout.sizes[id] || "md";
+            const size = normalizeSize(layout.sizes[id]);
             const isAnalytics = id === "analyticsSummary";
             const isPinned = !!layout.pinned[id];
             return (
@@ -1304,14 +1434,20 @@ function LayoutEditor({ layout, onChange, onReset, onClose }) {
                     {isPinned ? <Pin size={11} /> : <PinOff size={11} />} {isPinned ? "Pinned" : "Not shown"}
                   </motion.button>
                 )}
-                <motion.button whileTap={{ scale: 0.92 }} onClick={() => cycleSize(id)} title="Cycle size" style={{
-                  border: "1px solid #ddd6c4", background: "#fff", color: C.text, borderRadius: 999,
-                  padding: "3px 9px", cursor: "pointer", fontSize: 9, fontWeight: 700, minWidth: 56, textAlign: "center",
-                }}>{SIZE_LABEL[size]}</motion.button>
+                <span style={{
+                  border: "1px solid #ddd6c4", background: "#fff", color: "#8a8579", borderRadius: 999,
+                  padding: "3px 9px", fontSize: 9, fontWeight: 700, minWidth: 56, textAlign: "center",
+                }}>{size.w}/{GRID_COLS} col · {size.h}px</span>
               </Reorder.Item>
             );
           })}
         </Reorder.Group>
+
+        <div style={{ fontSize: 10, color: "#8a8579", margin: "16px 0 8px", lineHeight: 1.4, display: "flex", alignItems: "center", gap: 5 }}>
+          <Maximize2 size={11} style={{ flexShrink: 0 }} />
+          Drag a widget's corner handle below to resize it freely — width snaps to the grid, height is free-form (120–500px).
+        </div>
+        <WidgetGrid layout={layout} widgets={widgets} editable onResize={onWidgetResize} />
       </div>
     </motion.div>
   );
@@ -1445,6 +1581,20 @@ export default function App() {
   const updateLayout = (fn) => update((s) => { s.layout = fn(s.layout); return s; });
   const resetLayout = () => update((s) => { s.layout = defaultLayout(); return s; });
 
+  /* Shared widget content map — used by both the plain dashboard grid
+     and the live resizable preview inside the Layout tab, so dragging
+     a corner handle resizes the exact same widget the user sees on
+     their normal dashboard. */
+  const widgetsMap = {
+    bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} onAdd={(t) => addPlain("bigGoals", t)} onRemove={(i) => removePlain("bigGoals", i)} />,
+    lifeRules: <TextList title="Life Rules" items={state.lifeRules} onAdd={(t) => addPlain("lifeRules", t)} onRemove={(i) => removePlain("lifeRules", i)} />,
+    dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />,
+    extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />,
+    earnMoney: <EarnMoneyNotesCard state={state} update={update} addEarnToday={addEarnToday} onImageFile={onImageFile} fileRef={fileRef} />,
+    mood: <DateMoodColumn moodLog={state.moodLog} onSetMood={setMood} />,
+    analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} />,
+  };
+
   return (
     <div style={{
       fontFamily: "Inter, system-ui, sans-serif", background: C.bg, color: C.text,
@@ -1501,7 +1651,7 @@ export default function App() {
         </div>
       ) : tab === "layout" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <LayoutEditor layout={state.layout} onChange={updateLayout} onReset={resetLayout} onClose={() => setTab("dashboard")} />
+          <LayoutEditor layout={state.layout} widgets={widgetsMap} onChange={updateLayout} onReset={resetLayout} onClose={() => setTab("dashboard")} />
         </div>
       ) : tab === "analytics" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
@@ -1581,20 +1731,9 @@ export default function App() {
               )}
             </>
           ) : (
-            /* ---------- CUSTOMIZABLE DASHBOARD (drag/resize via the Layout tab) ---------- */
+            /* ---------- CUSTOMIZABLE DASHBOARD (reorder/resize via the Layout tab; read-only here) ---------- */
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }} className="btl-scroll">
-              <WidgetGrid
-                layout={state.layout}
-                widgets={{
-                  bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} onAdd={(t) => addPlain("bigGoals", t)} onRemove={(i) => removePlain("bigGoals", i)} />,
-                  lifeRules: <TextList title="Life Rules" items={state.lifeRules} onAdd={(t) => addPlain("lifeRules", t)} onRemove={(i) => removePlain("lifeRules", i)} />,
-                  dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />,
-                  extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />,
-                  earnMoney: <EarnMoneyNotesCard state={state} update={update} addEarnToday={addEarnToday} onImageFile={onImageFile} fileRef={fileRef} />,
-                  mood: <DateMoodColumn moodLog={state.moodLog} onSetMood={setMood} />,
-                  analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} />,
-                }}
-              />
+              <WidgetGrid layout={state.layout} widgets={widgetsMap} />
             </div>
           )}
         </div>
