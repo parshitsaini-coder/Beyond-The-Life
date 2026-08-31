@@ -54,7 +54,21 @@ const WIDGETS = [
 ];
 const GRID_COLS = 6;          // grid columns widget widths snap to
 const MIN_WIDGET_H = 120;     // px — minimum free-form height
-const MAX_WIDGET_H = 500;     // px — maximum free-form height
+const MAX_WIDGET_H = 1200;    // px — maximum free-form height (raised so widgets can be stretched much taller)
+const GRID_GAP = 12;          // px — gap between widgets, both axes
+/* Masonry row unit: instead of one shared CSS-grid row per "row" of
+   widgets (which forces every widget in that row band — even ones in
+   completely different columns — to grow together whenever ANE widget
+   in that band gets taller), the grid uses a very fine auto-row track
+   (ROW_UNIT px) and each widget reserves `gridRow: span N` tracks based
+   on its own height. Combined with `gridAutoFlow: "row dense"`, this
+   makes columns stack independently — resizing one widget only pushes
+   the widget(s) actually stacked below it in the same column(s), and
+   never affects widgets in other columns. */
+const ROW_UNIT = 8;           // px — finer = more precise stacking, coarser = fewer DOM row tracks
+function rowSpanForHeight(h) {
+  return Math.max(1, Math.ceil((h + GRID_GAP) / (ROW_UNIT + GRID_GAP)));
+}
 /* Legacy "sm" | "md" | "lg" strings from before free-form resize —
    kept only so ensureLayoutDefaults can migrate old saved layouts. */
 const LEGACY_SIZE_SPAN = { sm: 2, md: 3, lg: 6 };
@@ -1512,7 +1526,7 @@ function ResizableWidgetTile({ id, index, size, editable, gridRef, onResize, onD
       animate={{ opacity: 1, y: 0, scaleY: 1 }}
       transition={interacting ? { duration: 0 } : { duration: 0.4, delay: Math.min(index, 6) * 0.05, ease: [0.22, 1, 0.36, 1] }}
       style={{
-        gridColumn: `span ${effective.w}`, height: effective.h,
+        gridColumn: `span ${effective.w}`, gridRow: `span ${rowSpanForHeight(effective.h)}`, height: effective.h,
         minWidth: 0, minHeight: 0, display: "flex", position: "relative", transformOrigin: "top center",
         outline: editable ? `1px dashed ${interacting ? C.accent : "rgba(64,61,57,0.25)"}` : "none",
         outlineOffset: 2, borderRadius: 8,
@@ -1558,7 +1572,11 @@ function WidgetGrid({ layout, widgets, editable = false, onResize, onReorder }) 
   return (
     <div
       ref={gridRef}
-      style={{ display: "grid", gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridAutoFlow: "row dense", gap: 12, paddingBottom: 6 }}
+      style={{
+        display: "grid", gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`,
+        gridAutoRows: `${ROW_UNIT}px`, gridAutoFlow: "row dense",
+        gap: GRID_GAP, paddingBottom: 6,
+      }}
     >
       {visible.map((id, i) => (
         <ResizableWidgetTile
