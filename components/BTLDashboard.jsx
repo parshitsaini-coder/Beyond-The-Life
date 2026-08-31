@@ -250,33 +250,33 @@ function TextList({ title, items, onAdd, onRemove }) {
   const [val, setVal] = useState("");
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
-      <Oval style={{ display: "block", margin: "0 auto 4px", background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 11, fontWeight: 900 }}>{title}</Oval>
+      <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 15, fontWeight: 900 }}>{title}</Oval>
       <div style={{
-        border: `1px solid ${C.text}`, borderRadius: 8, maxHeight: 52, overflowY: "auto", background: "#fff",
+        border: `1px solid ${C.text}`, borderRadius: 8, maxHeight: 88, overflowY: "auto", background: "#fff",
       }} className="btl-scroll">
-        {items.length === 0 && <div style={{ padding: 5, fontSize: 10, color: "#b3ac99" }}>Nothing yet — add one below.</div>}
+        {items.length === 0 && <div style={{ padding: 8, fontSize: 12, color: "#b3ac99" }}>Nothing yet — add one below.</div>}
         {items.map((t, i) => (
           <div key={i} style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "4px 6px", borderBottom: i < items.length - 1 ? "1px solid #f0ece0" : "none", fontSize: 10, fontWeight: 700,
+            padding: "7px 8px", borderBottom: i < items.length - 1 ? "1px solid #f0ece0" : "none", fontSize: 13, fontWeight: 700,
           }}>
             <span>{t}</span>
-            <Trash2 size={10} style={{ cursor: "pointer", color: "#c9c2ac", flexShrink: 0 }} onClick={() => onRemove(i)} />
+            <Trash2 size={12} style={{ cursor: "pointer", color: "#c9c2ac", flexShrink: 0 }} onClick={() => onRemove(i)} />
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
+      <div style={{ display: "flex", gap: 4, marginTop: 5 }}>
         <input
           value={val} onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && val.trim()) { onAdd(val.trim()); setVal(""); } }}
           placeholder={`Add to ${title}...`}
-          style={{ flex: 1, fontSize: 9, padding: "3px 6px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
+          style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
         />
         <button
           onClick={() => { if (val.trim()) { onAdd(val.trim()); setVal(""); } }}
           style={{ border: "none", background: C.accent, color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer" }}
         >
-          <Plus size={11} />
+          <Plus size={13} />
         </button>
       </div>
     </div>
@@ -333,7 +333,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
           return (
             <div key={g.id} style={{ borderBottom: "1px solid #f0ece0", borderLeft: `3px solid ${cat.color}` }}>
               <div style={{
-                display: "flex", alignItems: "center", gap: 5, padding: "3px 4px 3px 6px",
+                display: "flex", alignItems: "center", gap: 6, padding: "6px 4px 6px 6px",
                 textDecoration: g.done ? "line-through" : "none", color: g.done ? "#a39c86" : C.text,
               }}>
                 <input
@@ -1165,7 +1165,7 @@ export default function App() {
       height: "100%", maxHeight: "100%", borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
       border: `1px solid #ece7d8`, fontSize: 11, boxSizing: "border-box",
       display: "flex", flexDirection: "column",
-      zoom: "45%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "35%" for even smaller, "55%" for bigger.
+      zoom: "65%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "55%" for smaller, "75%" for bigger.
     }}>
       <style>{`
         .btl-scroll::-webkit-scrollbar { width: 6px; }
@@ -1259,14 +1259,14 @@ export default function App() {
 
           {/* ---------- BIG GOALS + RULES ---------- */}
           {!focusMode && (
-            <div style={{ display: "flex", gap: 10, marginBottom: 6, flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 12, marginBottom: 10, flexShrink: 0 }}>
               <TextList title="Life Big Goals" items={state.bigGoals} onAdd={(t) => addPlain("bigGoals", t)} onRemove={(i) => removePlain("bigGoals", i)} />
               <TextList title="Life Rules" items={state.lifeRules} onAdd={(t) => addPlain("lifeRules", t)} onRemove={(i) => removePlain("lifeRules", i)} />
             </div>
           )}
 
           {/* ---------- DAILY GOAL SECTION ---------- */}
-          <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 4px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 10, flexShrink: 0 }}>
+          <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12, flexShrink: 0 }}>
             {focusMode ? "FOCUS MODE — TODAY'S REMAINING GOALS" : "DAILY GOAL"}
           </Oval>
 
@@ -1285,28 +1285,28 @@ export default function App() {
 
               {/* Earn money + notes + image */}
               {!focusMode && (
-              <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 5, background: "#fff", flexShrink: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 9, marginBottom: 3 }}>Earn Money Today :-</div>
-                <div style={{ display: "flex", gap: 5, marginBottom: 4 }}>
+              <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", flexShrink: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 4 }}>Earn Money Today :-</div>
+                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
                   <input
                     value={state.earnToday} onChange={(e) => update((s) => { s.earnToday = e.target.value; return s; })}
                     onKeyDown={(e) => e.key === "Enter" && addEarnToday()}
                     type="number" placeholder="₹ amount"
-                    style={{ flex: 1, fontSize: 9, padding: "3px 6px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
+                    style={{ flex: 1, fontSize: 10, padding: "4px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
                   />
-                  <button onClick={addEarnToday} style={{ border: "none", background: C.dark, color: "#fff", borderRadius: 6, padding: "0 9px", cursor: "pointer", fontSize: 8 }}>Add</button>
+                  <button onClick={addEarnToday} style={{ border: "none", background: C.dark, color: "#fff", borderRadius: 6, padding: "0 10px", cursor: "pointer", fontSize: 9 }}>Add</button>
                 </div>
-                <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", gap: 8 }}>
                   <textarea
                     value={state.notes} onChange={(e) => update((s) => { s.notes = e.target.value; return s; })}
                     placeholder="notes"
-                    style={{ flex: 1, minHeight: 30, maxHeight: 30, fontSize: 8, padding: 4, borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", resize: "none" }}
+                    style={{ flex: 1, minHeight: 44, maxHeight: 44, fontSize: 9, padding: 5, borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", resize: "none" }}
                   />
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                     {state.uploadedImage
-                      ? <img src={state.uploadedImage} alt="upload" style={{ width: 30, height: 30, objectFit: "cover", borderRadius: 6, border: "1px solid #ddd6c4" }} />
-                      : <div style={{ width: 30, height: 30, borderRadius: 6, border: "1px dashed #ddd6c4", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9c2ac" }}><ImageIcon size={13} /></div>}
-                    <Oval className="btl-oval-btn" onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", fontSize: 7, padding: "1px 5px" }}>image Uplode</Oval>
+                      ? <img src={state.uploadedImage} alt="upload" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #ddd6c4" }} />
+                      : <div style={{ width: 44, height: 44, borderRadius: 6, border: "1px dashed #ddd6c4", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9c2ac" }}><ImageIcon size={16} /></div>}
+                    <Oval className="btl-oval-btn" onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", fontSize: 8, padding: "2px 6px" }}>image Uplode</Oval>
                     <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: "none" }} />
                   </div>
                 </div>
