@@ -115,13 +115,24 @@ Direction for the dashboard's look and feel going forward:
 - **Status-aware loading states** — replace generic spinners with states
   that say what's actually happening, e.g. `Saving...` → `Saved ✓` with a
   quick pulse, instead of a bare loading indicator.
+- **Customizable widget layout** — the dashboard is a drag-and-reorder,
+  resize-and-pin grid of widgets, not a fixed layout. Open the **Layout**
+  button in the header to reorder widgets (drag the grip handle), cycle
+  each widget's size (Small → Medium → Large — this also controls width
+  and height), and pin/unpin the Analytics Summary widget onto the
+  dashboard. The arrangement is saved per-user to Firestore, same as the
+  rest of the app's state, so it persists across devices and sessions.
+  Implemented with `framer-motion`'s `Reorder` API and a 6-column CSS grid
+  (`gridAutoFlow: "row dense"`) that reflows automatically as widgets are
+  reordered or resized.
 
 **Implementation:** use the animation/UI skills already available in this
 workspace rather than hand-rolling motion code:
 - `animated-component-libraries` — pre-built animated components (Magic UI /
   React Bits) for things like the glass modals and status pills
 - `framer-motion-animator` / `motion-animator` — entrance/exit transitions,
-  card fold/slide, button soft-expand, shared layout transitions
+  card fold/slide, button soft-expand, shared layout transitions, and the
+  `Reorder` drag-to-reorder API used by the Layout editor
 - `gsap-scrolltrigger` — scroll-driven reveals if the dashboard grows
   scrollable sections (e.g. analytics)
 - `lightweight-3d-effects` — subtle tilt/parallax touches for hero or

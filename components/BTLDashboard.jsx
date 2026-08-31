@@ -3,10 +3,11 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Settings, X, Plus, Smile, Meh, Frown, Image as ImageIcon,
   LogOut, Trash2, ChevronRight, ChevronDown, ChevronUp, Flame, Target, BookOpen,
-  Repeat, RotateCcw, BarChart3, TrendingUp, Award, Tag
+  Repeat, RotateCcw, BarChart3, TrendingUp, Award, Tag,
+  GripVertical, Pin, PinOff, LayoutGrid, RefreshCw
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { useAuth, signOutUser } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
 
@@ -28,6 +29,50 @@ const C = {
 
 const STORAGE_KEY = "btl_state_v1";
 const todayISO = () => new Date().toISOString().slice(0, 10);
+
+/* ---------------- CUSTOMIZABLE WIDGET LAYOUT ----------------
+   2026 trend: user-controlled, rearrangeable + resizable dashboards.
+   Each widget has an id, a label (shown in the Layout editor), and a
+   size — "sm" (1/3 width, compact), "md" (1/2 width, default), or
+   "lg" (full width, taller) — which drives both column span and
+   height in the widget grid. Order is just an array of ids; dragging
+   in the Layout editor reorders this array, and the grid below
+   auto-flows widgets into rows based on their span, so reordering +
+   resizing both "just work" without manual row math. */
+const WIDGETS = [
+  { id: "bigGoals", label: "Life Big Goals" },
+  { id: "lifeRules", label: "Life Rules" },
+  { id: "dailyGoals", label: "Daily Goals" },
+  { id: "extryGoals", label: "Extry Goals" },
+  { id: "earnMoney", label: "Earn Money / Notes" },
+  { id: "mood", label: "Date & Mood" },
+  { id: "analyticsSummary", label: "Analytics Summary" },
+];
+const DEFAULT_LAYOUT = {
+  order: WIDGETS.map((w) => w.id),
+  sizes: {
+    bigGoals: "md", lifeRules: "md", dailyGoals: "md", extryGoals: "md",
+    earnMoney: "md", mood: "md", analyticsSummary: "lg",
+  },
+  pinned: { analyticsSummary: false },
+};
+function defaultLayout() {
+  return { order: DEFAULT_LAYOUT.order.slice(), sizes: { ...DEFAULT_LAYOUT.sizes }, pinned: { ...DEFAULT_LAYOUT.pinned } };
+}
+/* Backfills missing fields on load — handles old saved states that
+   predate this feature, and any new widgets added later. */
+function ensureLayoutDefaults(s) {
+  const layout = s.layout || {};
+  const order = Array.isArray(layout.order) && layout.order.length ? layout.order.slice() : DEFAULT_LAYOUT.order.slice();
+  WIDGETS.forEach((w) => { if (!order.includes(w.id)) order.push(w.id); });
+  const sizes = { ...DEFAULT_LAYOUT.sizes, ...(layout.sizes || {}) };
+  const pinned = { ...DEFAULT_LAYOUT.pinned, ...(layout.pinned || {}) };
+  return { ...s, layout: { order, sizes, pinned } };
+}
+const SIZE_SPAN = { sm: 2, md: 3, lg: 6 };       // out of a 6-column grid
+const SIZE_HEIGHT = { sm: 150, md: 215, lg: 260 }; // px
+const SIZE_CYCLE = { sm: "md", md: "lg", lg: "sm" };
+const SIZE_LABEL = { sm: "Small", md: "Medium", lg: "Large" };
 
 /* ---------------- GOAL MANAGEMENT: categories & priorities ---------------- */
 const CATEGORIES = [
@@ -77,6 +122,7 @@ function makeDefaultState() {
     completionHistory: {}, // { "2026-08-30": 62.5 }  -- % of daily+extry goals done that day
     streak: 0,
     lastCompletedDate: null,
+    layout: defaultLayout(),
   };
 }
 
@@ -87,7 +133,8 @@ function makeDefaultState() {
    take the signed-in Firebase user, so the rest of this file barely
    had to change. */
 async function loadState(user) {
-  return loadStateFromFirestore(user, makeDefaultState, ensureGoalDefaults);
+  const s = await loadStateFromFirestore(user, makeDefaultState, ensureGoalDefaults);
+  return ensureLayoutDefaults(s);
 }
 async function saveState(user, state) {
   return saveStateToFirestore(user, state);
@@ -179,23 +226,6 @@ function RingStat({ pct, size = 54, label, sub, color = C.accent }) {
       <div style={{ fontSize: 9, fontWeight: 700, color: C.dark, textAlign: "center", lineHeight: 1.1 }}>{label}</div>
       {sub && <div style={{ fontSize: 8, color: "#8a8579" }}>{sub}</div>}
     </div>
-  );
-}
-
-/* Cards fold/slide into place: a subtle top-down fold (scaleY from a
-   flattened state) combined with a slide-up, staggered by index so groups
-   of cards settle in sequence rather than popping in together. */
-function FoldCard({ children, index = 0, style, ...rest }) {
-  return (
-    <motion.div
-      {...rest}
-      initial={{ opacity: 0, y: 14, scaleY: 0.94 }}
-      animate={{ opacity: 1, y: 0, scaleY: 1 }}
-      transition={{ duration: 0.42, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
-      style={{ transformOrigin: "top center", ...style }}
-    >
-      {children}
-    </motion.div>
   );
 }
 
@@ -507,7 +537,7 @@ function DateMoodColumn({ moodLog, onSetMood }) {
   }
   const today = todayISO();
   return (
-    <div style={{ width: 150, flexShrink: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+    <div style={{ width: "100%", display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
       <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, flexShrink: 0 }}>DATE</Oval>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: "#fff" }} className="btl-scroll">
         {days.map((d) => {
@@ -1113,6 +1143,180 @@ function AnalyticsTab({ state, onClose }) {
   );
 }
 
+/* ---------------- EARN MONEY / NOTES / IMAGE (extracted as a widget) ---------------- */
+function EarnMoneyNotesCard({ state, update, addEarnToday, onImageFile, fileRef }) {
+  return (
+    <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box" }} className="btl-scroll">
+      <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 4 }}>Earn Money Today :-</div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <input
+          value={state.earnToday} onChange={(e) => update((s) => { s.earnToday = e.target.value; return s; })}
+          onKeyDown={(e) => e.key === "Enter" && addEarnToday()}
+          type="number" placeholder="₹ amount"
+          style={{ flex: 1, fontSize: 10, padding: "4px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
+        />
+        <button onClick={addEarnToday} style={{ border: "none", background: C.dark, color: "#fff", borderRadius: 6, padding: "0 10px", cursor: "pointer", fontSize: 9 }}>Add</button>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <textarea
+          value={state.notes} onChange={(e) => update((s) => { s.notes = e.target.value; return s; })}
+          placeholder="notes"
+          style={{ flex: 1, minHeight: 44, maxHeight: 44, fontSize: 9, padding: 5, borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", resize: "none" }}
+        />
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+          {state.uploadedImage
+            ? <img src={state.uploadedImage} alt="upload" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #ddd6c4" }} />
+            : <div style={{ width: 44, height: 44, borderRadius: 6, border: "1px dashed #ddd6c4", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9c2ac" }}><ImageIcon size={16} /></div>}
+          <Oval className="btl-oval-btn" onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", fontSize: 8, padding: "2px 6px" }}>image Uplode</Oval>
+          <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: "none" }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- ANALYTICS SUMMARY (pinnable widget) ---------------- */
+function AnalyticsSummaryWidget({ state, onOpen }) {
+  const dailyPct = state.dailyGoals.length ? (state.dailyGoals.filter((g) => g.done).length / state.dailyGoals.length) * 100 : 0;
+  const extryPct = state.extryGoals.length ? (state.extryGoals.filter((g) => g.done).length / state.extryGoals.length) * 100 : 0;
+  const overallPct = (dailyPct + extryPct) / 2;
+  return (
+    <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 10, background: "#fff", width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark, display: "flex", alignItems: "center", gap: 5 }}><BarChart3 size={13} /> Analytics Summary</span>
+        <Oval className="btl-oval-btn" onClick={onOpen} style={{ cursor: "pointer", fontSize: 9, padding: "2px 9px" }}>Open full <ChevronRight size={11} style={{ marginLeft: 2 }} /></Oval>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 18, flex: 1 }}>
+        <RingStat pct={dailyPct} label="Daily" color={C.accent} />
+        <RingStat pct={extryPct} label="Extry" color={C.blue} />
+        <RingStat pct={overallPct} label="Overall" color={C.dark} />
+        <div style={{ marginLeft: "auto", textAlign: "center" }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: "50%", background: C.dark, color: "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, margin: "0 auto 2px",
+          }}>{String(state.streak).padStart(3, "0")}</div>
+          <div style={{ fontSize: 8, fontWeight: 700, color: "#8a8579" }}>Day Streak</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- CUSTOMIZABLE WIDGET GRID (drag to reorder + resize in Layout editor) ----------------
+   Reads state.layout.order / .sizes / .pinned and lays widgets out in a
+   6-column CSS grid with row-dense auto-flow, so reordering the ids or
+   changing a widget's size (which changes its column span) both just
+   reflow naturally without any manual row math. The `layout` prop on
+   each motion.div animates widgets smoothly into their new spot
+   whenever the order/size changes. */
+function WidgetGrid({ layout, widgets }) {
+  const visible = layout.order.filter((id) => id !== "analyticsSummary" || layout.pinned.analyticsSummary);
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gridAutoFlow: "row dense", gap: 12, paddingBottom: 6 }}>
+      {visible.map((id, i) => {
+        const size = layout.sizes[id] || "md";
+        return (
+          <motion.div
+            key={id}
+            layout
+            initial={{ opacity: 0, y: 14, scaleY: 0.94 }}
+            animate={{ opacity: 1, y: 0, scaleY: 1 }}
+            transition={{ duration: 0.4, delay: Math.min(i, 6) * 0.05, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+              gridColumn: `span ${SIZE_SPAN[size]}`, height: SIZE_HEIGHT[size],
+              minWidth: 0, minHeight: 0, display: "flex", transformOrigin: "top center",
+            }}
+          >
+            {widgets[id]}
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ---------------- LAYOUT EDITOR (drag to reorder, tap to resize/pin) ---------------- */
+function LayoutEditor({ layout, onChange, onReset, onClose }) {
+  const cycleSize = (id) => onChange((l) => ({ ...l, sizes: { ...l.sizes, [id]: SIZE_CYCLE[l.sizes[id] || "md"] } }));
+  const togglePin = (id) => onChange((l) => ({ ...l, pinned: { ...l.pinned, [id]: !l.pinned[id] } }));
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.97, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 340, damping: 30 }}
+      style={{
+        border: "1px solid rgba(255,255,255,0.6)", borderRadius: 14,
+        background: "rgba(255,255,255,0.62)",
+        backdropFilter: "blur(16px) saturate(160%)", WebkitBackdropFilter: "blur(16px) saturate(160%)",
+        boxShadow: "0 12px 32px rgba(37,36,34,0.10)",
+        display: "flex", flexDirection: "column", height: "100%",
+      }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+        borderBottom: "1px solid rgba(64,61,57,0.15)", background: "rgba(255,252,242,0.5)", borderRadius: "14px 14px 0 0",
+      }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: C.dark, display: "flex", alignItems: "center", gap: 5 }}><LayoutGrid size={13} /> Customize Layout</span>
+        <div style={{ flex: 1 }} />
+        <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 1.06 }} onClick={onReset} title="Reset to default layout" style={{
+          border: `1px solid ${C.text}`, background: C.bg, color: C.text, borderRadius: 999,
+          padding: "3px 10px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10, fontWeight: 700,
+        }}><RefreshCw size={11} /> Reset</motion.button>
+        <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 1.15 }} onClick={onClose} title="Done" style={{
+          border: "none", borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
+          display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+        }}><X size={13} color={C.dark} /></motion.button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: 12 }} className="btl-scroll">
+        <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 10, lineHeight: 1.4 }}>
+          Drag <GripVertical size={10} style={{ verticalAlign: -1 }} /> to reorder widgets on your dashboard. Tap the size
+          pill to cycle Small → Medium → Large. Analytics Summary is hidden until you pin it.
+        </div>
+        <Reorder.Group
+          axis="y" values={layout.order}
+          onReorder={(newOrder) => onChange((l) => ({ ...l, order: newOrder }))}
+          style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 8 }}
+        >
+          {layout.order.map((id) => {
+            const w = WIDGETS.find((w) => w.id === id);
+            if (!w) return null;
+            const size = layout.sizes[id] || "md";
+            const isAnalytics = id === "analyticsSummary";
+            const isPinned = !!layout.pinned[id];
+            return (
+              <Reorder.Item
+                key={id} value={id}
+                whileDrag={{ scale: 1.03, boxShadow: "0 10px 26px rgba(37,36,34,0.18)", cursor: "grabbing" }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+                  background: "rgba(255,255,255,0.85)", border: "1px solid #ece7d8", borderRadius: 8,
+                  listStyle: "none", opacity: isAnalytics && !isPinned ? 0.6 : 1,
+                }}
+              >
+                <GripVertical size={14} style={{ color: "#b3ac99", cursor: "grab", flexShrink: 0 }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: C.dark, flex: 1 }}>{w.label}</span>
+                {isAnalytics && (
+                  <motion.button whileTap={{ scale: 0.92 }} onClick={() => togglePin(id)} title={isPinned ? "Unpin from dashboard" : "Pin to dashboard"} style={{
+                    border: `1px solid ${isPinned ? C.accent : "#ddd6c4"}`, background: isPinned ? C.accent : "#fff",
+                    color: isPinned ? "#fff" : "#8a8579", borderRadius: 999, padding: "3px 9px",
+                    display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
+                  }}>
+                    {isPinned ? <Pin size={11} /> : <PinOff size={11} />} {isPinned ? "Pinned" : "Not shown"}
+                  </motion.button>
+                )}
+                <motion.button whileTap={{ scale: 0.92 }} onClick={() => cycleSize(id)} title="Cycle size" style={{
+                  border: "1px solid #ddd6c4", background: "#fff", color: C.text, borderRadius: 999,
+                  padding: "3px 9px", cursor: "pointer", fontSize: 9, fontWeight: 700, minWidth: 56, textAlign: "center",
+                }}>{SIZE_LABEL[size]}</motion.button>
+              </Reorder.Item>
+            );
+          })}
+        </Reorder.Group>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function App() {
   const { user: fbUser } = useAuth();
   const [state, setState] = useState(null);
@@ -1238,6 +1442,9 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
+  const updateLayout = (fn) => update((s) => { s.layout = fn(s.layout); return s; });
+  const resetLayout = () => update((s) => { s.layout = defaultLayout(); return s; });
+
   return (
     <div style={{
       fontFamily: "Inter, system-ui, sans-serif", background: C.bg, color: C.text,
@@ -1292,6 +1499,10 @@ export default function App() {
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <SettingsTab state={state} addItem={settingsAdd} removeItem={settingsRemove} onClose={() => setTab("dashboard")} />
         </div>
+      ) : tab === "layout" ? (
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <LayoutEditor layout={state.layout} onChange={updateLayout} onReset={resetLayout} onClose={() => setTab("dashboard")} />
+        </div>
       ) : tab === "analytics" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <AnalyticsTab state={state} onClose={() => setTab("dashboard")} />
@@ -1311,6 +1522,13 @@ export default function App() {
                 border: `1px solid ${focusMode ? C.accent : C.text}`, background: focusMode ? C.accent : C.bg, color: focusMode ? "#fff" : C.text,
                 borderRadius: 999, padding: "4px 14px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
               }}><Target size={14} /> Focus Mode</motion.button>
+            <motion.button
+              onClick={() => setTab("layout")} title="Rearrange, resize, and pin widgets"
+              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
+              style={{
+                border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
+                display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
+              }}><LayoutGrid size={14} /> Layout</motion.button>
             <motion.button
               onClick={() => setTab("analytics")}
               whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
@@ -1346,77 +1564,39 @@ export default function App() {
             </div>
           </div>
 
-          {/* ---------- BIG GOALS + RULES ---------- */}
-          {!focusMode && (
-            <div style={{ display: "flex", gap: 12, marginBottom: 10, flexShrink: 0 }}>
-              <FoldCard index={0} style={{ flex: 1, minWidth: 0 }}>
-                <TextList title="Life Big Goals" items={state.bigGoals} onAdd={(t) => addPlain("bigGoals", t)} onRemove={(i) => removePlain("bigGoals", i)} />
-              </FoldCard>
-              <FoldCard index={1} style={{ flex: 1, minWidth: 0 }}>
-                <TextList title="Life Rules" items={state.lifeRules} onAdd={(t) => addPlain("lifeRules", t)} onRemove={(i) => removePlain("lifeRules", i)} />
-              </FoldCard>
-            </div>
-          )}
-
-          {/* ---------- DAILY GOAL SECTION ---------- */}
-          <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12, flexShrink: 0 }}>
-            {focusMode ? "FOCUS MODE — TODAY'S REMAINING GOALS" : "DAILY GOAL"}
-          </Oval>
-
-          <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
-            <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
+          {focusMode ? (
+            <>
+              {/* ---------- FOCUS MODE ---------- */}
+              <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12, flexShrink: 0 }}>
+                FOCUS MODE — TODAY'S REMAINING GOALS
+              </Oval>
               <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
-                <FoldCard index={0} style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
-                  <GoalChecklist title="Daily Goals" items={focusMode ? state.dailyGoals.filter((g) => !g.done) : state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />
-                </FoldCard>
-                <FoldCard index={1} style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
-                  <GoalChecklist title="Extry Goals" items={focusMode ? state.extryGoals.filter((g) => !g.done) : state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />
-                </FoldCard>
+                <GoalChecklist title="Daily Goals" items={state.dailyGoals.filter((g) => !g.done)} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />
+                <GoalChecklist title="Extry Goals" items={state.extryGoals.filter((g) => !g.done)} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />
               </div>
-
-              {focusMode && state.dailyGoals.filter((g) => !g.done).length === 0 && state.extryGoals.filter((g) => !g.done).length === 0 && (
+              {state.dailyGoals.filter((g) => !g.done).length === 0 && state.extryGoals.filter((g) => !g.done).length === 0 && (
                 <div style={{ textAlign: "center", padding: 20, color: "#a39c86", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                   🎉 Sab kuch done! Focus Mode se bahar aane ke liye button dabao.
                 </div>
               )}
-
-              {/* Earn money + notes + image */}
-              {!focusMode && (
-              <FoldCard index={2} style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", flexShrink: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 4 }}>Earn Money Today :-</div>
-                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                  <input
-                    value={state.earnToday} onChange={(e) => update((s) => { s.earnToday = e.target.value; return s; })}
-                    onKeyDown={(e) => e.key === "Enter" && addEarnToday()}
-                    type="number" placeholder="₹ amount"
-                    style={{ flex: 1, fontSize: 10, padding: "4px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
-                  />
-                  <button onClick={addEarnToday} style={{ border: "none", background: C.dark, color: "#fff", borderRadius: 6, padding: "0 10px", cursor: "pointer", fontSize: 9 }}>Add</button>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <textarea
-                    value={state.notes} onChange={(e) => update((s) => { s.notes = e.target.value; return s; })}
-                    placeholder="notes"
-                    style={{ flex: 1, minHeight: 44, maxHeight: 44, fontSize: 9, padding: 5, borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", resize: "none" }}
-                  />
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-                    {state.uploadedImage
-                      ? <img src={state.uploadedImage} alt="upload" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #ddd6c4" }} />
-                      : <div style={{ width: 44, height: 44, borderRadius: 6, border: "1px dashed #ddd6c4", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9c2ac" }}><ImageIcon size={16} /></div>}
-                    <Oval className="btl-oval-btn" onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", fontSize: 8, padding: "2px 6px" }}>image Uplode</Oval>
-                    <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: "none" }} />
-                  </div>
-                </div>
-              </FoldCard>
-              )}
+            </>
+          ) : (
+            /* ---------- CUSTOMIZABLE DASHBOARD (drag/resize via the Layout tab) ---------- */
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }} className="btl-scroll">
+              <WidgetGrid
+                layout={state.layout}
+                widgets={{
+                  bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} onAdd={(t) => addPlain("bigGoals", t)} onRemove={(i) => removePlain("bigGoals", i)} />,
+                  lifeRules: <TextList title="Life Rules" items={state.lifeRules} onAdd={(t) => addPlain("lifeRules", t)} onRemove={(i) => removePlain("lifeRules", i)} />,
+                  dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />,
+                  extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />,
+                  earnMoney: <EarnMoneyNotesCard state={state} update={update} addEarnToday={addEarnToday} onImageFile={onImageFile} fileRef={fileRef} />,
+                  mood: <DateMoodColumn moodLog={state.moodLog} onSetMood={setMood} />,
+                  analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} />,
+                }}
+              />
             </div>
-
-            {!focusMode && (
-              <FoldCard index={3}>
-                <DateMoodColumn moodLog={state.moodLog} onSetMood={setMood} />
-              </FoldCard>
-            )}
-          </div>
+          )}
         </div>
       )}
 
