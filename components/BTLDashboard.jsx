@@ -99,8 +99,8 @@ function Oval({ children, style, ...rest }) {
       {...rest}
       style={{
         display: "inline-flex", alignItems: "center", justifyContent: "center",
-        border: `1px solid ${C.text}`, borderRadius: 999, padding: "4px 14px",
-        fontSize: 14, fontWeight: 800, background: C.bg, color: C.text,
+        border: `1px solid ${C.text}`, borderRadius: 999, padding: "2px 9px",
+        fontSize: 10, fontWeight: 800, background: C.bg, color: C.text,
         whiteSpace: "nowrap", ...style,
       }}
     >
@@ -109,26 +109,26 @@ function Oval({ children, style, ...rest }) {
   );
 }
 
-function RingStat({ pct, size = 54, label, sub, color = C.accent }) {
+function RingStat({ pct, size = 38, label, sub, color = C.accent }) {
   const r = (size - 8) / 2;
   const circ = 2 * Math.PI * r;
   const offset = circ - (Math.min(100, Math.max(0, pct)) / 100) * circ;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} stroke="#e9e4d3" strokeWidth={5} fill="none" />
+        <circle cx={size / 2} cy={size / 2} r={r} stroke="#e9e4d3" strokeWidth={4} fill="none" />
         <circle
-          cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={5} fill="none"
+          cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={4} fill="none"
           strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
           style={{ transition: "stroke-dashoffset 420ms cubic-bezier(.4,1.6,.4,1)" }}
         />
         <text x={size / 2} y={size / 2} transform={`rotate(90 ${size / 2} ${size / 2})`}
-          textAnchor="middle" dominantBaseline="middle" fontSize={11} fontWeight={800} fill={C.dark}>
+          textAnchor="middle" dominantBaseline="middle" fontSize={8} fontWeight={800} fill={C.dark}>
           {Math.round(pct)}%
         </text>
       </svg>
-      <div style={{ fontSize: 9, fontWeight: 700, color: C.dark, textAlign: "center", lineHeight: 1.1 }}>{label}</div>
-      {sub && <div style={{ fontSize: 8, color: "#8a8579" }}>{sub}</div>}
+      <div style={{ fontSize: 7, fontWeight: 700, color: C.dark, textAlign: "center", lineHeight: 1.1 }}>{label}</div>
+      {sub && <div style={{ fontSize: 6, color: "#8a8579" }}>{sub}</div>}
     </div>
   );
 }
@@ -250,33 +250,33 @@ function TextList({ title, items, onAdd, onRemove }) {
   const [val, setVal] = useState("");
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
-      <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 15, fontWeight: 900 }}>{title}</Oval>
+      <Oval style={{ display: "block", margin: "0 auto 4px", background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 11, fontWeight: 900 }}>{title}</Oval>
       <div style={{
-        border: `1px solid ${C.text}`, borderRadius: 8, maxHeight: 88, overflowY: "auto", background: "#fff",
+        border: `1px solid ${C.text}`, borderRadius: 8, maxHeight: 52, overflowY: "auto", background: "#fff",
       }} className="btl-scroll">
-        {items.length === 0 && <div style={{ padding: 8, fontSize: 12, color: "#b3ac99" }}>Nothing yet — add one below.</div>}
+        {items.length === 0 && <div style={{ padding: 5, fontSize: 10, color: "#b3ac99" }}>Nothing yet — add one below.</div>}
         {items.map((t, i) => (
           <div key={i} style={{
             display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "7px 8px", borderBottom: i < items.length - 1 ? "1px solid #f0ece0" : "none", fontSize: 13, fontWeight: 700,
+            padding: "4px 6px", borderBottom: i < items.length - 1 ? "1px solid #f0ece0" : "none", fontSize: 10, fontWeight: 700,
           }}>
             <span>{t}</span>
-            <Trash2 size={12} style={{ cursor: "pointer", color: "#c9c2ac", flexShrink: 0 }} onClick={() => onRemove(i)} />
+            <Trash2 size={10} style={{ cursor: "pointer", color: "#c9c2ac", flexShrink: 0 }} onClick={() => onRemove(i)} />
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 4, marginTop: 5 }}>
+      <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
         <input
           value={val} onChange={(e) => setVal(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && val.trim()) { onAdd(val.trim()); setVal(""); } }}
           placeholder={`Add to ${title}...`}
-          style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
+          style={{ flex: 1, fontSize: 9, padding: "3px 6px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
         />
         <button
           onClick={() => { if (val.trim()) { onAdd(val.trim()); setVal(""); } }}
           style={{ border: "none", background: C.accent, color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer" }}
         >
-          <Plus size={13} />
+          <Plus size={11} />
         </button>
       </div>
     </div>
@@ -333,7 +333,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
           return (
             <div key={g.id} style={{ borderBottom: "1px solid #f0ece0", borderLeft: `3px solid ${cat.color}` }}>
               <div style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "6px 4px 6px 6px",
+                display: "flex", alignItems: "center", gap: 5, padding: "3px 4px 3px 6px",
                 textDecoration: g.done ? "line-through" : "none", color: g.done ? "#a39c86" : C.text,
               }}>
                 <input
@@ -1165,6 +1165,7 @@ export default function App() {
       height: "100%", maxHeight: "100%", borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
       border: `1px solid #ece7d8`, fontSize: 11, boxSizing: "border-box",
       display: "flex", flexDirection: "column",
+      zoom: "45%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "35%" for even smaller, "55%" for bigger.
     }}>
       <style>{`
         .btl-scroll::-webkit-scrollbar { width: 6px; }
@@ -1219,31 +1220,31 @@ export default function App() {
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {/* ---------- HEADER ---------- */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8, flexShrink: 0 }}>
-            <Oval style={{ background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 16, fontWeight: 900 }}>Byound The Life</Oval>
+          <div style={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap", marginBottom: 5, flexShrink: 0 }}>
+            <Oval style={{ background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 11, fontWeight: 900 }}>Byound The Life</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Goals</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Total Earn Money life :- ₹{state.totalEarnLife.toFixed(0)}</Oval>
-            <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={11} style={{ marginRight: 4 }} />memor</Oval>
+            <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={8} style={{ marginRight: 3 }} />memor</Oval>
             <button className="btl-oval-btn" onClick={() => setFocusMode((v) => !v)} title="Hide everything except today's incomplete goals" style={{
               border: `1px solid ${focusMode ? C.accent : C.text}`, background: focusMode ? C.accent : C.bg, color: focusMode ? "#fff" : C.text,
-              borderRadius: 999, padding: "4px 14px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-            }}><Target size={14} /> Focus Mode</button>
+              borderRadius: 999, padding: "2px 9px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, fontWeight: 800,
+            }}><Target size={10} /> Focus Mode</button>
             <button className="btl-oval-btn" onClick={() => setTab("analytics")} style={{
-              border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
-              display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-            }}><BarChart3 size={14} /> Analytics</button>
+              border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "2px 9px",
+              display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, fontWeight: 800,
+            }}><BarChart3 size={10} /> Analytics</button>
             <button className="btl-oval-btn" onClick={() => setTab("settings")} style={{
-              border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
-              display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-            }}><Settings size={14} /> Setting</button>
+              border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "2px 9px",
+              display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, fontWeight: 800,
+            }}><Settings size={10} /> Setting</button>
 
             <div style={{ flex: 1 }} />
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <div style={{ textAlign: "center" }}>
                 <div style={{
-                  width: 30, height: 30, borderRadius: "50%", background: C.dark, color: "#fff",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800,
+                  width: 20, height: 20, borderRadius: "50%", background: C.dark, color: "#fff",
+                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 800,
                 }}>{String(state.streak).padStart(3, "0")}</div>
               </div>
               <RingStat pct={dailyPct} label="Daily Goal" sub="Staytus" color={C.accent} />
@@ -1251,21 +1252,21 @@ export default function App() {
               <RingStat pct={overallPct} label="Goal" color={C.dark} />
               <button onClick={signOutUser} title="Sign out"
                 style={{ border: "none", background: "transparent", cursor: "pointer", color: "#b3ac99" }}>
-                <LogOut size={15} />
+                <LogOut size={11} />
               </button>
             </div>
           </div>
 
           {/* ---------- BIG GOALS + RULES ---------- */}
           {!focusMode && (
-            <div style={{ display: "flex", gap: 12, marginBottom: 10, flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 10, marginBottom: 6, flexShrink: 0 }}>
               <TextList title="Life Big Goals" items={state.bigGoals} onAdd={(t) => addPlain("bigGoals", t)} onRemove={(i) => removePlain("bigGoals", i)} />
               <TextList title="Life Rules" items={state.lifeRules} onAdd={(t) => addPlain("lifeRules", t)} onRemove={(i) => removePlain("lifeRules", i)} />
             </div>
           )}
 
           {/* ---------- DAILY GOAL SECTION ---------- */}
-          <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12, flexShrink: 0 }}>
+          <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 4px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 10, flexShrink: 0 }}>
             {focusMode ? "FOCUS MODE — TODAY'S REMAINING GOALS" : "DAILY GOAL"}
           </Oval>
 
@@ -1284,28 +1285,28 @@ export default function App() {
 
               {/* Earn money + notes + image */}
               {!focusMode && (
-              <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", flexShrink: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 4 }}>Earn Money Today :-</div>
-                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+              <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 5, background: "#fff", flexShrink: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 9, marginBottom: 3 }}>Earn Money Today :-</div>
+                <div style={{ display: "flex", gap: 5, marginBottom: 4 }}>
                   <input
                     value={state.earnToday} onChange={(e) => update((s) => { s.earnToday = e.target.value; return s; })}
                     onKeyDown={(e) => e.key === "Enter" && addEarnToday()}
                     type="number" placeholder="₹ amount"
-                    style={{ flex: 1, fontSize: 10, padding: "4px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
+                    style={{ flex: 1, fontSize: 9, padding: "3px 6px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
                   />
-                  <button onClick={addEarnToday} style={{ border: "none", background: C.dark, color: "#fff", borderRadius: 6, padding: "0 10px", cursor: "pointer", fontSize: 9 }}>Add</button>
+                  <button onClick={addEarnToday} style={{ border: "none", background: C.dark, color: "#fff", borderRadius: 6, padding: "0 9px", cursor: "pointer", fontSize: 8 }}>Add</button>
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 6 }}>
                   <textarea
                     value={state.notes} onChange={(e) => update((s) => { s.notes = e.target.value; return s; })}
                     placeholder="notes"
-                    style={{ flex: 1, minHeight: 44, maxHeight: 44, fontSize: 9, padding: 5, borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", resize: "none" }}
+                    style={{ flex: 1, minHeight: 30, maxHeight: 30, fontSize: 8, padding: 4, borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", resize: "none" }}
                   />
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
                     {state.uploadedImage
-                      ? <img src={state.uploadedImage} alt="upload" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #ddd6c4" }} />
-                      : <div style={{ width: 44, height: 44, borderRadius: 6, border: "1px dashed #ddd6c4", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9c2ac" }}><ImageIcon size={16} /></div>}
-                    <Oval className="btl-oval-btn" onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", fontSize: 8, padding: "2px 6px" }}>image Uplode</Oval>
+                      ? <img src={state.uploadedImage} alt="upload" style={{ width: 30, height: 30, objectFit: "cover", borderRadius: 6, border: "1px solid #ddd6c4" }} />
+                      : <div style={{ width: 30, height: 30, borderRadius: 6, border: "1px dashed #ddd6c4", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9c2ac" }}><ImageIcon size={13} /></div>}
+                    <Oval className="btl-oval-btn" onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", fontSize: 7, padding: "1px 5px" }}>image Uplode</Oval>
                     <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: "none" }} />
                   </div>
                 </div>
