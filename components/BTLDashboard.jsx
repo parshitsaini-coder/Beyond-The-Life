@@ -252,7 +252,7 @@ function TextList({ title, items, onAdd, onRemove }) {
     <div style={{ flex: 1, minWidth: 0 }}>
       <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 15, fontWeight: 900 }}>{title}</Oval>
       <div style={{
-        border: `1px solid ${C.text}`, borderRadius: 8, maxHeight: 150, overflowY: "auto", background: "#fff",
+        border: `1px solid ${C.text}`, borderRadius: 8, maxHeight: 88, overflowY: "auto", background: "#fff",
       }} className="btl-scroll">
         {items.length === 0 && <div style={{ padding: 8, fontSize: 12, color: "#b3ac99" }}>Nothing yet — add one below.</div>}
         {items.map((t, i) => (
@@ -322,9 +322,9 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
   );
 
   return (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, marginBottom: 6, textAlign: "center" }}>{title}</div>
-      <div style={{ maxHeight: 230, overflowY: "auto" }} className="btl-scroll">
+    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, marginBottom: 6, textAlign: "center", flexShrink: 0 }}>{title}</div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }} className="btl-scroll">
         {items.map((g) => {
           const cat = catInfo(g.category);
           const prio = prioInfo(g.priority);
@@ -389,7 +389,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
         })}
       </div>
 
-      <div style={{ marginTop: 6 }}>
+      <div style={{ marginTop: 6, flexShrink: 0 }}>
         <div style={{ display: "flex", gap: 4 }}>
           <span style={{ position: "relative", flexShrink: 0 }}>
             <button onClick={() => setPickerFor(pickerFor === "new" ? null : "new")} title="Pick an icon"
@@ -441,9 +441,9 @@ function DateMoodColumn({ moodLog, onSetMood }) {
   }
   const today = todayISO();
   return (
-    <div style={{ width: 150, flexShrink: 0 }}>
-      <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark }}>DATE</Oval>
-      <div style={{ maxHeight: 250, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: "#fff" }} className="btl-scroll">
+    <div style={{ width: 150, flexShrink: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+      <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, flexShrink: 0 }}>DATE</Oval>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: "#fff" }} className="btl-scroll">
         {days.map((d) => {
           const mood = moodLog[d];
           const isToday = d === today;
@@ -1162,8 +1162,9 @@ export default function App() {
   return (
     <div style={{
       fontFamily: "Inter, system-ui, sans-serif", background: C.bg, color: C.text,
-      minHeight: 560, borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
-      border: `1px solid #ece7d8`, fontSize: 11,
+      height: "100%", maxHeight: "100%", borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
+      border: `1px solid #ece7d8`, fontSize: 11, boxSizing: "border-box",
+      display: "flex", flexDirection: "column",
     }}>
       <style>{`
         .btl-scroll::-webkit-scrollbar { width: 6px; }
@@ -1208,17 +1209,17 @@ export default function App() {
       <MilestoneBanner streak={milestoneStreak} visible={!!milestoneStreak} />
 
       {tab === "settings" ? (
-        <div style={{ height: 560 }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <SettingsTab state={state} addItem={settingsAdd} removeItem={settingsRemove} onClose={() => setTab("dashboard")} />
         </div>
       ) : tab === "analytics" ? (
-        <div style={{ height: 560 }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <AnalyticsTab state={state} onClose={() => setTab("dashboard")} />
         </div>
       ) : (
-        <>
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {/* ---------- HEADER ---------- */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8, flexShrink: 0 }}>
             <Oval style={{ background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 16, fontWeight: 900 }}>Byound The Life</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Goals</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Total Earn Money life :- ₹{state.totalEarnLife.toFixed(0)}</Oval>
@@ -1257,54 +1258,54 @@ export default function App() {
 
           {/* ---------- BIG GOALS + RULES ---------- */}
           {!focusMode && (
-            <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
+            <div style={{ display: "flex", gap: 12, marginBottom: 10, flexShrink: 0 }}>
               <TextList title="Life Big Goals" items={state.bigGoals} onAdd={(t) => addPlain("bigGoals", t)} onRemove={(i) => removePlain("bigGoals", i)} />
               <TextList title="Life Rules" items={state.lifeRules} onAdd={(t) => addPlain("lifeRules", t)} onRemove={(i) => removePlain("lifeRules", i)} />
             </div>
           )}
 
           {/* ---------- DAILY GOAL SECTION ---------- */}
-          <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12 }}>
+          <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12, flexShrink: 0 }}>
             {focusMode ? "FOCUS MODE — TODAY'S REMAINING GOALS" : "DAILY GOAL"}
           </Oval>
 
-          <div style={{ display: "flex", gap: 12 }}>
-            <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
+            <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
+              <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
                 <GoalChecklist title="Daily Goals" items={focusMode ? state.dailyGoals.filter((g) => !g.done) : state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />
                 <GoalChecklist title="Extry Goals" items={focusMode ? state.extryGoals.filter((g) => !g.done) : state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />
               </div>
 
               {focusMode && state.dailyGoals.filter((g) => !g.done).length === 0 && state.extryGoals.filter((g) => !g.done).length === 0 && (
-                <div style={{ textAlign: "center", padding: 20, color: "#a39c86", fontSize: 12, fontWeight: 700 }}>
+                <div style={{ textAlign: "center", padding: 20, color: "#a39c86", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                   🎉 Sab kuch done! Focus Mode se bahar aane ke liye button dabao.
                 </div>
               )}
 
               {/* Earn money + notes + image */}
               {!focusMode && (
-              <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 8, background: "#fff" }}>
-                <div style={{ fontWeight: 800, fontSize: 11, marginBottom: 5 }}>Earn Money Today :-</div>
-                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", flexShrink: 0 }}>
+                <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 4 }}>Earn Money Today :-</div>
+                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
                   <input
                     value={state.earnToday} onChange={(e) => update((s) => { s.earnToday = e.target.value; return s; })}
                     onKeyDown={(e) => e.key === "Enter" && addEarnToday()}
                     type="number" placeholder="₹ amount"
-                    style={{ flex: 1, fontSize: 11, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
+                    style={{ flex: 1, fontSize: 10, padding: "4px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
                   />
-                  <button onClick={addEarnToday} style={{ border: "none", background: C.dark, color: "#fff", borderRadius: 6, padding: "0 10px", cursor: "pointer", fontSize: 10 }}>Add</button>
+                  <button onClick={addEarnToday} style={{ border: "none", background: C.dark, color: "#fff", borderRadius: 6, padding: "0 10px", cursor: "pointer", fontSize: 9 }}>Add</button>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <textarea
                     value={state.notes} onChange={(e) => update((s) => { s.notes = e.target.value; return s; })}
                     placeholder="notes"
-                    style={{ flex: 1, minHeight: 60, fontSize: 10, padding: 6, borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", resize: "vertical" }}
+                    style={{ flex: 1, minHeight: 44, maxHeight: 44, fontSize: 9, padding: 5, borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", resize: "none" }}
                   />
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                     {state.uploadedImage
-                      ? <img src={state.uploadedImage} alt="upload" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 6, border: "1px solid #ddd6c4" }} />
-                      : <div style={{ width: 60, height: 60, borderRadius: 6, border: "1px dashed #ddd6c4", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9c2ac" }}><ImageIcon size={20} /></div>}
-                    <Oval className="btl-oval-btn" onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", fontSize: 9, padding: "2px 8px" }}>image Uplode</Oval>
+                      ? <img src={state.uploadedImage} alt="upload" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #ddd6c4" }} />
+                      : <div style={{ width: 44, height: 44, borderRadius: 6, border: "1px dashed #ddd6c4", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9c2ac" }}><ImageIcon size={16} /></div>}
+                    <Oval className="btl-oval-btn" onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", fontSize: 8, padding: "2px 6px" }}>image Uplode</Oval>
                     <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: "none" }} />
                   </div>
                 </div>
@@ -1314,7 +1315,7 @@ export default function App() {
 
             {!focusMode && <DateMoodColumn moodLog={state.moodLog} onSetMood={setMood} />}
           </div>
-        </>
+        </div>
       )}
 
       {/* ---------- MEMORY MODAL ---------- */}

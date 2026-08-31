@@ -5,7 +5,7 @@ import BTLDashboard from "@/components/BTLDashboard";
 export default function DashboardPage() {
   return (
     <AuthGuard>
-      <div style={{ width: "100%", padding: "16px 24px", boxSizing: "border-box" }}>
+      <div style={{ width: "100%", height: "100vh", padding: "10px 20px", boxSizing: "border-box", overflow: "hidden" }}>
         <BTLDashboard />
       </div>
     </AuthGuard>
