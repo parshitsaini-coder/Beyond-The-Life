@@ -101,6 +101,32 @@ exists), go to **Firestore Database → Data → btl_state → your uid**, and
 edit the fields to match, or use the Firebase console's "Import" if you
 prefer working from the raw JSON.
 
+## ✨ Visual Style (2026 trends)
+Direction for the dashboard's look and feel going forward:
+
+- **Purposeful motion** — nothing should just "appear." Cards fold/slide into
+  place, buttons soft-expand before releasing on click, and navigation
+  elements glide with intent rather than snapping. See [Zeka Design's 2026
+  UI/UX trends](https://www.zekagraphic.com/top-10-ui-ux-design-trends-2026/)
+  for reference.
+- **Soft glass/blur cards** for modals (memory modal, settings) — the
+  "Glassmorphism 2.0" / Liquid Glass look, tuned for readability rather than
+  pure decoration.
+- **Status-aware loading states** — replace generic spinners with states
+  that say what's actually happening, e.g. `Saving...` → `Saved ✓` with a
+  quick pulse, instead of a bare loading indicator.
+
+**Implementation:** use the animation/UI skills already available in this
+workspace rather than hand-rolling motion code:
+- `animated-component-libraries` — pre-built animated components (Magic UI /
+  React Bits) for things like the glass modals and status pills
+- `framer-motion-animator` / `motion-animator` — entrance/exit transitions,
+  card fold/slide, button soft-expand, shared layout transitions
+- `gsap-scrolltrigger` — scroll-driven reveals if the dashboard grows
+  scrollable sections (e.g. analytics)
+- `lightweight-3d-effects` — subtle tilt/parallax touches for hero or
+  summary cards, if desired, without pulling in a full 3D engine
+
 ## Next steps from the roadmap this unblocks
 With Firebase in place, these become notably easier since they're already
 part of the same platform:

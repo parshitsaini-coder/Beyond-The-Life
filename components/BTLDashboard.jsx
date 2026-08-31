@@ -6,6 +6,7 @@ import {
   Repeat, RotateCcw, BarChart3, TrendingUp, Award, Tag
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAuth, signOutUser } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
 
@@ -93,10 +94,18 @@ async function saveState(user, state) {
 }
 
 /* ---------------- SMALL UI ATOMS ---------------- */
-function Oval({ children, style, ...rest }) {
+/* Purposeful motion: ovals/pills soft-expand while pressed (not shrink),
+   then release back with a spring, and glide upward slightly on hover —
+   used throughout as the nav / pill language. */
+function Oval({ children, style, onClick, ...rest }) {
+  const interactive = typeof onClick === "function";
   return (
-    <div
+    <motion.div
       {...rest}
+      onClick={onClick}
+      whileHover={interactive ? { y: -2 } : undefined}
+      whileTap={interactive ? { scale: 1.07 } : undefined}
+      transition={{ type: "spring", stiffness: 420, damping: 22 }}
       style={{
         display: "inline-flex", alignItems: "center", justifyContent: "center",
         border: `1px solid ${C.text}`, borderRadius: 999, padding: "4px 14px",
@@ -105,6 +114,46 @@ function Oval({ children, style, ...rest }) {
       }}
     >
       {children}
+    </motion.div>
+  );
+}
+
+/* Status-aware save indicator: "Saving..." -> "Saved ✓" pulse, replacing
+   a generic spinner so the user always knows their data's state. */
+function SaveStatus({ status }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", height: 16, minWidth: 58 }}>
+      <AnimatePresence mode="wait">
+        {status === "saving" && (
+          <motion.div
+            key="saving"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.18 }}
+            style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9, fontWeight: 700, color: "#a39c86" }}
+          >
+            <motion.span
+              animate={{ opacity: [0.35, 1, 0.35] }}
+              transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+              style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, display: "inline-block" }}
+            />
+            Saving...
+          </motion.div>
+        )}
+        {status === "saved" && (
+          <motion.div
+            key="saved"
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: [1, 1.15, 1] }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, fontWeight: 800, color: "#4a7c59" }}
+          >
+            Saved ✓
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -130,6 +179,23 @@ function RingStat({ pct, size = 54, label, sub, color = C.accent }) {
       <div style={{ fontSize: 9, fontWeight: 700, color: C.dark, textAlign: "center", lineHeight: 1.1 }}>{label}</div>
       {sub && <div style={{ fontSize: 8, color: "#8a8579" }}>{sub}</div>}
     </div>
+  );
+}
+
+/* Cards fold/slide into place: a subtle top-down fold (scaleY from a
+   flattened state) combined with a slide-up, staggered by index so groups
+   of cards settle in sequence rather than popping in together. */
+function FoldCard({ children, index = 0, style, ...rest }) {
+  return (
+    <motion.div
+      {...rest}
+      initial={{ opacity: 0, y: 14, scaleY: 0.94 }}
+      animate={{ opacity: 1, y: 0, scaleY: 1 }}
+      transition={{ duration: 0.42, delay: index * 0.06, ease: [0.22, 1, 0.36, 1] }}
+      style={{ transformOrigin: "top center", ...style }}
+    >
+      {children}
+    </motion.div>
   );
 }
 
@@ -493,22 +559,28 @@ function SettingsTab({ state, addItem, removeItem, onClose }) {
   };
 
   return (
-    <div style={{
-      border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff",
-      display: "flex", flexDirection: "column", height: "100%",
-    }}>
+    <motion.div
+      initial={{ opacity: 0, scale: 0.97, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 340, damping: 30 }}
+      style={{
+        border: "1px solid rgba(255,255,255,0.6)", borderRadius: 14,
+        background: "rgba(255,255,255,0.62)",
+        backdropFilter: "blur(16px) saturate(160%)", WebkitBackdropFilter: "blur(16px) saturate(160%)",
+        boxShadow: "0 12px 32px rgba(37,36,34,0.10)",
+        display: "flex", flexDirection: "column", height: "100%",
+      }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
-        borderBottom: `1px solid ${C.text}`, background: C.bg, borderRadius: "10px 10px 0 0",
+        borderBottom: "1px solid rgba(64,61,57,0.15)", background: "rgba(255,252,242,0.5)", borderRadius: "14px 14px 0 0",
       }}>
         <span style={{ fontSize: 12, fontWeight: 800, color: C.dark }}>Setting</span>
         <Oval onClick={() => setMode("goal")} style={{ cursor: "pointer", background: mode === "goal" ? C.accent : C.bg, color: mode === "goal" ? "#fff" : C.text }}>Add Goles</Oval>
         <Oval onClick={() => setMode("extry")} style={{ cursor: "pointer", background: mode === "extry" ? C.accent : C.bg, color: mode === "extry" ? "#fff" : C.text }}>Add extry</Oval>
         <div style={{ flex: 1 }} />
-        <button onClick={onClose} title="Closed Butan" style={{
+        <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 1.15 }} onClick={onClose} title="Closed Butan" style={{
           border: "none", borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
           display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-        }}><X size={13} color={C.dark} /></button>
+        }}><X size={13} color={C.dark} /></motion.button>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 12 }} className="btl-scroll">
@@ -552,7 +624,7 @@ function SettingsTab({ state, addItem, removeItem, onClose }) {
       <div style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: "#b3ac99", padding: "6px 0", borderTop: "1px solid #f0ece0" }}>
         Setting Teb
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -1051,6 +1123,7 @@ export default function App() {
   const [memOpen, setMemOpen] = useState(false);
   const [memVal, setMemVal] = useState("");
   const [focusMode, setFocusMode] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("idle"); // "idle" | "saving" | "saved"
   const fileRef = useRef(null);
   const loaded = useRef(false);
 
@@ -1061,7 +1134,13 @@ export default function App() {
 
   useEffect(() => {
     if (!state || !loaded.current || !fbUser) return;
-    const t = setTimeout(() => saveState(fbUser, state), 400);
+    setSaveStatus("saving");
+    const t = setTimeout(() => {
+      saveState(fbUser, state).then(() => {
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus((s) => (s === "saved" ? "idle" : s)), 1600);
+      });
+    }, 400);
     return () => clearTimeout(t);
   }, [state, fbUser]);
 
@@ -1225,22 +1304,32 @@ export default function App() {
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Goals</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Total Earn Money life :- ₹{state.totalEarnLife.toFixed(0)}</Oval>
             <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={11} style={{ marginRight: 4 }} />memor</Oval>
-            <button className="btl-oval-btn" onClick={() => setFocusMode((v) => !v)} title="Hide everything except today's incomplete goals" style={{
-              border: `1px solid ${focusMode ? C.accent : C.text}`, background: focusMode ? C.accent : C.bg, color: focusMode ? "#fff" : C.text,
-              borderRadius: 999, padding: "4px 14px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-            }}><Target size={14} /> Focus Mode</button>
-            <button className="btl-oval-btn" onClick={() => setTab("analytics")} style={{
-              border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
-              display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-            }}><BarChart3 size={14} /> Analytics</button>
-            <button className="btl-oval-btn" onClick={() => setTab("settings")} style={{
-              border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
-              display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-            }}><Settings size={14} /> Setting</button>
+            <motion.button
+              onClick={() => setFocusMode((v) => !v)} title="Hide everything except today's incomplete goals"
+              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
+              style={{
+                border: `1px solid ${focusMode ? C.accent : C.text}`, background: focusMode ? C.accent : C.bg, color: focusMode ? "#fff" : C.text,
+                borderRadius: 999, padding: "4px 14px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
+              }}><Target size={14} /> Focus Mode</motion.button>
+            <motion.button
+              onClick={() => setTab("analytics")}
+              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
+              style={{
+                border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
+                display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
+              }}><BarChart3 size={14} /> Analytics</motion.button>
+            <motion.button
+              onClick={() => setTab("settings")}
+              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
+              style={{
+                border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
+                display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
+              }}><Settings size={14} /> Setting</motion.button>
 
             <div style={{ flex: 1 }} />
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <SaveStatus status={saveStatus} />
               <div style={{ textAlign: "center" }}>
                 <div style={{
                   width: 30, height: 30, borderRadius: "50%", background: C.dark, color: "#fff",
@@ -1250,18 +1339,22 @@ export default function App() {
               <RingStat pct={dailyPct} label="Daily Goal" sub="Staytus" color={C.accent} />
               <RingStat pct={extryPct} label="Extry Goal" sub="Staytus" color={C.blue} />
               <RingStat pct={overallPct} label="Goal" color={C.dark} />
-              <button onClick={signOutUser} title="Sign out"
+              <motion.button onClick={signOutUser} title="Sign out" whileHover={{ y: -2 }} whileTap={{ scale: 1.15 }}
                 style={{ border: "none", background: "transparent", cursor: "pointer", color: "#b3ac99" }}>
                 <LogOut size={15} />
-              </button>
+              </motion.button>
             </div>
           </div>
 
           {/* ---------- BIG GOALS + RULES ---------- */}
           {!focusMode && (
             <div style={{ display: "flex", gap: 12, marginBottom: 10, flexShrink: 0 }}>
-              <TextList title="Life Big Goals" items={state.bigGoals} onAdd={(t) => addPlain("bigGoals", t)} onRemove={(i) => removePlain("bigGoals", i)} />
-              <TextList title="Life Rules" items={state.lifeRules} onAdd={(t) => addPlain("lifeRules", t)} onRemove={(i) => removePlain("lifeRules", i)} />
+              <FoldCard index={0} style={{ flex: 1, minWidth: 0 }}>
+                <TextList title="Life Big Goals" items={state.bigGoals} onAdd={(t) => addPlain("bigGoals", t)} onRemove={(i) => removePlain("bigGoals", i)} />
+              </FoldCard>
+              <FoldCard index={1} style={{ flex: 1, minWidth: 0 }}>
+                <TextList title="Life Rules" items={state.lifeRules} onAdd={(t) => addPlain("lifeRules", t)} onRemove={(i) => removePlain("lifeRules", i)} />
+              </FoldCard>
             </div>
           )}
 
@@ -1273,8 +1366,12 @@ export default function App() {
           <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
             <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: 8, minHeight: 0 }}>
               <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
-                <GoalChecklist title="Daily Goals" items={focusMode ? state.dailyGoals.filter((g) => !g.done) : state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />
-                <GoalChecklist title="Extry Goals" items={focusMode ? state.extryGoals.filter((g) => !g.done) : state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />
+                <FoldCard index={0} style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
+                  <GoalChecklist title="Daily Goals" items={focusMode ? state.dailyGoals.filter((g) => !g.done) : state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />
+                </FoldCard>
+                <FoldCard index={1} style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex" }}>
+                  <GoalChecklist title="Extry Goals" items={focusMode ? state.extryGoals.filter((g) => !g.done) : state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />
+                </FoldCard>
               </div>
 
               {focusMode && state.dailyGoals.filter((g) => !g.done).length === 0 && state.extryGoals.filter((g) => !g.done).length === 0 && (
@@ -1285,7 +1382,7 @@ export default function App() {
 
               {/* Earn money + notes + image */}
               {!focusMode && (
-              <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", flexShrink: 0 }}>
+              <FoldCard index={2} style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", flexShrink: 0 }}>
                 <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 4 }}>Earn Money Today :-</div>
                 <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
                   <input
@@ -1310,51 +1407,77 @@ export default function App() {
                     <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: "none" }} />
                   </div>
                 </div>
-              </div>
+              </FoldCard>
               )}
             </div>
 
-            {!focusMode && <DateMoodColumn moodLog={state.moodLog} onSetMood={setMood} />}
+            {!focusMode && (
+              <FoldCard index={3}>
+                <DateMoodColumn moodLog={state.moodLog} onSetMood={setMood} />
+              </FoldCard>
+            )}
           </div>
         </div>
       )}
 
-      {/* ---------- MEMORY MODAL ---------- */}
-      {memOpen && (
-        <div style={{
-          position: "absolute", inset: 0, background: "rgba(37,36,34,0.35)", zIndex: 60,
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }} onClick={() => setMemOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} style={{
-            width: 260, maxHeight: 340, background: "#fff", borderRadius: 10, padding: 12,
-            display: "flex", flexDirection: "column", gap: 8,
-          }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontWeight: 800, fontSize: 12 }}>Memories</span>
-              <X size={14} style={{ cursor: "pointer" }} onClick={() => setMemOpen(false)} />
-            </div>
-            <div style={{ flex: 1, overflowY: "auto", maxHeight: 200 }} className="btl-scroll">
-              {state.memories.length === 0 && <div style={{ fontSize: 10, color: "#b3ac99" }}>No memories saved yet.</div>}
-              {state.memories.map((m, i) => (
-                <div key={i} style={{ fontSize: 10, padding: "5px 0", borderBottom: "1px solid #f0ece0" }}>
-                  <div style={{ color: "#b3ac99", fontSize: 8 }}>{m.date}</div>
-                  {m.text}
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <input value={memVal} onChange={(e) => setMemVal(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && memVal.trim()) {
-                    update((s) => { s.memories = [{ date: todayISO(), text: memVal.trim() }, ...s.memories]; return s; });
-                    setMemVal("");
-                  }
-                }}
-                placeholder="Write a memory..." style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4" }} />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ---------- MEMORY MODAL (Glassmorphism 2.0 / Liquid Glass) ---------- */}
+      <AnimatePresence>
+        {memOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
+            style={{
+              position: "absolute", inset: 0, background: "rgba(37,36,34,0.28)", zIndex: 60,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)",
+            }} onClick={() => setMemOpen(false)}>
+            <motion.div
+              onClick={(e) => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.92, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 10 }}
+              transition={{ type: "spring", stiffness: 340, damping: 28 }}
+              style={{
+                width: 260, maxHeight: 340, background: "rgba(255,255,255,0.68)",
+                backdropFilter: "blur(16px) saturate(160%)", WebkitBackdropFilter: "blur(16px) saturate(160%)",
+                border: "1px solid rgba(255,255,255,0.6)", borderRadius: 14, padding: 12,
+                boxShadow: "0 12px 36px rgba(37,36,34,0.18)",
+                display: "flex", flexDirection: "column", gap: 8,
+              }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontWeight: 800, fontSize: 12 }}>Memories</span>
+                <motion.span whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} style={{ display: "inline-flex", cursor: "pointer" }}>
+                  <X size={14} onClick={() => setMemOpen(false)} />
+                </motion.span>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto", maxHeight: 200 }} className="btl-scroll">
+                {state.memories.length === 0 && <div style={{ fontSize: 10, color: "#b3ac99" }}>No memories saved yet.</div>}
+                {state.memories.map((m, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 6) * 0.03 }}
+                    style={{ fontSize: 10, padding: "5px 0", borderBottom: "1px solid rgba(240,236,224,0.8)" }}>
+                    <div style={{ color: "#b3ac99", fontSize: 8 }}>{m.date}</div>
+                    {m.text}
+                  </motion.div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input value={memVal} onChange={(e) => setMemVal(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && memVal.trim()) {
+                      update((s) => { s.memories = [{ date: todayISO(), text: memVal.trim() }, ...s.memories]; return s; });
+                      setMemVal("");
+                    }
+                  }}
+                  placeholder="Write a memory..." style={{
+                    flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6,
+                    border: "1px solid #ddd6c4", background: "rgba(255,255,255,0.7)",
+                  }} />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
