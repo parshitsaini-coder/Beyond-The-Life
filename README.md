@@ -9,6 +9,23 @@ This turns your Claude-artifact dashboard into a real, deployable web app:
 Your dashboard UI, colors, animations, goal/streak logic, analytics — all
 unchanged. Only the login screen and the storage layer were swapped.
 
+## Memories upgrade (this update)
+
+The "memor" button now opens a full **Memories** modal instead of a plain text log:
+
+- **Sidebar timeline** — every date you have any activity for (goals, money, mood, photos, notes), newest first.
+- **4 tabs per date**: Goals (exactly which Daily/Extry goals you completed that day), Money (earned/spent/net with animated bars), Photos (gallery with a lightweight 3D tilt-hover + full-screen lightbox + download), Notes (that day's saved notes + any memory entries, with an input to add more).
+- Glassmorphism styling matches the existing Settings modal, with spring entrance animation, a sliding tab-underline, and staggered list reveals — all built with `framer-motion`, already a project dependency, so **no new npm installs are required**.
+
+### State/data changes that power it
+- New `state.dailyLogs[date]` map: `{ images: [dataUrl...], notes, completedGoals: { daily: [...], extry: [...] } }`.
+- Toggling a goal now snapshots which goals were done that day into `dailyLogs`, not just the percentage.
+- The "Image Upload" button now: (1) resizes/compresses photos client-side to a small JPEG before storing, and (2) keeps up to the last 6 photos **per day** in `dailyLogs`, instead of overwriting a single global `uploadedImage`. This keeps Firestore documents small.
+- The daily notes textarea now also mirrors into `dailyLogs[today].notes` so it's visible later in Memories.
+- Memory text entries can now be tagged to any date shown in the modal (not only "today").
+
+⚠️ Firestore documents cap at ~1MB — storing many photos across many days as base64 will eventually add up. The compression (480px, JPEG ~0.72 quality) keeps each photo small, but if you use this heavily for months, consider moving images to Firebase Storage later and keeping only URLs in Firestore.
+
 ## What changed vs. btl_dashboard.jsx
 
 | Old (artifact) | New (this project) |
