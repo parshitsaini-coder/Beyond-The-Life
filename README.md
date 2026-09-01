@@ -1,6 +1,27 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Money popup photos + Reset + Summary (this update)
+## Filter popup (this update)
+
+Money Management now has a **Filter** button (next to Summary/Reset) that
+opens a glass popup (Glassmorphism 2.0, spring entrance) with three
+multi-select filter groups:
+- **Show** — Earn Money / Spend Money (at least one always stays on)
+- **Spend category** — all 9 categories, multi-select, with Select all /
+  Clear shortcuts (dims out when Spend isn't in "Show")
+- **Date range** — All time / Today / 7 / 14 / 30 Days, or a **Custom**
+  From–To range
+
+The popup keeps a live "N entries match" count as you toggle filters and
+only commits on **Apply Filters**; a filtered view then replaces the
+summary strip (Earned/Spent/Net/Entries) and Recent Activity with the
+matching totals + a scrollable, image-aware results list, plus a
+dismissible "Filtered view · …" chip summarising what's active. The
+**Filter** button itself gets an accent badge showing how many filter
+groups are active. Built with the same `filterMoneyEntries`/date-preset
+helpers reused by both the popup's live preview and the applied view, so
+they can never disagree.
+
+## Money popup photos + Reset + Summary (earlier update)
 
 - **Spend Money popup** now also has the optional "📷 Attach a photo"
   dropzone (receipt/bill photo), same as Earn Money already had — pick a

@@ -7,7 +7,7 @@ import {
   GripVertical, Pin, PinOff, LayoutGrid, RefreshCw, Maximize2, Move,
   CheckCircle2, Wallet, StickyNote, Camera, Sparkles, Download, ZoomIn, CalendarDays,
   ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft,
-  Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck
+  Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
@@ -1275,6 +1275,43 @@ function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
   );
 }
 
+/* ---------------- MONEY FILTER — shared filtering logic ----------------
+   Used by both MoneyFilterModal (for the live "N entries match" preview)
+   and MoneyManagementTab (to actually narrow the summary + activity
+   list), so the popup's preview count and the applied result always
+   agree. */
+const DEFAULT_MONEY_FILTERS = { types: ["earn", "spend"], categories: [], dateRange: "all", from: "", to: "" };
+const DATE_PRESETS = [
+  { key: "all", label: "All time" },
+  { key: "today", label: "Today" },
+  { key: "7d", label: "7 Days" },
+  { key: "14d", label: "14 Days" },
+  { key: "30d", label: "30 Days" },
+  { key: "custom", label: "Custom" },
+];
+function moneyDateInRange(dateStr, filters) {
+  if (filters.dateRange === "all") return true;
+  if (filters.dateRange === "custom") {
+    if (filters.from && dateStr < filters.from) return false;
+    if (filters.to && dateStr > filters.to) return false;
+    return true;
+  }
+  const days = { today: 0, "7d": 6, "14d": 13, "30d": 29 }[filters.dateRange] ?? 0;
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return dateStr >= d.toISOString().slice(0, 10);
+}
+function filterMoneyEntries(entries, filters) {
+  return entries.filter((e) => {
+    if (!filters.types.includes(e.type)) return false;
+    if (e.type === "spend" && filters.categories.length && !filters.categories.includes(e.category || "other")) return false;
+    return moneyDateInRange(e.date, filters);
+  });
+}
+function isMoneyFilterActive(filters) {
+  return filters.types.length !== 2 || filters.categories.length > 0 || filters.dateRange !== "all";
+}
+
 /* ---------------- MONEY MANAGEMENT (dedicated tab — reached via the nav card in Analytics) ----------------
    Category breakdown (donut + ranked list), an earn-vs-spend trend chart
    with a 7/14/30-day range toggle, and a scrollable recent-activity feed
@@ -1284,6 +1321,10 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetDone, setResetDone] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filters, setFilters] = useState(DEFAULT_MONEY_FILTERS);
+  const filterActive = isMoneyFilterActive(filters);
+  const activeFilterCount = (filters.types.length !== 2 ? 1 : 0) + (filters.categories.length > 0 ? 1 : 0) + (filters.dateRange !== "all" ? 1 : 0);
 
   const handleResetConfirm = () => {
     onResetData?.();
@@ -1330,17 +1371,48 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
   }, [entries]);
 
   const spendCatSum = categoryTotals.reduce((sum, c) => sum + c.total, 0);
-  const recentEntries = entries.slice(0, 14);
+
+  // When a filter is active, the summary strip + activity feed switch to
+  // filtered entries (type / category / date); otherwise they show the
+  // usual lifetime totals + latest 14, unchanged from before.
+  const filteredEntries = useMemo(() => filterMoneyEntries(entries, filters), [entries, filters]);
+  const filteredSummary = useMemo(() => {
+    const earn = filteredEntries.filter((e) => e.type === "earn").reduce((s, e) => s + (e.amount || 0), 0);
+    const spend = filteredEntries.filter((e) => e.type === "spend").reduce((s, e) => s + (e.amount || 0), 0);
+    return { earn, spend, net: earn - spend };
+  }, [filteredEntries]);
+  const displaySummary = filterActive ? filteredSummary : moneySummary;
+  const displayEntries = filterActive ? filteredEntries.slice(0, 60) : entries.slice(0, 14);
+  const displayCount = filterActive ? filteredEntries.length : entries.length;
 
   return (
     <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, background: C.bg, borderRadius: "10px 10px 0 0" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, background: C.bg, borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 6 }}>
         <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
           <ArrowLeft size={15} color={C.dark} />
         </motion.div>
         <Wallet size={14} color={C.dark} />
         <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Money Management</span>
         <div style={{ flex: 1 }} />
+        <motion.button
+          onClick={() => setFilterOpen(true)}
+          whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
+          title="Filter by type, category & date"
+          style={{
+            position: "relative", border: `1px solid ${filterActive ? C.accent : C.text}`, borderRadius: 999, padding: "5px 11px",
+            background: filterActive ? `${C.accent}18` : "#fff",
+            display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: filterActive ? C.accent : C.dark,
+          }}
+        >
+          <Filter size={12} /> Filter
+          {filterActive && (
+            <span style={{
+              position: "absolute", top: -5, right: -5, width: 15, height: 15, borderRadius: "50%",
+              background: C.accent, color: "#fff", fontSize: 8, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 2px 6px rgba(252,163,17,0.5)",
+            }}>{activeFilterCount || "•"}</span>
+          )}
+        </motion.button>
         <motion.button
           onClick={() => setSummaryOpen(true)}
           whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
@@ -1366,25 +1438,55 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 14 }} className="btl-scroll">
+        {/* active-filter indicator strip */}
+        <AnimatePresence>
+          {filterActive && (
+            <motion.div
+              initial={{ opacity: 0, height: 0, marginBottom: 0 }} animate={{ opacity: 1, height: "auto", marginBottom: 12 }} exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+              style={{ overflow: "hidden" }}
+            >
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 12px", borderRadius: 10,
+                background: `${C.accent}14`, border: `1px solid ${C.accent}45`,
+              }}>
+                <Filter size={12} color={C.accent} />
+                <span style={{ fontSize: 10, fontWeight: 800, color: C.dark }}>Filtered view</span>
+                <span style={{ fontSize: 9.5, color: "#8a8579" }}>
+                  {filters.types.length === 1 ? (filters.types[0] === "earn" ? "Earn only" : "Spend only") : "Earn + Spend"}
+                  {filters.categories.length > 0 ? ` · ${filters.categories.length} categor${filters.categories.length > 1 ? "ies" : "y"}` : ""}
+                  {filters.dateRange !== "all" ? ` · ${DATE_PRESETS.find((p) => p.key === filters.dateRange)?.label}` : ""}
+                  {` · ${displayCount} match${displayCount === 1 ? "" : "es"}`}
+                </span>
+                <div style={{ marginLeft: "auto" }} />
+                <motion.div
+                  whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+                  onClick={() => setFilters(DEFAULT_MONEY_FILTERS)}
+                  style={{ display: "flex", alignItems: "center", gap: 3, cursor: "pointer", fontSize: 9.5, fontWeight: 800, color: "#c0392b" }}
+                ><X size={11} /> Clear</motion.div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* summary strip */}
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: "linear-gradient(135deg, #4a7c5918, transparent)", border: "1px solid #4a7c5940" }}>
-            <div style={{ fontSize: 9, color: "#6b8f77", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><ArrowUpCircle size={11} /> Total Earned</div>
-            <div style={{ fontSize: 17, fontWeight: 900, color: "#4a7c59" }}>₹{moneySummary.earn.toFixed(0)}</div>
+            <div style={{ fontSize: 9, color: "#6b8f77", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><ArrowUpCircle size={11} /> {filterActive ? "Earned (filtered)" : "Total Earned"}</div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: "#4a7c59" }}>₹{displaySummary.earn.toFixed(0)}</div>
           </div>
           <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: "linear-gradient(135deg, #c0392b18, transparent)", border: "1px solid #c0392b40" }}>
-            <div style={{ fontSize: 9, color: "#c0776b", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><ArrowDownCircle size={11} /> Total Spent</div>
-            <div style={{ fontSize: 17, fontWeight: 900, color: "#c0392b" }}>₹{moneySummary.spend.toFixed(0)}</div>
+            <div style={{ fontSize: 9, color: "#c0776b", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><ArrowDownCircle size={11} /> {filterActive ? "Spent (filtered)" : "Total Spent"}</div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: "#c0392b" }}>₹{displaySummary.spend.toFixed(0)}</div>
           </div>
-          <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: `linear-gradient(135deg, ${moneySummary.net >= 0 ? C.accent : "#c0392b"}18, transparent)`, border: `1px solid ${moneySummary.net >= 0 ? C.accent : "#c0392b"}40` }}>
-            <div style={{ fontSize: 9, color: "#a39c86", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><PiggyBank size={11} /> Net (life)</div>
-            <div style={{ fontSize: 17, fontWeight: 900, color: moneySummary.net >= 0 ? C.accent : "#c0392b" }}>
-              {moneySummary.net >= 0 ? "+" : "−"}₹{Math.abs(moneySummary.net).toFixed(0)}
+          <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: `linear-gradient(135deg, ${displaySummary.net >= 0 ? C.accent : "#c0392b"}18, transparent)`, border: `1px solid ${displaySummary.net >= 0 ? C.accent : "#c0392b"}40` }}>
+            <div style={{ fontSize: 9, color: "#a39c86", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><PiggyBank size={11} /> {filterActive ? "Net (filtered)" : "Net (life)"}</div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: displaySummary.net >= 0 ? C.accent : "#c0392b" }}>
+              {displaySummary.net >= 0 ? "+" : "−"}₹{Math.abs(displaySummary.net).toFixed(0)}
             </div>
           </div>
           <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: "linear-gradient(135deg, #98c1d918, transparent)", border: "1px solid #98c1d940" }}>
             <div style={{ fontSize: 9, color: "#7a9db0", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><Receipt size={11} /> Entries logged</div>
-            <div style={{ fontSize: 17, fontWeight: 900, color: C.blue }}>{entries.length}</div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: C.blue }}>{displayCount}</div>
           </div>
         </div>
 
@@ -1469,13 +1571,15 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
         </div>
 
         {/* recent activity widget */}
-        <div style={{ border: "1px solid #ece7d8", borderRadius: 12, padding: 12 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 8 }}>🕒 Recent activity</div>
-          {recentEntries.length === 0 ? (
-            <div style={{ fontSize: 10, color: "#a39c86", padding: "10px 0", textAlign: "center" }}>Nothing logged yet — use Add on the dashboard to record your first entry.</div>
+        <div style={{ border: "1px solid #ece7d8", borderRadius: 12, padding: 12, maxHeight: filterActive ? 420 : undefined, display: "flex", flexDirection: "column" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 8, flexShrink: 0 }}>{filterActive ? `🔎 Filtered results (${displayEntries.length})` : "🕒 Recent activity"}</div>
+          {displayEntries.length === 0 ? (
+            <div style={{ fontSize: 10, color: "#a39c86", padding: "10px 0", textAlign: "center" }}>
+              {filterActive ? "No entries match these filters — try widening the date range or categories." : "Nothing logged yet — use Add on the dashboard to record your first entry."}
+            </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {recentEntries.map((e, i) => {
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: filterActive ? "auto" : "visible" }} className={filterActive ? "btl-scroll" : undefined}>
+              {displayEntries.map((e, i) => {
                 const isEarn = e.type === "earn";
                 const cat = !isEarn ? spendCatInfo(e.category) : null;
                 return (
@@ -1510,6 +1614,16 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
 
       <AnimatePresence>{summaryOpen && <MoneySummaryModal state={state} onClose={() => setSummaryOpen(false)} />}</AnimatePresence>
       <AnimatePresence>{resetOpen && <MoneyResetModal onClose={() => setResetOpen(false)} onConfirm={handleResetConfirm} />}</AnimatePresence>
+      <AnimatePresence>
+        {filterOpen && (
+          <MoneyFilterModal
+            entries={entries}
+            filters={filters}
+            onApply={(next) => setFilters(next)}
+            onClose={() => setFilterOpen(false)}
+          />
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {resetDone && (
           <motion.div
@@ -2081,6 +2195,201 @@ function MoneySummaryModal({ state, onClose }) {
         </div>
 
         <AnimatePresence>{lightbox && <MemPhotoLightbox src={lightbox} onClose={() => setLightbox(null)} />}</AnimatePresence>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* ---------------- MONEY FILTER — glass popup (Glassmorphism 2.0 / Liquid Glass) ----------------
+   Opened from Money Management's "Filter" button. Lets the person narrow
+   the summary + activity list by:
+     - Type: Earn Money / Spend Money (multi-select, at least one stays on)
+     - Category: any of the 9 spend categories (multi-select, spend-only)
+     - Date: quick presets or a custom From/To range
+   Everything is staged in local `draft` state with a live "N entries
+   match" count, and only committed to the parent (via onApply) when
+   "Apply Filters" is tapped — Cancel/backdrop-click discards the draft. */
+function MoneyFilterModal({ entries, filters, onApply, onClose }) {
+  const [draft, setDraft] = useState({ ...filters, categories: [...filters.categories] });
+
+  const toggleType = (t) => setDraft((d) => {
+    const has = d.types.includes(t);
+    if (has && d.types.length === 1) return d; // keep at least one type selected
+    return { ...d, types: has ? d.types.filter((x) => x !== t) : [...d.types, t] };
+  });
+  const toggleCategory = (key) => setDraft((d) => ({
+    ...d, categories: d.categories.includes(key) ? d.categories.filter((c) => c !== key) : [...d.categories, key],
+  }));
+  const setDateRange = (key) => setDraft((d) => ({ ...d, dateRange: key }));
+
+  const matches = useMemo(() => filterMoneyEntries(entries, draft), [entries, draft]);
+  const spendIncluded = draft.types.includes("spend");
+
+  const handleApply = () => { onApply(draft); onClose(); };
+  const handleClearAll = () => { onApply(DEFAULT_MONEY_FILTERS); onClose(); };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
+      style={{
+        position: "absolute", inset: 0, background: "rgba(37,36,34,0.36)", zIndex: 80,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+      }}
+      onClick={onClose}
+    >
+      <motion.div
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.9, y: 24 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.94, y: 16 }}
+        transition={{ type: "spring", stiffness: 320, damping: 28 }}
+        style={{
+          width: "min(460px, 92vw)", maxHeight: "86vh", display: "flex", flexDirection: "column",
+          background: "rgba(255,252,242,0.8)",
+          backdropFilter: "blur(24px) saturate(190%)", WebkitBackdropFilter: "blur(24px) saturate(190%)",
+          border: "1px solid rgba(255,255,255,0.65)", borderRadius: 20,
+          boxShadow: "0 30px 70px rgba(37,36,34,0.3), inset 0 1px 0 rgba(255,255,255,0.6)",
+          position: "relative", boxSizing: "border-box", overflow: "hidden",
+        }}
+      >
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)", zIndex: 1 }} />
+
+        {/* header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 20px 12px", flexShrink: 0 }}>
+          <div style={{
+            width: 34, height: 34, borderRadius: "50%", background: `${C.accent}18`, border: `1px solid ${C.accent}55`,
+            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          }}><Filter size={16} color={C.accent} /></div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>Filter Records</div>
+            <div style={{ fontSize: 9, color: "#8a8579" }}>Narrow down by type, category & date</div>
+          </div>
+          <motion.div whileHover={{ scale: 1.15, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose}
+            style={{ marginLeft: "auto", cursor: "pointer", color: C.dark, flexShrink: 0 }}>
+            <X size={16} />
+          </motion.div>
+        </div>
+
+        {/* body */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 20px 4px" }} className="btl-scroll">
+          {/* type */}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: C.dark, marginBottom: 8 }}>Show</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {[{ key: "earn", label: "Earn Money", Icon: ArrowUpCircle, color: "#4a7c59" }, { key: "spend", label: "Spend Money", Icon: ArrowDownCircle, color: "#c0392b" }].map((t) => {
+                const active = draft.types.includes(t.key);
+                return (
+                  <motion.div
+                    key={t.key} onClick={() => toggleType(t.key)}
+                    whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }}
+                    style={{
+                      flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      padding: "10px 8px", borderRadius: 12, cursor: "pointer",
+                      border: `1.5px solid ${active ? t.color : "rgba(221,214,196,0.7)"}`,
+                      background: active ? `${t.color}1c` : "rgba(255,255,255,0.5)",
+                    }}
+                  >
+                    <t.Icon size={14} color={active ? t.color : "#a39c86"} />
+                    <span style={{ fontSize: 10.5, fontWeight: active ? 900 : 700, color: active ? t.color : "#8a8579" }}>{t.label}</span>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* category */}
+          <div style={{ marginBottom: 16, opacity: spendIncluded ? 1 : 0.45, pointerEvents: spendIncluded ? "auto" : "none", transition: "opacity 160ms ease" }}>
+            <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 800, color: C.dark }}>Spend category</div>
+              <span style={{ fontSize: 8.5, color: "#a39c86", marginLeft: 6 }}>(spend entries only)</span>
+              <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                <span onClick={() => setDraft((d) => ({ ...d, categories: SPEND_CATEGORIES.map((c) => c.key) }))} style={{ fontSize: 9, fontWeight: 700, color: C.accent, cursor: "pointer" }}>Select all</span>
+                <span onClick={() => setDraft((d) => ({ ...d, categories: [] }))} style={{ fontSize: 9, fontWeight: 700, color: "#a39c86", cursor: "pointer" }}>Clear</span>
+              </div>
+            </div>
+            <motion.div
+              initial="hidden" animate="show"
+              variants={{ hidden: {}, show: { transition: { staggerChildren: 0.02 } } }}
+              style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 7 }}
+            >
+              {SPEND_CATEGORIES.map((c) => {
+                const active = draft.categories.includes(c.key);
+                return (
+                  <motion.div
+                    key={c.key}
+                    variants={{ hidden: { opacity: 0, y: 6, scale: 0.92 }, show: { opacity: 1, y: 0, scale: 1 } }}
+                    whileHover={{ y: -2 }} whileTap={{ scale: 0.94 }}
+                    onClick={() => toggleCategory(c.key)}
+                    style={{
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                      padding: "8px 4px", borderRadius: 10, cursor: "pointer",
+                      border: `1.5px solid ${active ? c.color : "rgba(221,214,196,0.7)"}`,
+                      background: active ? `${c.color}22` : "rgba(255,255,255,0.5)",
+                    }}
+                  >
+                    <span style={{ fontSize: 15 }}>{c.emoji}</span>
+                    <span style={{ fontSize: 8, fontWeight: active ? 900 : 700, color: active ? c.color : "#8a8579" }}>{c.label}</span>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          </div>
+
+          {/* date */}
+          <div style={{ marginBottom: 6 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, color: C.dark, marginBottom: 8 }}>Date range</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {DATE_PRESETS.map((p) => (
+                <div key={p.key} onClick={() => setDateRange(p.key)} style={{
+                  fontSize: 9.5, fontWeight: 800, padding: "6px 11px", borderRadius: 999, cursor: "pointer",
+                  background: draft.dateRange === p.key ? C.dark : "#f0ece0", color: draft.dateRange === p.key ? "#fff" : "#8a8579",
+                }}>{p.label}</div>
+              ))}
+            </div>
+            <AnimatePresence>
+              {draft.dateRange === "custom" && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                  style={{ overflow: "hidden" }}
+                >
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 8.5, color: "#a39c86", marginBottom: 3, fontWeight: 700 }}>From</div>
+                      <input type="date" value={draft.from} max={draft.to || undefined}
+                        onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))}
+                        style={{ width: "100%", fontSize: 10.5, padding: "7px 8px", borderRadius: 8, border: "1px solid #ddd6c4", outline: "none", boxSizing: "border-box", background: "rgba(255,255,255,0.7)", color: C.dark }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 8.5, color: "#a39c86", marginBottom: 3, fontWeight: 700 }}>To</div>
+                      <input type="date" value={draft.to} min={draft.from || undefined}
+                        onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))}
+                        style={{ width: "100%", fontSize: 10.5, padding: "7px 8px", borderRadius: 8, border: "1px solid #ddd6c4", outline: "none", boxSizing: "border-box", background: "rgba(255,255,255,0.7)", color: C.dark }} />
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* footer */}
+        <div style={{ display: "flex", gap: 8, padding: "14px 20px 20px", flexShrink: 0, borderTop: "1px solid rgba(255,255,255,0.5)", marginTop: 8 }}>
+          <motion.button
+            onClick={handleClearAll}
+            whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+            style={{ border: "1px solid #ddd6c4", background: "rgba(255,255,255,0.6)", borderRadius: 10, padding: "10px 14px", fontSize: 11, fontWeight: 800, color: C.dark, cursor: "pointer" }}
+          >
+            Clear all
+          </motion.button>
+          <motion.button
+            onClick={handleApply}
+            whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }}
+            style={{ flex: 1, border: "none", borderRadius: 10, padding: "10px 0", background: C.accent, color: "#fff", fontSize: 11.5, fontWeight: 900, cursor: "pointer" }}
+          >
+            Apply Filters · {matches.length} {matches.length === 1 ? "match" : "matches"}
+          </motion.button>
+        </div>
       </motion.div>
     </motion.div>
   );
