@@ -1,21 +1,26 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Header quick-shortcuts flyout (this update)
+## Header cleanup — only Focus Mode stays as a full button (this update)
 
-A new small **round arrow button** now sits at the very right end of the
-header, right after the streak badge / goal rings / sign-out icon:
+Of the five header nav buttons, the four **memor / Layout / Analytics /
+Setting** pills are removed from the main header row — **Focus Mode** is
+the only one left as a full labeled button next to the title pills. All
+four removed ones are still one tap away from the quick-shortcuts flyout
+(the round arrow button, below) — nothing is actually inaccessible, the
+header is just less cluttered now.
+
+## Header quick-shortcuts flyout (earlier update)
+
+A small **round arrow button** sits at the very right end of the header,
+right after the streak badge / goal rings / sign-out icon:
 
 - Tap it and a compact horizontal pill pops out (spring entrance, staggered
   icon pop-in, arrow rotates 180°) with one round avatar-style icon each for
-  **memor, Focus Mode, Layout, Analytics, Setting** — the same five
-  destinations as the always-visible nav pills earlier in the header.
-- This is purely an **extra** quick-access shortcut — the original memor /
-  Focus Mode / Layout / Analytics / Setting buttons stay exactly where they
-  were and work exactly as before. Nothing was hidden or removed.
-- Tapping any icon in the flyout does the same action as its full button
-  (opens Memories, toggles Focus Mode, switches to Layout/Analytics tab, or
-  opens Settings) and auto-closes the flyout; tapping the arrow again, or
-  anywhere outside the flyout, also closes it.
+  **memor, Focus Mode, Layout, Analytics, Setting**.
+- Tapping any icon in the flyout does the same action as the original full
+  button (opens Memories, toggles Focus Mode, switches to Layout/Analytics
+  tab, or opens Settings) and auto-closes the flyout; tapping the arrow
+  again, or anywhere outside the flyout, also closes it.
 
 Built with `framer-motion` (`AnimatePresence` + spring `motion.div`/
 `motion.button`, matching the stagger pattern already used by the Analytics

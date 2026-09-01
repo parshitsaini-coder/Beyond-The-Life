@@ -4984,7 +4984,6 @@ function BTLDashboardInner() {
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Goals</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Total Earn Money life :- ₹{state.totalEarnLife.toFixed(0)}</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed", borderColor: "#c0392b", color: "#c0392b" }}>Total Spend Money life :- ₹{(state.totalSpendLife || 0).toFixed(0)}</Oval>
-            <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={11} style={{ marginRight: 4 }} />memor</Oval>
             <motion.button
               onClick={() => setFocusMode((v) => !v)} title="Hide everything except today's incomplete goals"
               whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
@@ -4992,28 +4991,6 @@ function BTLDashboardInner() {
                 border: `1px solid ${focusMode ? C.accent : dashTheme.text}`, background: focusMode ? C.accent : dashTheme.bg, color: focusMode ? "#fff" : dashTheme.text,
                 borderRadius: 999, padding: "4px 14px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
               }}><Target size={14} /> Focus Mode</motion.button>
-            <motion.button
-              onClick={() => setTab("layout")} title="Rearrange, resize, and pin widgets"
-              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
-              style={{
-                border: `1px solid ${dashTheme.text}`, background: dashTheme.bg, color: dashTheme.text, borderRadius: 999, padding: "4px 14px",
-                display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-              }}><LayoutGrid size={14} /> Layout</motion.button>
-            <motion.button
-              onClick={() => setTab("analytics")}
-              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
-              style={{
-                border: `1px solid ${dashTheme.text}`, background: dashTheme.bg, color: dashTheme.text, borderRadius: 999, padding: "4px 14px",
-                display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-              }}><BarChart3 size={14} /> Analytics</motion.button>
-            <motion.button
-              onClick={() => setSettingsOpen(true)}
-              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
-              style={{
-                border: `1px solid ${dashTheme.text}`, background: dashTheme.bg, color: dashTheme.text, borderRadius: 999, padding: "4px 14px",
-                display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-              }}><Settings size={14} /> Setting</motion.button>
-
 
             <div style={{ flex: 1 }} />
 
