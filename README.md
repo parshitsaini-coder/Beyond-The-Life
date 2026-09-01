@@ -1,40 +1,6 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Header cleanup — only Focus Mode stays as a full button (this update)
-
-Of the five header nav buttons, the four **memor / Layout / Analytics /
-Setting** pills are removed from the main header row — **Focus Mode** is
-the only one left as a full labeled button next to the title pills. All
-four removed ones are still one tap away from the quick-shortcuts flyout
-(the round arrow button, below) — nothing is actually inaccessible, the
-header is just less cluttered now.
-
-## Header quick-shortcuts flyout (earlier update)
-
-A small **round arrow button** sits at the very right end of the header,
-right after the streak badge / goal rings / sign-out icon:
-
-- Tap it and a compact horizontal pill pops out (spring entrance, staggered
-  icon pop-in, arrow rotates 180°) with one round avatar-style icon each for
-  **memor, Focus Mode, Layout, Analytics, Setting**.
-- Tapping any icon in the flyout does the same action as the original full
-  button (opens Memories, toggles Focus Mode, switches to Layout/Analytics
-  tab, or opens Settings) and auto-closes the flyout; tapping the arrow
-  again, or anywhere outside the flyout, also closes it.
-
-Built with `framer-motion` (`AnimatePresence` + spring `motion.div`/
-`motion.button`, matching the stagger pattern already used by the Analytics
-Summary widget and Layout editor) and `lucide-react` icons already imported
-in this file — no new npm installs required. `scroll-reveal-libraries`
-(AOS) and `lightweight-3d-effects` (Vanta/Vanilla-Tilt) are built for
-scroll-driven marketing-page reveals and hover-tilt decoration rather than
-a small popover toggle, and `lottie-animations` needs a JSON animation
-asset that doesn't exist for this UI; framer-motion's spring physics —
-already the animation library for every other in-app control here — covers
-the arrow-rotate + stagger-pop-in look with zero new dependencies and stays
-visually consistent with the rest of the dashboard.
-
-## Drag-and-drop image upload (earlier update)
+## Drag-and-drop image upload (this update)
 
 Every image-attach spot in the app now also accepts **drag-and-drop**,
 not just tap-to-browse:

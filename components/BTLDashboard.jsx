@@ -635,6 +635,71 @@ function MilestoneBanner({ streak, visible }) {
   );
 }
 
+/* ---------------- QUICK-NAV FAB (this update) ----------------
+   Floating round arrow button, bottom-right corner of the dashboard
+   card. Tap it and it fans out — left, one at a time with a staggered
+   spring — into a row of round avatar/logo buttons for every top-nav
+   shortcut (memor, Focus Mode, Layout, Analytics, Setting), so they're
+   reachable from one thumb-friendly spot instead of the full header
+   row. Tap any avatar to jump straight there (closes itself after);
+   tap the arrow again (it flips 180°) to fold them back away. Persists
+   across every tab, not just the main dashboard. */
+function QuickNavFab({ tab, setTab, focusMode, setFocusMode, setMemOpen, setSettingsOpen }) {
+  const [open, setOpen] = useState(false);
+
+  const items = [
+    { key: "memor", label: "memor", icon: BookOpen, bg: C.blue, fg: C.dark, onClick: () => { setMemOpen(true); setOpen(false); } },
+    { key: "focus", label: "Focus Mode", icon: Target, bg: focusMode ? C.accent : "#fff", fg: focusMode ? "#fff" : C.dark, ring: !focusMode, onClick: () => { setFocusMode((v) => !v); setOpen(false); } },
+    { key: "layout", label: "Layout", icon: LayoutGrid, bg: C.dark, fg: "#fff", onClick: () => { setTab("layout"); setOpen(false); } },
+    { key: "analytics", label: "Analytics", icon: BarChart3, bg: C.dark, fg: "#fff", onClick: () => { setTab("analytics"); setOpen(false); } },
+    { key: "setting", label: "Setting", icon: Settings, bg: C.dark, fg: "#fff", onClick: () => { setSettingsOpen(true); setOpen(false); } },
+  ];
+
+  return (
+    <div style={{ position: "absolute", bottom: 16, right: 16, zIndex: 72, display: "flex", alignItems: "center", gap: 8 }}>
+      <AnimatePresence>
+        {open && items.map((it, i) => (
+          <motion.button
+            key={it.key}
+            title={it.label}
+            onClick={it.onClick}
+            initial={{ opacity: 0, scale: 0.3, x: 24 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            exit={{ opacity: 0, scale: 0.3, x: 24, transition: { delay: 0 } }}
+            transition={{ type: "spring", stiffness: 440, damping: 24, delay: i * 0.045 }}
+            whileHover={{ y: -3, scale: 1.1 }}
+            whileTap={{ scale: 0.92 }}
+            style={{
+              width: 34, height: 34, borderRadius: "50%", cursor: "pointer",
+              border: it.ring ? `1.5px solid ${C.text}` : "none",
+              background: it.bg, color: it.fg,
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              boxShadow: "0 3px 10px rgba(37,36,34,0.22)",
+            }}
+          >
+            <it.icon size={15} />
+          </motion.button>
+        ))}
+      </AnimatePresence>
+      <motion.button
+        onClick={() => setOpen((v) => !v)}
+        title={open ? "Close quick nav" : "Quick nav"}
+        whileHover={{ scale: 1.08 }}
+        whileTap={{ scale: 0.88 }}
+        animate={{ rotate: open ? 180 : 0 }}
+        transition={{ type: "spring", stiffness: 400, damping: 22 }}
+        style={{
+          width: 40, height: 40, borderRadius: "50%", border: "none", cursor: "pointer", flexShrink: 0,
+          background: C.dark, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 4px 14px rgba(37,36,34,0.32)",
+        }}
+      >
+        <ChevronLeft size={18} />
+      </motion.button>
+    </div>
+  );
+}
+
 /* ---------------- GOOGLE SIGN-IN (LOCAL MOCK) ---------------- */
 function GoogleMark() {
   return (
@@ -4608,7 +4673,6 @@ function BTLDashboardInner() {
   const [moneyModal, setMoneyModal] = useState(null); // { mode: "earn"|"spend", amount } | null
   const [focusMode, setFocusMode] = useState(false);
   const [saveStatus, setSaveStatus] = useState("idle"); // "idle" | "saving" | "saved"
-  const [quickMenuOpen, setQuickMenuOpen] = useState(false); // header shortcut flyout (arrow toggle)
   const fileRef = useRef(null);
   const loaded = useRef(false);
 
@@ -4902,17 +4966,6 @@ function BTLDashboardInner() {
     calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} textStyle={state.layout.textStyles?.calendar} />,
   };
 
-  /* Header "quick shortcuts" flyout (arrow toggle, far right of header) —
-     same five destinations as the always-visible nav pills, just as a
-     compact avatar-style row for fast access. */
-  const QUICK_MENU_ITEMS = [
-    { id: "memor", label: "memor", icon: <BookOpen size={15} />, bg: C.blue, onClick: () => setMemOpen(true) },
-    { id: "focusMode", label: "Focus Mode", icon: <Target size={15} />, bg: C.accent, onClick: () => setFocusMode((v) => !v) },
-    { id: "layout", label: "Layout", icon: <LayoutGrid size={15} />, bg: C.dark, onClick: () => setTab("layout") },
-    { id: "analytics", label: "Analytics", icon: <BarChart3 size={15} />, bg: C.dark, onClick: () => setTab("analytics") },
-    { id: "setting", label: "Setting", icon: <Settings size={15} />, bg: C.dark, onClick: () => setSettingsOpen(true) },
-  ];
-
   return (
     <DashboardThemeCtx.Provider value={dashTheme}>
     <div style={{
@@ -4963,6 +5016,11 @@ function BTLDashboardInner() {
       <ShineOverlay active={shine} />
       <Confetti active={confetti} />
       <MilestoneBanner streak={milestoneStreak} visible={!!milestoneStreak} />
+      <QuickNavFab
+        tab={tab} setTab={setTab}
+        focusMode={focusMode} setFocusMode={setFocusMode}
+        setMemOpen={setMemOpen} setSettingsOpen={setSettingsOpen}
+      />
 
       {tab === "layout" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
@@ -4984,6 +5042,7 @@ function BTLDashboardInner() {
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Goals</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Total Earn Money life :- ₹{state.totalEarnLife.toFixed(0)}</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed", borderColor: "#c0392b", color: "#c0392b" }}>Total Spend Money life :- ₹{(state.totalSpendLife || 0).toFixed(0)}</Oval>
+            <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={11} style={{ marginRight: 4 }} />memor</Oval>
             <motion.button
               onClick={() => setFocusMode((v) => !v)} title="Hide everything except today's incomplete goals"
               whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
@@ -4991,6 +5050,28 @@ function BTLDashboardInner() {
                 border: `1px solid ${focusMode ? C.accent : dashTheme.text}`, background: focusMode ? C.accent : dashTheme.bg, color: focusMode ? "#fff" : dashTheme.text,
                 borderRadius: 999, padding: "4px 14px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
               }}><Target size={14} /> Focus Mode</motion.button>
+            <motion.button
+              onClick={() => setTab("layout")} title="Rearrange, resize, and pin widgets"
+              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
+              style={{
+                border: `1px solid ${dashTheme.text}`, background: dashTheme.bg, color: dashTheme.text, borderRadius: 999, padding: "4px 14px",
+                display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
+              }}><LayoutGrid size={14} /> Layout</motion.button>
+            <motion.button
+              onClick={() => setTab("analytics")}
+              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
+              style={{
+                border: `1px solid ${dashTheme.text}`, background: dashTheme.bg, color: dashTheme.text, borderRadius: 999, padding: "4px 14px",
+                display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
+              }}><BarChart3 size={14} /> Analytics</motion.button>
+            <motion.button
+              onClick={() => setSettingsOpen(true)}
+              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
+              style={{
+                border: `1px solid ${dashTheme.text}`, background: dashTheme.bg, color: dashTheme.text, borderRadius: 999, padding: "4px 14px",
+                display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
+              }}><Settings size={14} /> Setting</motion.button>
+
 
             <div style={{ flex: 1 }} />
 
@@ -5009,64 +5090,6 @@ function BTLDashboardInner() {
                 style={{ border: "none", background: "transparent", cursor: "pointer", color: "#b3ac99" }}>
                 <LogOut size={15} />
               </motion.button>
-
-              <div style={{ position: "relative" }}>
-                <motion.button
-                  onClick={() => setQuickMenuOpen((v) => !v)}
-                  title="Quick shortcuts"
-                  whileHover={{ y: -2 }} whileTap={{ scale: 1.15 }}
-                  animate={{ rotate: quickMenuOpen ? 180 : 0 }}
-                  transition={{ type: "spring", stiffness: 420, damping: 22 }}
-                  style={{
-                    border: `1px solid ${dashTheme.text}`, background: quickMenuOpen ? C.dark : dashTheme.bg,
-                    color: quickMenuOpen ? "#fff" : dashTheme.text, borderRadius: "50%", width: 26, height: 26,
-                    display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0,
-                  }}
-                >
-                  <ChevronDown size={15} />
-                </motion.button>
-
-                <AnimatePresence>
-                  {quickMenuOpen && (
-                    <>
-                      {/* click-outside catcher */}
-                      <div onClick={() => setQuickMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 55 }} />
-                      <motion.div
-                        initial={{ opacity: 0, x: 18, scale: 0.9 }}
-                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                        exit={{ opacity: 0, x: 18, scale: 0.9 }}
-                        transition={{ type: "spring", stiffness: 380, damping: 26 }}
-                        style={{
-                          position: "absolute", top: "calc(100% + 10px)", right: 0, zIndex: 60,
-                          display: "flex", alignItems: "center", gap: 7, padding: "7px 10px",
-                          background: "#fff", border: `1px solid ${C.dark}22`, borderRadius: 999,
-                          boxShadow: "0 10px 28px rgba(37,36,34,0.18)",
-                        }}
-                      >
-                        {QUICK_MENU_ITEMS.map((item, i) => (
-                          <motion.button
-                            key={item.id}
-                            onClick={() => { item.onClick(); setQuickMenuOpen(false); }}
-                            title={item.label}
-                            initial={{ opacity: 0, scale: 0.5, y: -8 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.5, y: -8 }}
-                            transition={{ delay: i * 0.045, type: "spring", stiffness: 440, damping: 20 }}
-                            whileHover={{ y: -3, scale: 1.1 }} whileTap={{ scale: 0.9 }}
-                            style={{
-                              width: 32, height: 32, borderRadius: "50%", border: "none",
-                              background: item.bg, color: "#fff",
-                              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-                            }}
-                          >
-                            {item.icon}
-                          </motion.button>
-                        ))}
-                      </motion.div>
-                    </>
-                  )}
-                </AnimatePresence>
-              </div>
             </div>
           </div>
 
