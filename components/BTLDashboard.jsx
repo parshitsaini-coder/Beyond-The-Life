@@ -7,7 +7,8 @@ import {
   GripVertical, Pin, PinOff, LayoutGrid, RefreshCw, Maximize2, Move,
   CheckCircle2, Wallet, StickyNote, Camera, Sparkles, Download, ZoomIn, CalendarDays,
   ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft,
-  Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter
+  Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
+  Type, Palette, Bold, Baseline
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
@@ -76,6 +77,41 @@ function rowSpanForHeight(h) {
 const LEGACY_SIZE_SPAN = { sm: 2, md: 3, lg: 6 };
 const LEGACY_SIZE_HEIGHT = { sm: 150, md: 215, lg: 260 };
 
+/* ---- Text style controls (Customize Layout → Text Style) ----
+   Applied to the free-text widgets (Life Big Goals, Life Rules, Daily
+   Goals, Entry Goals): font size scale, color, font family, bold.
+   `scale` multiplies each widget's own base font sizes in JS (not via
+   CSS em-chains) so nested elements never compound unexpectedly. */
+const TEXT_SCALE_MIN = 0.85;
+const TEXT_SCALE_MAX = 1.6;
+const TEXT_SCALE_STEP = 0.05;
+const FONT_OPTIONS = [
+  { id: "", label: "Default", stack: "Inter, system-ui, sans-serif", preview: "Aa" },
+  { id: "poppins", label: "Poppins", stack: "'Poppins', Inter, system-ui, sans-serif", preview: "Aa" },
+  { id: "playfair", label: "Playfair", stack: "'Playfair Display', Georgia, serif", preview: "Aa" },
+  { id: "mono", label: "Mono", stack: "'JetBrains Mono', 'Courier New', monospace", preview: "Aa" },
+];
+const fontStackFor = (id) => (FONT_OPTIONS.find((f) => f.id === id) || FONT_OPTIONS[0]).stack;
+const TEXT_COLOR_OPTIONS = [
+  { id: "", label: "Default", swatch: C.text },
+  { id: "#252422", label: "Charcoal", swatch: "#252422" },
+  { id: "#fca311", label: "Amber", swatch: "#fca311" },
+  { id: "#4a7c59", label: "Green", swatch: "#4a7c59" },
+  { id: "#3d5a80", label: "Blue", swatch: "#3d5a80" },
+  { id: "#c0392b", label: "Red", swatch: "#c0392b" },
+];
+const DEFAULT_TEXT_STYLE = { scale: 1, color: "", font: "", bold: false };
+function normalizeTextStyle(ts) {
+  const t = ts && typeof ts === "object" ? ts : {};
+  const scale = Math.min(TEXT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, Number(t.scale) || 1));
+  return {
+    scale: Math.round(scale * 100) / 100,
+    color: typeof t.color === "string" ? t.color : "",
+    font: typeof t.font === "string" ? t.font : "",
+    bold: !!t.bold,
+  };
+}
+
 const DEFAULT_LAYOUT = {
   order: WIDGETS.map((w) => w.id),
   sizes: {
@@ -83,12 +119,16 @@ const DEFAULT_LAYOUT = {
     earnMoney: { w: 3, h: 240 }, analyticsSummary: { w: 6, h: 260 },
   },
   pinned: { analyticsSummary: false },
+  hidden: {},
+  textStyle: DEFAULT_TEXT_STYLE,
 };
 function defaultLayout() {
   return {
     order: DEFAULT_LAYOUT.order.slice(),
     sizes: Object.fromEntries(Object.entries(DEFAULT_LAYOUT.sizes).map(([k, v]) => [k, { ...v }])),
     pinned: { ...DEFAULT_LAYOUT.pinned },
+    hidden: {},
+    textStyle: { ...DEFAULT_TEXT_STYLE },
   };
 }
 /* Normalizes any stored size value into a valid { w, h } object:
@@ -120,7 +160,9 @@ function ensureLayoutDefaults(s) {
   const sizes = {};
   WIDGETS.forEach((w) => { sizes[w.id] = normalizeSize(rawSizes[w.id]); });
   const pinned = { ...DEFAULT_LAYOUT.pinned, ...(layout.pinned || {}) };
-  return { ...s, layout: { order, sizes, pinned } };
+  const hidden = { ...(layout.hidden || {}) };
+  const textStyle = normalizeTextStyle(layout.textStyle);
+  return { ...s, layout: { order, sizes, pinned, hidden, textStyle } };
 }
 
 /* ---------------- GOAL MANAGEMENT: categories & priorities ---------------- */
@@ -442,10 +484,19 @@ function LoginScreen({ onLogin }) {
 /* ---------------- READ-ONLY LIST (Life Big Goals / Life Rules) ----------------
    Adding/removing items now happens only from Settings, so this widget is a
    clean, fixed display card — no inline input row eating into the layout. */
-function TextList({ title, items }) {
+function TextList({ title, items, textStyle }) {
+  const ts = normalizeTextStyle(textStyle);
+  const itemFontSize = Math.round(13 * ts.scale);
+  const titleFontSize = Math.round(15 * (1 + (ts.scale - 1) * 0.5)); // scale the pill title more gently so it never overflows
+  const itemFontFamily = ts.font ? fontStackFor(ts.font) : undefined;
+  const itemColor = ts.color || undefined;
+  const itemWeight = ts.bold ? 800 : 700;
   return (
     <div style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", flexDirection: "column" }}>
-      <Oval style={{ display: "block", margin: "0 auto 8px", background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 15, fontWeight: 900 }}>{title}</Oval>
+      <Oval style={{
+        display: "block", margin: "0 auto 8px", background: C.dark, color: C.bg, borderColor: C.dark,
+        fontSize: titleFontSize, fontWeight: 900, fontFamily: itemFontFamily,
+      }}>{title}</Oval>
       <div style={{
         border: `1px solid ${C.text}`, borderRadius: 8, flex: 1, overflowY: "auto", background: "#fff",
       }} className="btl-scroll">
@@ -457,7 +508,8 @@ function TextList({ title, items }) {
         {items.map((t, i) => (
           <div key={i} style={{
             display: "flex", alignItems: "center",
-            padding: "8px 10px", borderBottom: i < items.length - 1 ? "1px solid #f0ece0" : "none", fontSize: 13, fontWeight: 700,
+            padding: "8px 10px", borderBottom: i < items.length - 1 ? "1px solid #f0ece0" : "none",
+            fontSize: itemFontSize, fontWeight: itemWeight, color: itemColor, fontFamily: itemFontFamily,
           }}>
             <span>{t}</span>
           </div>
@@ -468,7 +520,13 @@ function TextList({ title, items }) {
 }
 
 /* ---------------- DAILY / EXTRY GOAL CHECKLIST (pro: categories, priority, recurring, subtasks) ---------------- */
-function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent }) {
+function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent, textStyle }) {
+  const ts = normalizeTextStyle(textStyle);
+  const itemFontSize = Math.round(11 * ts.scale);
+  const subFontSize = Math.round(10 * ts.scale);
+  const itemFontFamily = ts.font ? fontStackFor(ts.font) : undefined;
+  const itemColorOverride = ts.color || undefined;
+  const itemWeight = ts.bold ? 700 : undefined;
   const [val, setVal] = useState("");
   const [category, setCategory] = useState("other");
   const [priority, setPriority] = useState("medium");
@@ -531,7 +589,13 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                   >{g.icon || "＋"}</span>
                   {pickerFor === g.id && <EmojiPicker onPick={(e) => onSetIcon(g.id, e)} onClose={() => setPickerFor(null)} />}
                 </span>
-                <span style={{ flex: 1, fontSize: 11, cursor: "pointer" }} onClick={() => onToggle(g.id)}>{g.text}</span>
+                <span
+                  style={{
+                    flex: 1, fontSize: itemFontSize, cursor: "pointer", fontFamily: itemFontFamily,
+                    fontWeight: itemWeight, color: !g.done && itemColorOverride ? itemColorOverride : undefined,
+                  }}
+                  onClick={() => onToggle(g.id)}
+                >{g.text}</span>
                 <span title={`Priority: ${prio.label}`} style={{
                   fontSize: 8, fontWeight: 900, color: "#fff", background: prio.color,
                   borderRadius: 4, padding: "1px 4px", flexShrink: 0,
@@ -553,7 +617,11 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                     <Tag size={9} style={{ verticalAlign: -1, marginRight: 3 }} />{cat.label}
                   </div>
                   {(g.subtasks || []).map((s) => (
-                    <label key={s.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, padding: "2px 0", cursor: "pointer", textDecoration: s.done ? "line-through" : "none", color: s.done ? "#b3ac99" : C.text }}>
+                    <label key={s.id} style={{
+                      display: "flex", alignItems: "center", gap: 5, fontSize: subFontSize, padding: "2px 0", cursor: "pointer",
+                      textDecoration: s.done ? "line-through" : "none", fontFamily: itemFontFamily, fontWeight: itemWeight,
+                      color: s.done ? "#b3ac99" : (itemColorOverride || C.text),
+                    }}>
                       <input type="checkbox" checked={s.done} onChange={() => onToggleSubtask(g.id, s.id)} style={{ width: 11, height: 11, accentColor: accent }} />
                       {s.text}
                     </label>
@@ -2595,7 +2663,10 @@ function ResizableWidgetTile({ id, index, size, editable, gridRef, onResize, onD
    Layout tab); omit them for the plain read-only dashboard view. */
 function WidgetGrid({ layout, widgets, editable = false, onResize, onReorder }) {
   const gridRef = useRef(null);
-  const visible = layout.order.filter((id) => id !== "analyticsSummary" || layout.pinned.analyticsSummary);
+  const visible = layout.order.filter((id) => {
+    if (id === "analyticsSummary") return !!layout.pinned.analyticsSummary;
+    return !(layout.hidden || {})[id];
+  });
 
   const handleDropOnto = (draggedId, overId) => {
     if (!onReorder || draggedId === overId) return;
@@ -2638,7 +2709,10 @@ function WidgetGrid({ layout, widgets, editable = false, onResize, onReorder }) 
 /* ---------------- LAYOUT EDITOR (drag to reorder / pin, drag corners below to free-form resize) ---------------- */
 function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
   const togglePin = (id) => onChange((l) => ({ ...l, pinned: { ...l.pinned, [id]: !l.pinned[id] } }));
+  const toggleHidden = (id) => onChange((l) => ({ ...l, hidden: { ...(l.hidden || {}), [id]: !(l.hidden || {})[id] } }));
   const onWidgetResize = (id, size) => onChange((l) => ({ ...l, sizes: { ...l.sizes, [id]: normalizeSize(size) } }));
+  const updateTextStyle = (patch) => onChange((l) => ({ ...l, textStyle: normalizeTextStyle({ ...normalizeTextStyle(l.textStyle), ...patch }) }));
+  const resetTextStyle = () => onChange((l) => ({ ...l, textStyle: { ...DEFAULT_TEXT_STYLE } }));
 
   return (
     <motion.div
@@ -2683,6 +2757,8 @@ function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
             const size = normalizeSize(layout.sizes[id]);
             const isAnalytics = id === "analyticsSummary";
             const isPinned = !!layout.pinned[id];
+            const isHidden = !!(layout.hidden || {})[id];
+            const shown = isAnalytics ? isPinned : !isHidden;
             return (
               <Reorder.Item
                 key={id} value={id}
@@ -2690,18 +2766,26 @@ function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
                 style={{
                   display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
                   background: "rgba(255,255,255,0.85)", border: "1px solid #ece7d8", borderRadius: 8,
-                  listStyle: "none", opacity: isAnalytics && !isPinned ? 0.6 : 1,
+                  listStyle: "none", opacity: shown ? 1 : 0.6,
                 }}
               >
                 <GripVertical size={14} style={{ color: "#b3ac99", cursor: "grab", flexShrink: 0 }} />
                 <span style={{ fontSize: 11, fontWeight: 700, color: C.dark, flex: 1 }}>{w.label}</span>
-                {isAnalytics && (
+                {isAnalytics ? (
                   <motion.button whileTap={{ scale: 0.92 }} onClick={() => togglePin(id)} title={isPinned ? "Unpin from dashboard" : "Pin to dashboard"} style={{
                     border: `1px solid ${isPinned ? C.accent : "#ddd6c4"}`, background: isPinned ? C.accent : "#fff",
                     color: isPinned ? "#fff" : "#8a8579", borderRadius: 999, padding: "3px 9px",
                     display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
                   }}>
                     {isPinned ? <Pin size={11} /> : <PinOff size={11} />} {isPinned ? "Pinned" : "Not shown"}
+                  </motion.button>
+                ) : (
+                  <motion.button whileTap={{ scale: 0.92 }} onClick={() => toggleHidden(id)} title={isHidden ? "Show on dashboard" : "Hide from dashboard"} style={{
+                    border: `1px solid ${isHidden ? "#ddd6c4" : C.accent}`, background: isHidden ? "#fff" : C.accent,
+                    color: isHidden ? "#8a8579" : "#fff", borderRadius: 999, padding: "3px 9px",
+                    display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
+                  }}>
+                    {isHidden ? <EyeOff size={11} /> : <Eye size={11} />} {isHidden ? "Hidden" : "Visible"}
                   </motion.button>
                 )}
                 <span style={{
@@ -2713,12 +2797,205 @@ function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
           })}
         </Reorder.Group>
 
+        <TextStylePanel textStyle={layout.textStyle} onChange={updateTextStyle} onReset={resetTextStyle} />
+
         <div style={{ fontSize: 10, color: "#8a8579", margin: "16px 0 8px", lineHeight: 1.4, display: "flex", alignItems: "center", gap: 5 }}>
           <Maximize2 size={11} style={{ flexShrink: 0 }} />
           Drag the <Move size={10} style={{ verticalAlign: -1 }} /> top-left grip and drop a widget onto another one to
           reorder them, or drag the ⋰ bottom-right corner to resize freely — width snaps to the grid, height is free-form (120–500px).
         </div>
         <WidgetGrid layout={layout} widgets={widgets} editable onResize={onWidgetResize} onReorder={(newOrder) => onChange((l) => ({ ...l, order: newOrder }))} />
+      </div>
+    </motion.div>
+  );
+}
+
+/* ---------------- TEXT STYLE PANEL (font size / color / font / bold for widget text) ----------------
+   Lives inside the Customize Layout tab. Controls state.layout.textStyle,
+   which the free-text widgets (Life Big Goals, Life Rules, Daily Goals,
+   Entry Goals) read to scale/recolor/re-style their own text — each
+   widget applies the multiplier to its own base sizes in JS, so nested
+   text never compounds the way a blanket CSS em-scale would. */
+function TextStylePanel({ textStyle, onChange, onReset }) {
+  const ts = normalizeTextStyle(textStyle);
+  const scalePct = Math.round(ts.scale * 100);
+  const isDefault = ts.scale === 1 && !ts.color && !ts.font && !ts.bold;
+  const previewFamily = ts.font ? fontStackFor(ts.font) : "Inter, system-ui, sans-serif";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 320, damping: 28 }}
+      style={{
+        marginTop: 14, border: "1px solid #ece7d8", borderRadius: 10, background: "rgba(255,255,255,0.7)",
+        overflow: "hidden",
+      }}
+    >
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6, padding: "8px 10px",
+        borderBottom: "1px solid #ece7d8", background: "rgba(255,252,242,0.6)",
+      }}>
+        <Type size={12} style={{ color: C.dark, flexShrink: 0 }} />
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark, flex: 1 }}>Text Style</span>
+        {!isDefault && (
+          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={onReset} title="Reset text style" style={{
+            border: "1px solid #ddd6c4", background: "#fff", color: "#8a8579", borderRadius: 999,
+            padding: "2px 8px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
+          }}><RefreshCw size={10} /> Reset</motion.button>
+        )}
+      </div>
+
+      <div style={{ padding: "10px 10px 12px" }}>
+        {/* live preview */}
+        <motion.div
+          key={`${scalePct}-${ts.color}-${ts.font}-${ts.bold}`}
+          initial={{ opacity: 0.4 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}
+          style={{
+            border: "1px solid #ece7d8", borderRadius: 8, background: "#fff", padding: "10px 12px", marginBottom: 12,
+          }}
+        >
+          <div style={{
+            fontSize: Math.round(13 * ts.scale), fontWeight: ts.bold ? 800 : 700,
+            color: ts.color || C.text, fontFamily: previewFamily, lineHeight: 1.4,
+          }}>
+            Become financially free
+          </div>
+          <div style={{ fontSize: 9, color: "#b3ac99", marginTop: 4 }}>Live preview — applies to Big Goals, Life Rules & goal lists</div>
+        </motion.div>
+
+        {/* font size */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", marginBottom: 5, display: "flex", alignItems: "center", gap: 4 }}>
+            <Baseline size={10} /> Font size
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <motion.button
+              whileHover={{ y: -1 }} whileTap={{ scale: 0.9 }}
+              onClick={() => onChange({ scale: Math.max(TEXT_SCALE_MIN, Math.round((ts.scale - TEXT_SCALE_STEP) * 100) / 100) })}
+              disabled={ts.scale <= TEXT_SCALE_MIN}
+              title="Decrease text size"
+              style={{
+                border: `1px solid ${C.text}`, background: C.bg, color: C.text, borderRadius: 8, width: 26, height: 26,
+                display: "flex", alignItems: "center", justifyContent: "center", cursor: ts.scale <= TEXT_SCALE_MIN ? "not-allowed" : "pointer",
+                fontSize: 11, fontWeight: 900, opacity: ts.scale <= TEXT_SCALE_MIN ? 0.4 : 1, flexShrink: 0,
+              }}
+            >A-</motion.button>
+            <div style={{ flex: 1, position: "relative", height: 6, background: "#ece7d8", borderRadius: 999 }}>
+              <motion.div
+                layout
+                style={{
+                  position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 999, background: C.accent,
+                  width: `${((ts.scale - TEXT_SCALE_MIN) / (TEXT_SCALE_MAX - TEXT_SCALE_MIN)) * 100}%`,
+                }}
+                transition={{ type: "spring", stiffness: 300, damping: 26 }}
+              />
+            </div>
+            <motion.button
+              whileHover={{ y: -1 }} whileTap={{ scale: 0.9 }}
+              onClick={() => onChange({ scale: Math.min(TEXT_SCALE_MAX, Math.round((ts.scale + TEXT_SCALE_STEP) * 100) / 100) })}
+              disabled={ts.scale >= TEXT_SCALE_MAX}
+              title="Increase text size"
+              style={{
+                border: `1px solid ${C.text}`, background: C.bg, color: C.text, borderRadius: 8, width: 26, height: 26,
+                display: "flex", alignItems: "center", justifyContent: "center", cursor: ts.scale >= TEXT_SCALE_MAX ? "not-allowed" : "pointer",
+                fontSize: 12, fontWeight: 900, opacity: ts.scale >= TEXT_SCALE_MAX ? 0.4 : 1, flexShrink: 0,
+              }}
+            >A+</motion.button>
+            <span style={{ fontSize: 10, fontWeight: 800, color: C.dark, minWidth: 34, textAlign: "right", flexShrink: 0 }}>{scalePct}%</span>
+          </div>
+        </div>
+
+        {/* bold */}
+        <div style={{ marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", display: "flex", alignItems: "center", gap: 4 }}>
+            <Bold size={10} /> Bold text
+          </div>
+          <motion.button
+            whileTap={{ scale: 0.94 }}
+            onClick={() => onChange({ bold: !ts.bold })}
+            title={ts.bold ? "Turn off bold" : "Turn on bold"}
+            style={{
+              border: "none", borderRadius: 999, width: 36, height: 20, padding: 2, cursor: "pointer",
+              background: ts.bold ? C.accent : "#ddd6c4", display: "flex", justifyContent: ts.bold ? "flex-end" : "flex-start",
+            }}
+          >
+            <motion.span layout transition={{ type: "spring", stiffness: 500, damping: 30 }} style={{
+              width: 16, height: 16, borderRadius: "50%", background: "#fff", display: "block",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+            }} />
+          </motion.button>
+        </div>
+
+        {/* font family */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", marginBottom: 5, display: "flex", alignItems: "center", gap: 4 }}>
+            <Type size={10} /> Font
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {FONT_OPTIONS.map((f) => {
+              const active = (ts.font || "") === f.id;
+              return (
+                <motion.button
+                  key={f.id || "default"}
+                  whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
+                  onClick={() => onChange({ font: f.id })}
+                  title={f.label}
+                  style={{
+                    border: `1px solid ${active ? C.accent : "#ddd6c4"}`, background: active ? "#fff7ec" : "#fff",
+                    color: active ? C.accent : C.text, borderRadius: 8, padding: "5px 10px", cursor: "pointer",
+                    display: "flex", flexDirection: "column", alignItems: "center", gap: 1, minWidth: 52,
+                  }}
+                >
+                  <span style={{ fontFamily: f.stack, fontSize: 13, fontWeight: 700, lineHeight: 1 }}>{f.preview}</span>
+                  <span style={{ fontSize: 8, fontWeight: 700 }}>{f.label}</span>
+                </motion.button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* color */}
+        <div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", marginBottom: 5, display: "flex", alignItems: "center", gap: 4 }}>
+            <Palette size={10} /> Text color
+          </div>
+          <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+            {TEXT_COLOR_OPTIONS.map((c) => {
+              const active = (ts.color || "") === c.id;
+              return (
+                <motion.button
+                  key={c.id || "default"}
+                  whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.9 }}
+                  onClick={() => onChange({ color: c.id })}
+                  title={c.label}
+                  style={{
+                    width: 22, height: 22, borderRadius: "50%", cursor: "pointer", padding: 0,
+                    background: c.id ? c.swatch : "#fff",
+                    border: active ? `2px solid ${C.dark}` : "1px solid #ddd6c4",
+                    boxShadow: active ? "0 0 0 2px rgba(37,36,34,0.12)" : "none",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  {!c.id && <X size={11} style={{ color: "#b3ac99" }} />}
+                </motion.button>
+              );
+            })}
+            <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }} title="Custom color">
+              <span style={{
+                width: 22, height: 22, borderRadius: "50%", overflow: "hidden", position: "relative",
+                border: "1px solid #ddd6c4", background: "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)",
+                display: "inline-block",
+              }}>
+                <input
+                  type="color"
+                  value={/^#[0-9a-fA-F]{6}$/.test(ts.color) ? ts.color : "#403d39"}
+                  onChange={(e) => onChange({ color: e.target.value })}
+                  style={{ position: "absolute", inset: -4, width: 30, height: 30, border: "none", cursor: "pointer", opacity: 0.001 }}
+                />
+              </span>
+              <span style={{ fontSize: 9, color: "#8a8579", fontWeight: 700 }}>Custom</span>
+            </label>
+          </div>
+        </div>
       </div>
     </motion.div>
   );
@@ -3359,10 +3636,10 @@ function BTLDashboardInner() {
      a corner handle resizes the exact same widget the user sees on
      their normal dashboard. */
   const widgetsMap = {
-    bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} />,
-    lifeRules: <TextList title="Life Rules" items={state.lifeRules} />,
-    dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />,
-    extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />,
+    bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} textStyle={state.layout.textStyle} />,
+    lifeRules: <TextList title="Life Rules" items={state.lifeRules} textStyle={state.layout.textStyle} />,
+    dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyle} />,
+    extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyle} />,
     earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} />,
   };

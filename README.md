@@ -1,6 +1,34 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Filter popup (this update)
+## Text Style + Hide widgets (this update)
+
+**Customize Layout** now has a **Text Style** panel (below the reorder
+list) with a live preview and:
+- **Font size** — A-/A+ stepper with an animated fill bar, 85%–160%,
+  applied to each widget's own base sizes in JS (not a blanket CSS
+  scale), so titles/items/subtasks keep their relative proportions
+  instead of all flattening to one size.
+- **Bold** — a spring-animated toggle switch.
+- **Font** — Default (Inter), Poppins, Playfair Display, or Mono
+  (JetBrains Mono), loaded via Google Fonts in `app/layout.jsx`.
+- **Color** — 5 preset swatches + a custom color picker.
+
+These apply to the free-text widgets: **Life Big Goals, Life Rules,
+Daily Goals, Entry Goals**. A **Reset** button (only shown once you've
+changed something) restores the defaults.
+
+Every widget (except Analytics Summary, which already had its own
+Pin/Unpin) now also has a **Visible / Hidden** eye toggle in the
+reorder list, so you can hide any widget from the dashboard without
+losing its position or size — toggle it back on any time.
+
+Both settings live in `state.layout.textStyle` / `state.layout.hidden`
+and are saved to Firestore per-user like the rest of the layout, so
+they persist across devices. Built with `framer-motion` — the same
+spring-entrance, whileHover/whileTap micro-interactions already used
+throughout Customize Layout — no new npm installs required.
+
+## Filter popup (earlier update)
 
 Money Management now has a **Filter** button (next to Summary/Reset) that
 opens a glass popup (Glassmorphism 2.0, spring entrance) with three
