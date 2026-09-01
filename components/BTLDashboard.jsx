@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, useContext, createContext, Component } from "react";
 import {
   Settings, X, Plus, Smile, Meh, Frown, Image as ImageIcon,
   LogOut, Trash2, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Flame, Target, BookOpen,
@@ -121,6 +121,76 @@ function normalizeTextStyles(map) {
   TEXT_STYLE_WIDGET_IDS.forEach((id) => { out[id] = normalizeTextStyle(src[id]); });
   return out;
 }
+
+/* ---- Custom Theme (Settings → 🎨 Theme) ----
+   Four independently-styleable scopes, on top of the existing
+   per-widget Text Style feature above:
+     - dashboard : overall dashboard background + text color
+     - analytics : Analytics tab background, text color, text size, font, bold
+     - widgets   : per-widget background color (id -> { bg }); size is the
+                   existing layout.sizes (drag in Layout tab, or the Small/
+                   Medium/Large presets in the Widgets theme panel)
+     - focusMode : Focus Mode background, text color, text size, font, bold
+   Stored in state.theme and saved to Firestore per-user like everything
+   else. Reuses TEXT_COLOR_OPTIONS / FONT_OPTIONS / fontStackFor from the
+   Text Style feature so both systems stay visually consistent. */
+const THEME_SCALE_MIN = 0.85;
+const THEME_SCALE_MAX = 1.4;
+const THEME_SCALE_STEP = 0.05;
+const BG_COLOR_OPTIONS = [
+  { id: "", label: "Default", swatch: C.bg },
+  { id: "#ffffff", label: "White", swatch: "#ffffff" },
+  { id: "#f4f1e8", label: "Cream", swatch: "#f4f1e8" },
+  { id: "#eef2f6", label: "Mist", swatch: "#eef2f6" },
+  { id: "#252422", label: "Charcoal", swatch: "#252422" },
+  { id: "#0f172a", label: "Navy", swatch: "#0f172a" },
+];
+const WIDGET_COLOR_OPTIONS = [
+  { id: "", label: "Default", swatch: "#ffffff" },
+  { id: "#fff7ec", label: "Amber", swatch: "#fff7ec" },
+  { id: "#eef6f0", label: "Mint", swatch: "#eef6f0" },
+  { id: "#eef2f9", label: "Sky", swatch: "#eef2f9" },
+  { id: "#fdeef0", label: "Blush", swatch: "#fdeef0" },
+  { id: "#252422", label: "Dark", swatch: "#252422" },
+];
+const WIDGET_SIZE_PRESETS = {
+  sm: { w: 2, h: 150 },
+  md: { w: 3, h: 215 },
+  lg: { w: 6, h: 320 },
+};
+function normalizeScopeTheme(t) {
+  const src = t && typeof t === "object" ? t : {};
+  const scale = Math.min(THEME_SCALE_MAX, Math.max(THEME_SCALE_MIN, Number(src.scale) || 1));
+  return {
+    bg: typeof src.bg === "string" ? src.bg : "",
+    text: typeof src.text === "string" ? src.text : "",
+    font: typeof src.font === "string" ? src.font : "",
+    bold: !!src.bold,
+    scale: Math.round(scale * 100) / 100,
+  };
+}
+function normalizeWidgetThemes(map) {
+  const src = map && typeof map === "object" ? map : {};
+  const out = {};
+  WIDGETS.forEach((w) => { out[w.id] = { bg: typeof src[w.id]?.bg === "string" ? src[w.id].bg : "" }; });
+  return out;
+}
+function normalizeTheme(t) {
+  const src = t && typeof t === "object" ? t : {};
+  return {
+    dashboard: normalizeScopeTheme(src.dashboard),
+    analytics: normalizeScopeTheme(src.analytics),
+    focusMode: normalizeScopeTheme(src.focusMode),
+    widgets: normalizeWidgetThemes(src.widgets),
+  };
+}
+function defaultTheme() { return normalizeTheme({}); }
+/* React context so deeply-nested atoms (Oval pills, widget titles, etc.)
+   pick up the current Dashboard theme's bg/text without every component
+   needing the prop threaded through — explicit inline `style` overrides
+   passed to those components still win, so nothing already styled
+   on purpose changes. */
+const DashboardThemeCtx = createContext({ bg: C.bg, text: C.text });
 
 const DEFAULT_LAYOUT = {
   order: WIDGETS.map((w) => w.id),
@@ -251,6 +321,7 @@ function makeDefaultState() {
     streak: 0,
     lastCompletedDate: null,
     layout: defaultLayout(),
+    theme: defaultTheme(),
   };
 }
 
@@ -289,7 +360,8 @@ function resizeImageDataUrl(file, maxDim = 480, quality = 0.72) {
    had to change. */
 async function loadState(user) {
   const s = await loadStateFromFirestore(user, makeDefaultState, ensureGoalDefaults);
-  return ensureLayoutDefaults(s);
+  const withLayout = ensureLayoutDefaults(s);
+  return { ...withLayout, theme: normalizeTheme(withLayout.theme) };
 }
 async function saveState(user, state) {
   return saveStateToFirestore(user, state);
@@ -301,6 +373,7 @@ async function saveState(user, state) {
    used throughout as the nav / pill language. */
 function Oval({ children, style, onClick, ...rest }) {
   const interactive = typeof onClick === "function";
+  const dt = useContext(DashboardThemeCtx);
   return (
     <motion.div
       {...rest}
@@ -310,8 +383,8 @@ function Oval({ children, style, onClick, ...rest }) {
       transition={{ type: "spring", stiffness: 420, damping: 22 }}
       style={{
         display: "inline-flex", alignItems: "center", justifyContent: "center",
-        border: `1px solid ${C.text}`, borderRadius: 999, padding: "4px 14px",
-        fontSize: 14, fontWeight: 800, background: C.bg, color: C.text,
+        border: `1px solid ${dt.text}`, borderRadius: 999, padding: "4px 14px",
+        fontSize: 14, fontWeight: 800, background: dt.bg, color: dt.text,
         whiteSpace: "nowrap", ...style,
       }}
     >
@@ -499,7 +572,7 @@ function LoginScreen({ onLogin }) {
 /* ---------------- READ-ONLY LIST (Life Big Goals / Life Rules) ----------------
    Adding/removing items now happens only from Settings, so this widget is a
    clean, fixed display card — no inline input row eating into the layout. */
-function TextList({ title, items, textStyle }) {
+function TextList({ title, items, textStyle, cardBg }) {
   const ts = normalizeTextStyle(textStyle);
   const itemFontSize = Math.round(13 * ts.scale);
   const titleFontSize = Math.round(15 * (1 + (ts.scale - 1) * 0.5)); // scale the pill title more gently so it never overflows
@@ -513,7 +586,7 @@ function TextList({ title, items, textStyle }) {
         fontSize: titleFontSize, fontWeight: 900, fontFamily: itemFontFamily,
       }}>{title}</Oval>
       <div style={{
-        border: `1px solid ${C.text}`, borderRadius: 8, flex: 1, overflowY: "auto", background: "#fff",
+        border: `1px solid ${C.text}`, borderRadius: 8, flex: 1, overflowY: "auto", background: cardBg || "#fff",
       }} className="btl-scroll">
         {items.length === 0 && (
           <div style={{ padding: 10, fontSize: 12, color: "#b3ac99", textAlign: "center" }}>
@@ -535,7 +608,7 @@ function TextList({ title, items, textStyle }) {
 }
 
 /* ---------------- DAILY / EXTRY GOAL CHECKLIST (pro: categories, priority, recurring, subtasks) ---------------- */
-function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent, textStyle }) {
+function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent, textStyle, cardBg }) {
   const ts = normalizeTextStyle(textStyle);
   const itemFontSize = Math.round(11 * ts.scale);
   const subFontSize = Math.round(10 * ts.scale);
@@ -581,7 +654,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
       <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, flexShrink: 0 }}>{title}</Oval>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: "#fff" }} className="btl-scroll">
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: cardBg || "#fff" }} className="btl-scroll">
         {items.map((g) => {
           const cat = catInfo(g.category);
           const prio = prioInfo(g.priority);
@@ -712,8 +785,8 @@ function MoodBtn({ active, onClick, children, title }) {
 }
 
 /* ---------------- SETTINGS PANEL CONTENT (rendered inside the glass modal) ---------------- */
-function SettingsTab({ state, addItem, removeItem, editItem, onClose }) {
-  const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | null
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset }) {
+  const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
   const [editVal, setEditVal] = useState("");
@@ -760,6 +833,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose }) {
         <Oval onClick={() => setMode("extry")} style={{ cursor: "pointer", background: mode === "extry" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "extry" ? "#fff" : C.text }}>Add extry</Oval>
         <Oval onClick={() => setMode("bigGoals")} style={{ cursor: "pointer", background: mode === "bigGoals" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "bigGoals" ? "#fff" : C.text }}>Add Big Goal</Oval>
         <Oval onClick={() => setMode("lifeRules")} style={{ cursor: "pointer", background: mode === "lifeRules" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "lifeRules" ? "#fff" : C.text }}>Add Rule</Oval>
+        <Oval onClick={() => setMode(mode === "theme" ? null : "theme")} style={{ cursor: "pointer", background: mode === "theme" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "theme" ? "#fff" : C.text }}><Palette size={11} style={{ marginRight: 4 }} />Theme</Oval>
         <div style={{ flex: 1 }} />
         <motion.span whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onClose} title="Close" style={{
           borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
@@ -768,58 +842,72 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose }) {
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 14 }} className="btl-scroll">
-        {mode && (
-          <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-            <input
-              autoFocus value={val} onChange={(e) => setVal(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && submit()}
-              placeholder={MODE_PLACEHOLDER[mode]}
-              style={{ flex: 1, fontSize: 11, padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", background: "rgba(255,255,255,0.75)" }}
-            />
-            <button onClick={submit} style={{ border: "none", background: C.accent, color: "#fff", borderRadius: 6, padding: "0 10px", cursor: "pointer", fontSize: 11 }}>Add</button>
-          </div>
-        )}
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          {[
-            { key: "dailyGoals", label: "Daily Goals" },
-            { key: "extryGoals", label: "Extry Goals" },
-            { key: "bigGoals", label: "Life Big Goals", plain: true },
-            { key: "lifeRules", label: "Life Rules", plain: true },
-          ].map((col) => (
-            <div key={col.key}>
-              <div style={{ fontSize: 10, fontWeight: 800, color: C.dark, marginBottom: 4 }}>{col.label}</div>
-              <div style={{ border: "1px solid rgba(64,61,57,0.15)", borderRadius: 8, maxHeight: 150, overflowY: "auto", background: "rgba(255,255,255,0.5)" }} className="btl-scroll">
-                {(state[col.key] || []).map((item, i) => {
-                  const id = col.plain ? i : item.id;
-                  const text = col.plain ? item : item.text;
-                  const isEditing = editing && editing.colKey === col.key && editing.id === id;
-                  return (
-                    <div key={id} style={{
-                      display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6,
-                      padding: "4px 7px", fontSize: 10, borderBottom: "1px solid rgba(240,236,224,0.8)",
-                    }}>
-                      {isEditing ? (
-                        <input
-                          autoFocus value={editVal} onChange={(e) => setEditVal(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditing(null); }}
-                          onBlur={saveEdit}
-                          style={{ flex: 1, fontSize: 10, padding: "2px 5px", borderRadius: 4, border: "1px solid #ddd6c4", outline: "none" }}
-                        />
-                      ) : (
-                        <span style={{ flex: 1 }}>{text}</span>
-                      )}
-                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                        {!isEditing && <Pencil size={11} style={{ cursor: "pointer", color: "#a39c86" }} onClick={() => startEdit(col.key, id, text)} />}
-                        <Trash2 size={11} style={{ cursor: "pointer", color: "#d8a29a" }} onClick={() => removeItem(col.key, id)} />
-                      </div>
-                    </div>
-                  );
-                })}
+        {mode === "theme" ? (
+          <ThemePanel
+            theme={state.theme}
+            layoutSizes={state.layout?.sizes}
+            onScopeChange={onThemeScopeChange}
+            onScopeReset={onThemeScopeReset}
+            onWidgetChange={onWidgetThemeChange}
+            onWidgetReset={onWidgetThemeReset}
+            onWidgetSize={onWidgetSizePreset}
+          />
+        ) : (
+          <>
+            {mode && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                <input
+                  autoFocus value={val} onChange={(e) => setVal(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submit()}
+                  placeholder={MODE_PLACEHOLDER[mode]}
+                  style={{ flex: 1, fontSize: 11, padding: "6px 8px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", background: "rgba(255,255,255,0.75)" }}
+                />
+                <button onClick={submit} style={{ border: "none", background: C.accent, color: "#fff", borderRadius: 6, padding: "0 10px", cursor: "pointer", fontSize: 11 }}>Add</button>
               </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              {[
+                { key: "dailyGoals", label: "Daily Goals" },
+                { key: "extryGoals", label: "Extry Goals" },
+                { key: "bigGoals", label: "Life Big Goals", plain: true },
+                { key: "lifeRules", label: "Life Rules", plain: true },
+              ].map((col) => (
+                <div key={col.key}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: C.dark, marginBottom: 4 }}>{col.label}</div>
+                  <div style={{ border: "1px solid rgba(64,61,57,0.15)", borderRadius: 8, maxHeight: 150, overflowY: "auto", background: "rgba(255,255,255,0.5)" }} className="btl-scroll">
+                    {(state[col.key] || []).map((item, i) => {
+                      const id = col.plain ? i : item.id;
+                      const text = col.plain ? item : item.text;
+                      const isEditing = editing && editing.colKey === col.key && editing.id === id;
+                      return (
+                        <div key={id} style={{
+                          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6,
+                          padding: "4px 7px", fontSize: 10, borderBottom: "1px solid rgba(240,236,224,0.8)",
+                        }}>
+                          {isEditing ? (
+                            <input
+                              autoFocus value={editVal} onChange={(e) => setEditVal(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditing(null); }}
+                              onBlur={saveEdit}
+                              style={{ flex: 1, fontSize: 10, padding: "2px 5px", borderRadius: 4, border: "1px solid #ddd6c4", outline: "none" }}
+                            />
+                          ) : (
+                            <span style={{ flex: 1 }}>{text}</span>
+                          )}
+                          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                            {!isEditing && <Pencil size={11} style={{ cursor: "pointer", color: "#a39c86" }} onClick={() => startEdit(col.key, id, text)} />}
+                            <Trash2 size={11} style={{ cursor: "pointer", color: "#d8a29a" }} onClick={() => removeItem(col.key, id)} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
       </div>
 
       <div style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: "#b3ac99", padding: "6px 0", borderTop: "1px solid rgba(240,236,224,0.8)" }}>
@@ -1066,6 +1154,8 @@ function moodToNum(m) { return m === "happy" ? 1 : m === "neutral" ? 0.5 : m ===
 
 function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
   const [showShare, setShowShare] = useState(false);
+  const at = normalizeScopeTheme(state.theme?.analytics);
+  const atFontFamily = at.font ? fontStackFor(at.font) : undefined;
   const moodData = useMemo(() => {
     const arr = [];
     for (let i = 29; i >= 0; i--) {
@@ -1222,12 +1312,14 @@ function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
 
   return (
     <div style={{
-      border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff",
+      border: `1px solid ${C.text}`, borderRadius: 10, background: at.bg || "#fff",
       display: "flex", flexDirection: "column", height: "100%",
+      color: at.text || undefined, fontFamily: atFontFamily, fontWeight: at.bold ? 600 : undefined,
+      zoom: at.scale !== 1 ? at.scale : undefined,
     }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
-        borderBottom: `1px solid ${C.text}`, background: C.bg, borderRadius: "10px 10px 0 0",
+        borderBottom: `1px solid ${C.text}`, background: at.bg || C.bg, borderRadius: "10px 10px 0 0",
       }}>
         <BarChart3 size={14} color={C.dark} />
         <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Analytics & Insights</span>
@@ -1729,14 +1821,14 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
    Clicking "Add" no longer commits directly — it opens the glass MoneyEntryModal
    popup (see below), which for Earn just offers an optional photo attach, and
    for Spend requires picking a category before it can be confirmed with "Done". */
-function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFile, fileRef, todayMood, onSetMood, textStyle }) {
+function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFile, fileRef, todayMood, onSetMood, textStyle, cardBg }) {
   const ts = normalizeTextStyle(textStyle);
   const labelFontSize = Math.round(10 * ts.scale);
   const notesFontSize = Math.round(9 * ts.scale);
   const tsFontFamily = ts.font ? fontStackFor(ts.font) : undefined;
   const tsWeight = ts.bold ? 900 : 800;
   return (
-    <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box", display: "flex", flexDirection: "column" }} className="btl-scroll">
+    <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: cardBg || "#fff", width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box", display: "flex", flexDirection: "column" }} className="btl-scroll">
       <div style={{ display: "flex", gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: tsWeight, fontSize: labelFontSize, marginBottom: 4, color: ts.color || "#4a7c59", fontFamily: tsFontFamily }}>Earn Money Today :-</div>
@@ -2488,12 +2580,12 @@ function MoneyFilterModal({ entries, filters, onApply, onClose }) {
 }
 
 /* ---------------- ANALYTICS SUMMARY (pinnable widget) ---------------- */
-function AnalyticsSummaryWidget({ state, onOpen }) {
+function AnalyticsSummaryWidget({ state, onOpen, cardBg }) {
   const dailyPct = state.dailyGoals.length ? (state.dailyGoals.filter((g) => g.done).length / state.dailyGoals.length) * 100 : 0;
   const extryPct = state.extryGoals.length ? (state.extryGoals.filter((g) => g.done).length / state.extryGoals.length) * 100 : 0;
   const overallPct = (dailyPct + extryPct) / 2;
   return (
-    <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 10, background: "#fff", width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 10, background: cardBg || "#fff", width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: C.dark, display: "flex", alignItems: "center", gap: 5 }}><BarChart3 size={13} /> Analytics Summary</span>
         <Oval className="btl-oval-btn" onClick={onOpen} style={{ cursor: "pointer", fontSize: 9, padding: "2px 9px" }}>Open full <ChevronRight size={11} style={{ marginLeft: 2 }} /></Oval>
@@ -3072,6 +3164,365 @@ function TextStylePanel({ widgetLabel, textStyle, onChange, onReset }) {
         </div>
       </div>
     </motion.div>
+  );
+}
+
+/* ================================================================
+   CUSTOM THEME (Settings → 🎨 Theme)
+   Four scoped editors — Dashboard, Analytics, Widgets, Focus Mode —
+   sharing the same swatch/stepper/toggle atoms as the Text Style panel
+   above so the whole app feels like one design system. Dashboard only
+   exposes background + text color (it's the app's overall chrome);
+   Analytics and Focus Mode additionally get text size / font / bold,
+   same controls as the per-widget Text Style feature; Widgets gets a
+   background color swatch plus a Small/Medium/Large size preset per
+   widget (fine-grained free-form resize is still available by dragging
+   in the Layout tab — this is just a quick, no-drag alternative).
+   ================================================================ */
+
+/* Small circular swatch row, reused for both background and text color
+   pickers across every scope — mirrors the "Text color" row already
+   used in TextStylePanel above, generalized to take any option list. */
+function ColorSwatchRow({ icon, label, options, value, onChange, defaultSwatchHex = "#403d39" }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", marginBottom: 5, display: "flex", alignItems: "center", gap: 4 }}>
+        {icon} {label}
+      </div>
+      <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+        {options.map((c) => {
+          const active = (value || "") === c.id;
+          return (
+            <motion.button
+              key={c.id || "default"}
+              whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.9 }}
+              onClick={() => onChange(c.id)}
+              title={c.label}
+              style={{
+                width: 22, height: 22, borderRadius: "50%", cursor: "pointer", padding: 0,
+                background: c.id ? c.swatch : "#fff",
+                border: active ? `2px solid ${C.dark}` : "1px solid #ddd6c4",
+                boxShadow: active ? "0 0 0 2px rgba(37,36,34,0.12)" : "none",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              {!c.id && <X size={11} style={{ color: "#b3ac99" }} />}
+            </motion.button>
+          );
+        })}
+        <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }} title="Custom color">
+          <span style={{
+            width: 22, height: 22, borderRadius: "50%", overflow: "hidden", position: "relative",
+            border: "1px solid #ddd6c4", background: "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)",
+            display: "inline-block",
+          }}>
+            <input
+              type="color"
+              value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : defaultSwatchHex}
+              onChange={(e) => onChange(e.target.value)}
+              style={{ position: "absolute", inset: -4, width: 30, height: 30, border: "none", cursor: "pointer", opacity: 0.001 }}
+            />
+          </span>
+          <span style={{ fontSize: 9, color: "#8a8579", fontWeight: 700 }}>Custom</span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+/* One scope's full editor: preview card + background color + text color,
+   and (for Analytics / Focus Mode) text size / bold / font too. */
+function ScopeThemeEditor({ title, icon, value, onChange, onReset, includeTextControls }) {
+  const v = normalizeScopeTheme(value);
+  const isDefault = !v.bg && !v.text && (!includeTextControls || (!v.font && !v.bold && v.scale === 1));
+  const previewFamily = v.font ? fontStackFor(v.font) : "Inter, system-ui, sans-serif";
+  const scalePct = Math.round(v.scale * 100);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+      transition={{ type: "spring", stiffness: 320, damping: 28 }}
+      style={{ border: "1px solid #ece7d8", borderRadius: 10, background: "rgba(255,255,255,0.7)", overflow: "hidden" }}
+    >
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6, padding: "8px 10px",
+        borderBottom: "1px solid #ece7d8", background: "rgba(255,252,242,0.6)",
+      }}>
+        {icon}
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>{title}</span>
+        <div style={{ flex: 1 }} />
+        {!isDefault && (
+          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={onReset} title={`Reset ${title} theme`} style={{
+            border: "1px solid #ddd6c4", background: "#fff", color: "#8a8579", borderRadius: 999,
+            padding: "2px 8px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
+          }}><RefreshCw size={10} /> Reset</motion.button>
+        )}
+      </div>
+
+      <div style={{ padding: "10px 10px 12px" }}>
+        {/* live preview */}
+        <motion.div
+          key={`${title}-${v.bg}-${v.text}-${v.font}-${v.bold}-${scalePct}`}
+          initial={{ opacity: 0.4 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}
+          style={{
+            border: "1px solid #ece7d8", borderRadius: 8, padding: "10px 12px", marginBottom: 12,
+            background: v.bg || "#fff",
+          }}
+        >
+          <div style={{
+            fontSize: Math.round(13 * v.scale), fontWeight: v.bold ? 800 : 700,
+            color: v.text || C.text, fontFamily: previewFamily, lineHeight: 1.4,
+          }}>
+            {title} preview
+          </div>
+          <div style={{ fontSize: 9, color: v.text ? v.text : "#b3ac99", opacity: v.text ? 0.7 : 1, marginTop: 4 }}>
+            Only {title} will use this look
+          </div>
+        </motion.div>
+
+        <ColorSwatchRow icon={<Palette size={10} />} label="Background color" options={BG_COLOR_OPTIONS} value={v.bg} onChange={(bg) => onChange({ bg })} defaultSwatchHex="#ffffff" />
+        <ColorSwatchRow icon={<Baseline size={10} />} label="Text color" options={TEXT_COLOR_OPTIONS} value={v.text} onChange={(text) => onChange({ text })} />
+
+        {includeTextControls && (
+          <>
+            {/* font size */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", marginBottom: 5, display: "flex", alignItems: "center", gap: 4 }}>
+                <Baseline size={10} /> Text size
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <motion.button
+                  whileHover={{ y: -1 }} whileTap={{ scale: 0.9 }}
+                  onClick={() => onChange({ scale: Math.max(THEME_SCALE_MIN, Math.round((v.scale - THEME_SCALE_STEP) * 100) / 100) })}
+                  disabled={v.scale <= THEME_SCALE_MIN}
+                  title="Decrease text size"
+                  style={{
+                    border: `1px solid ${C.text}`, background: C.bg, color: C.text, borderRadius: 8, width: 26, height: 26,
+                    display: "flex", alignItems: "center", justifyContent: "center", cursor: v.scale <= THEME_SCALE_MIN ? "not-allowed" : "pointer",
+                    fontSize: 11, fontWeight: 900, opacity: v.scale <= THEME_SCALE_MIN ? 0.4 : 1, flexShrink: 0,
+                  }}
+                >A-</motion.button>
+                <div style={{ flex: 1, position: "relative", height: 6, background: "#ece7d8", borderRadius: 999 }}>
+                  <motion.div
+                    layout
+                    style={{
+                      position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 999, background: C.accent,
+                      width: `${((v.scale - THEME_SCALE_MIN) / (THEME_SCALE_MAX - THEME_SCALE_MIN)) * 100}%`,
+                    }}
+                    transition={{ type: "spring", stiffness: 300, damping: 26 }}
+                  />
+                </div>
+                <motion.button
+                  whileHover={{ y: -1 }} whileTap={{ scale: 0.9 }}
+                  onClick={() => onChange({ scale: Math.min(THEME_SCALE_MAX, Math.round((v.scale + THEME_SCALE_STEP) * 100) / 100) })}
+                  disabled={v.scale >= THEME_SCALE_MAX}
+                  title="Increase text size"
+                  style={{
+                    border: `1px solid ${C.text}`, background: C.bg, color: C.text, borderRadius: 8, width: 26, height: 26,
+                    display: "flex", alignItems: "center", justifyContent: "center", cursor: v.scale >= THEME_SCALE_MAX ? "not-allowed" : "pointer",
+                    fontSize: 12, fontWeight: 900, opacity: v.scale >= THEME_SCALE_MAX ? 0.4 : 1, flexShrink: 0,
+                  }}
+                >A+</motion.button>
+                <span style={{ fontSize: 10, fontWeight: 800, color: C.dark, minWidth: 34, textAlign: "right", flexShrink: 0 }}>{scalePct}%</span>
+              </div>
+            </div>
+
+            {/* bold */}
+            <div style={{ marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", display: "flex", alignItems: "center", gap: 4 }}>
+                <Bold size={10} /> Bold text
+              </div>
+              <motion.button
+                whileTap={{ scale: 0.94 }}
+                onClick={() => onChange({ bold: !v.bold })}
+                title={v.bold ? "Turn off bold" : "Turn on bold"}
+                style={{
+                  border: "none", borderRadius: 999, width: 36, height: 20, padding: 2, cursor: "pointer",
+                  background: v.bold ? C.accent : "#ddd6c4", display: "flex", justifyContent: v.bold ? "flex-end" : "flex-start",
+                }}
+              >
+                <motion.span layout transition={{ type: "spring", stiffness: 500, damping: 30 }} style={{
+                  width: 16, height: 16, borderRadius: "50%", background: "#fff", display: "block",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+                }} />
+              </motion.button>
+            </div>
+
+            {/* font family */}
+            <div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", marginBottom: 5, display: "flex", alignItems: "center", gap: 4 }}>
+                <Type size={10} /> Font
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {FONT_OPTIONS.map((f) => {
+                  const active = (v.font || "") === f.id;
+                  return (
+                    <motion.button
+                      key={f.id || "default"}
+                      whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
+                      onClick={() => onChange({ font: f.id })}
+                      title={f.label}
+                      style={{
+                        border: `1px solid ${active ? C.accent : "#ddd6c4"}`, background: active ? "#fff7ec" : "#fff",
+                        color: active ? C.accent : C.text, borderRadius: 8, padding: "5px 10px", cursor: "pointer",
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 1, minWidth: 52,
+                      }}
+                    >
+                      <span style={{ fontFamily: f.stack, fontSize: 13, fontWeight: 700, lineHeight: 1 }}>{f.preview}</span>
+                      <span style={{ fontSize: 8, fontWeight: 700 }}>{f.label}</span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+/* Per-widget background color + Small/Medium/Large size preset list. */
+function WidgetsThemeEditor({ widgetThemes, layoutSizes, onWidgetChange, onWidgetReset, onWidgetSize }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+      transition={{ type: "spring", stiffness: 320, damping: 28 }}
+      style={{ border: "1px solid #ece7d8", borderRadius: 10, background: "rgba(255,255,255,0.7)", overflow: "hidden" }}
+    >
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6, padding: "8px 10px",
+        borderBottom: "1px solid #ece7d8", background: "rgba(255,252,242,0.6)",
+      }}>
+        <LayoutGrid size={12} style={{ color: C.dark }} />
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>Widgets — color &amp; size</span>
+      </div>
+      <div style={{ padding: "6px 10px 10px" }}>
+        <div style={{ fontSize: 9, color: "#8a8579", marginBottom: 8, lineHeight: 1.5 }}>
+          Pick a background color and a size preset per widget. For pixel-precise sizing, drag a widget's corner in the <b>Layout</b> tab instead.
+        </div>
+        {WIDGETS.map((w) => {
+          const wt = widgetThemes?.[w.id] || { bg: "" };
+          const size = normalizeSize(layoutSizes?.[w.id]);
+          const sizeKey = size.w <= 2 ? "sm" : size.w >= 5 ? "lg" : "md";
+          return (
+            <div key={w.id} style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "7px 0",
+              borderBottom: "1px solid #f0ece0", flexWrap: "wrap",
+            }}>
+              <span style={{ flex: 1, minWidth: 90, fontSize: 10, fontWeight: 800, color: C.dark }}>{w.label}</span>
+              <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                {WIDGET_COLOR_OPTIONS.map((c) => {
+                  const active = (wt.bg || "") === c.id;
+                  return (
+                    <motion.button
+                      key={c.id || "default"} whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+                      onClick={() => onWidgetChange(w.id, { bg: c.id })} title={c.label}
+                      style={{
+                        width: 16, height: 16, borderRadius: "50%", padding: 0, cursor: "pointer",
+                        background: c.id ? c.swatch : "#fff",
+                        border: active ? `2px solid ${C.dark}` : "1px solid #ddd6c4",
+                      }}
+                    >{!c.id && <X size={9} style={{ color: "#b3ac99" }} />}</motion.button>
+                  );
+                })}
+                <label style={{ cursor: "pointer" }} title="Custom color">
+                  <span style={{
+                    width: 16, height: 16, borderRadius: "50%", display: "inline-block", position: "relative",
+                    overflow: "hidden", border: "1px solid #ddd6c4",
+                    background: "conic-gradient(red,yellow,lime,cyan,blue,magenta,red)",
+                  }}>
+                    <input
+                      type="color"
+                      value={/^#[0-9a-fA-F]{6}$/.test(wt.bg) ? wt.bg : "#ffffff"}
+                      onChange={(e) => onWidgetChange(w.id, { bg: e.target.value })}
+                      style={{ position: "absolute", inset: -6, width: 26, height: 26, border: "none", cursor: "pointer", opacity: 0.001 }}
+                    />
+                  </span>
+                </label>
+              </div>
+              <select
+                value={sizeKey}
+                onChange={(e) => onWidgetSize(w.id, e.target.value)}
+                style={{
+                  fontSize: 9, fontWeight: 700, border: "1px solid #ddd6c4", borderRadius: 6,
+                  padding: "3px 5px", background: "#fff", color: C.text, cursor: "pointer",
+                }}
+              >
+                <option value="sm">Small</option>
+                <option value="md">Medium</option>
+                <option value="lg">Large</option>
+              </select>
+              {wt.bg && (
+                <motion.button whileTap={{ scale: 0.9 }} onClick={() => onWidgetReset(w.id)} title="Reset color" style={{
+                  border: "none", background: "none", cursor: "pointer", color: "#b3ac99", display: "flex", alignItems: "center",
+                }}><RefreshCw size={11} /></motion.button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
+/* Top-level Theme tab shown inside Settings — four sub-sections. */
+function ThemePanel({ theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize }) {
+  const [section, setSection] = useState("dashboard");
+  const t = normalizeTheme(theme);
+  const SECTIONS = [
+    { key: "dashboard", label: "Dashboard", icon: <LayoutGrid size={10} /> },
+    { key: "analytics", label: "Analytics", icon: <BarChart3 size={10} /> },
+    { key: "widgets", label: "Widgets", icon: <Palette size={10} /> },
+    { key: "focusMode", label: "Focus Mode", icon: <Target size={10} /> },
+  ];
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+        {SECTIONS.map((s) => (
+          <motion.button
+            key={s.key} whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
+            onClick={() => setSection(s.key)}
+            style={{
+              display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, fontWeight: 800,
+              padding: "5px 11px", borderRadius: 999,
+              border: `1px solid ${section === s.key ? C.accent : C.text}`,
+              background: section === s.key ? C.accent : "rgba(255,255,255,0.6)",
+              color: section === s.key ? "#fff" : C.text,
+            }}
+          >{s.icon} {s.label}</motion.button>
+        ))}
+      </div>
+      <AnimatePresence mode="wait">
+        {section === "dashboard" && (
+          <ScopeThemeEditor
+            key="dashboard" title="Dashboard" icon={<LayoutGrid size={12} style={{ color: C.dark }} />}
+            value={t.dashboard} onChange={(p) => onScopeChange("dashboard", p)} onReset={() => onScopeReset("dashboard")}
+            includeTextControls={false}
+          />
+        )}
+        {section === "analytics" && (
+          <ScopeThemeEditor
+            key="analytics" title="Analytics" icon={<BarChart3 size={12} style={{ color: C.dark }} />}
+            value={t.analytics} onChange={(p) => onScopeChange("analytics", p)} onReset={() => onScopeReset("analytics")}
+            includeTextControls={true}
+          />
+        )}
+        {section === "widgets" && (
+          <WidgetsThemeEditor
+            key="widgets" widgetThemes={t.widgets} layoutSizes={layoutSizes}
+            onWidgetChange={onWidgetChange} onWidgetReset={onWidgetReset} onWidgetSize={onWidgetSize}
+          />
+        )}
+        {section === "focusMode" && (
+          <ScopeThemeEditor
+            key="focusMode" title="Focus Mode" icon={<Target size={12} style={{ color: C.dark }} />}
+            value={t.focusMode} onChange={(p) => onScopeChange("focusMode", p)} onReset={() => onScopeReset("focusMode")}
+            includeTextControls={true}
+          />
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -3705,22 +4156,59 @@ function BTLDashboardInner() {
   const updateLayout = (fn) => update((s) => { s.layout = fn(s.layout); return s; });
   const resetLayout = () => update((s) => { s.layout = defaultLayout(); return s; });
 
+  /* ---- Theme (Settings → 🎨 Theme) handlers ---- */
+  const setThemeScope = (scope, patch) => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme[scope] = normalizeScopeTheme({ ...theme[scope], ...patch });
+    s.theme = theme;
+    return s;
+  });
+  const resetThemeScope = (scope) => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme[scope] = normalizeScopeTheme({});
+    s.theme = theme;
+    return s;
+  });
+  const setWidgetTheme = (id, patch) => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.widgets = { ...theme.widgets, [id]: { ...theme.widgets[id], ...patch } };
+    s.theme = theme;
+    return s;
+  });
+  const resetWidgetTheme = (id) => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.widgets = { ...theme.widgets, [id]: { bg: "" } };
+    s.theme = theme;
+    return s;
+  });
+  const setWidgetSizePreset = (id, presetKey) => update((s) => {
+    const preset = WIDGET_SIZE_PRESETS[presetKey] || WIDGET_SIZE_PRESETS.md;
+    s.layout = { ...s.layout, sizes: { ...s.layout.sizes, [id]: { ...preset } } };
+    return s;
+  });
+
+  const theme = normalizeTheme(state.theme);
+  const dashTheme = { bg: theme.dashboard.bg || C.bg, text: theme.dashboard.text || C.text };
+  const fm = theme.focusMode;
+  const fmFontFamily = fm.font ? fontStackFor(fm.font) : undefined;
+
   /* Shared widget content map — used by both the plain dashboard grid
      and the live resizable preview inside the Layout tab, so dragging
      a corner handle resizes the exact same widget the user sees on
      their normal dashboard. */
   const widgetsMap = {
-    bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} textStyle={state.layout.textStyles?.bigGoals} />,
-    lifeRules: <TextList title="Life Rules" items={state.lifeRules} textStyle={state.layout.textStyles?.lifeRules} />,
-    dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyles?.dailyGoals} />,
-    extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} />,
-    earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} />,
-    analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} />,
+    bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} textStyle={state.layout.textStyles?.bigGoals} cardBg={theme.widgets.bigGoals?.bg} />,
+    lifeRules: <TextList title="Life Rules" items={state.lifeRules} textStyle={state.layout.textStyles?.lifeRules} cardBg={theme.widgets.lifeRules?.bg} />,
+    dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyles?.dailyGoals} cardBg={theme.widgets.dailyGoals?.bg} />,
+    extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} cardBg={theme.widgets.extryGoals?.bg} />,
+    earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} cardBg={theme.widgets.earnMoney?.bg} />,
+    analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} />,
   };
 
   return (
+    <DashboardThemeCtx.Provider value={dashTheme}>
     <div style={{
-      fontFamily: "Inter, system-ui, sans-serif", background: C.bg, color: C.text,
+      fontFamily: "Inter, system-ui, sans-serif", background: dashTheme.bg, color: dashTheme.text,
       height: "100%", maxHeight: "100%", borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
       border: `1px solid #ece7d8`, fontSize: 11, boxSizing: "border-box",
       display: "flex", flexDirection: "column",
@@ -3793,30 +4281,31 @@ function BTLDashboardInner() {
               onClick={() => setFocusMode((v) => !v)} title="Hide everything except today's incomplete goals"
               whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
               style={{
-                border: `1px solid ${focusMode ? C.accent : C.text}`, background: focusMode ? C.accent : C.bg, color: focusMode ? "#fff" : C.text,
+                border: `1px solid ${focusMode ? C.accent : dashTheme.text}`, background: focusMode ? C.accent : dashTheme.bg, color: focusMode ? "#fff" : dashTheme.text,
                 borderRadius: 999, padding: "4px 14px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
               }}><Target size={14} /> Focus Mode</motion.button>
             <motion.button
               onClick={() => setTab("layout")} title="Rearrange, resize, and pin widgets"
               whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
               style={{
-                border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
+                border: `1px solid ${dashTheme.text}`, background: dashTheme.bg, color: dashTheme.text, borderRadius: 999, padding: "4px 14px",
                 display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
               }}><LayoutGrid size={14} /> Layout</motion.button>
             <motion.button
               onClick={() => setTab("analytics")}
               whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
               style={{
-                border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
+                border: `1px solid ${dashTheme.text}`, background: dashTheme.bg, color: dashTheme.text, borderRadius: 999, padding: "4px 14px",
                 display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
               }}><BarChart3 size={14} /> Analytics</motion.button>
             <motion.button
               onClick={() => setSettingsOpen(true)}
               whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
               style={{
-                border: `1px solid ${C.text}`, background: C.bg, borderRadius: 999, padding: "4px 14px",
+                border: `1px solid ${dashTheme.text}`, background: dashTheme.bg, color: dashTheme.text, borderRadius: 999, padding: "4px 14px",
                 display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
               }}><Settings size={14} /> Setting</motion.button>
+
 
             <div style={{ flex: 1 }} />
 
@@ -3839,21 +4328,27 @@ function BTLDashboardInner() {
           </div>
 
           {focusMode ? (
-            <>
+            <div style={{
+              flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
+              background: fm.bg || undefined, color: fm.text || undefined,
+              fontFamily: fmFontFamily, fontWeight: fm.bold ? 600 : undefined,
+              zoom: fm.scale !== 1 ? fm.scale : undefined,
+              borderRadius: fm.bg ? 10 : 0, padding: fm.bg ? 10 : 0, boxSizing: "border-box",
+            }}>
               {/* ---------- FOCUS MODE ---------- */}
               <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12, flexShrink: 0 }}>
                 FOCUS MODE — TODAY'S REMAINING GOALS
               </Oval>
               <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
-                <GoalChecklist title="Daily Goals" items={state.dailyGoals.filter((g) => !g.done)} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />
-                <GoalChecklist title="Extry Goals" items={state.extryGoals.filter((g) => !g.done)} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />
+                <GoalChecklist title="Daily Goals" items={state.dailyGoals.filter((g) => !g.done)} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} cardBg={theme.widgets.dailyGoals?.bg} />
+                <GoalChecklist title="Extry Goals" items={state.extryGoals.filter((g) => !g.done)} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} cardBg={theme.widgets.extryGoals?.bg} />
               </div>
               {state.dailyGoals.filter((g) => !g.done).length === 0 && state.extryGoals.filter((g) => !g.done).length === 0 && (
-                <div style={{ textAlign: "center", padding: 20, color: "#a39c86", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
+                <div style={{ textAlign: "center", padding: 20, color: fm.text || "#a39c86", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                   🎉 Sab kuch done! Focus Mode se bahar aane ke liye button dabao.
                 </div>
               )}
-            </>
+            </div>
           ) : (
             /* ---------- CUSTOMIZABLE DASHBOARD (reorder/resize via the Layout tab; read-only here) ---------- */
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }} className="btl-scroll">
@@ -3873,7 +4368,12 @@ function BTLDashboardInner() {
               display: "flex", alignItems: "center", justifyContent: "center",
               backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)",
             }} onClick={() => setSettingsOpen(false)}>
-            <SettingsTab state={state} addItem={settingsAdd} removeItem={settingsRemove} editItem={settingsEdit} onClose={() => setSettingsOpen(false)} />
+            <SettingsTab
+              state={state} addItem={settingsAdd} removeItem={settingsRemove} editItem={settingsEdit} onClose={() => setSettingsOpen(false)}
+              onThemeScopeChange={setThemeScope} onThemeScopeReset={resetThemeScope}
+              onWidgetThemeChange={setWidgetTheme} onWidgetThemeReset={resetWidgetTheme}
+              onWidgetSizePreset={setWidgetSizePreset}
+            />
           </motion.div>
         )}
       </AnimatePresence>
@@ -3895,6 +4395,7 @@ function BTLDashboardInner() {
         )}
       </AnimatePresence>
     </div>
+    </DashboardThemeCtx.Provider>
   );
 }
 

@@ -1,6 +1,48 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Earn Money / Notes text style (this update)
+## Custom Theme — Dashboard / Analytics / Widgets / Focus Mode (this update)
+
+**Setting → 🎨 Theme** is a new tab (next to Add Goles/Add extry/Add Big
+Goal/Add Rule) with four independently-styleable sections, each with its
+own live preview and a **Reset** button (only shown once you've changed
+something):
+
+- **Dashboard** — the overall dashboard's background color + text color
+  (5 presets + a custom color picker each). Applies to the main dashboard
+  background and every pill/label that doesn't already have its own
+  explicit color (widget titles, nav pills, etc. — via a small React
+  context so nothing that was deliberately colored before changes).
+- **Analytics** — background color, text color, **text size** (85%–140%
+  stepper, same A-/A+ control as Text Style), **bold**, and **font**
+  (Default/Poppins/Playfair/Mono) for the whole Analytics & Insights tab.
+- **Widgets** — a background color swatch (6 presets + custom) *and* a
+  Small/Medium/Large size preset, per widget, for all six widgets (Life
+  Big Goals, Life Rules, Daily Goals, Entry Goals, Earn Money/Notes,
+  Analytics Summary). This is a quick alternative to dragging a corner in
+  the Layout tab — both write to the same `state.layout.sizes`, so they
+  never conflict.
+- **Focus Mode** — background color, text color, text size, bold, and
+  font for the Focus Mode screen (same controls as Analytics).
+
+Everything lives in `state.theme` (`dashboard` / `analytics` / `focusMode`
+/ `widgets`, each normalized with sane defaults via `normalizeTheme`) and
+is saved to Firestore per-user like the rest of the app's state, so it
+persists across devices. Built with the same `framer-motion` spring
+entrances, swatch pickers and A-/A+ stepper already used by the existing
+per-widget **Text Style** feature (below) — visually and technically
+consistent, no new npm installs required.
+
+*(Note: the pointer-heavy libraries listed in the initial ask —
+`animated-component-libraries`, `animejs`, `aframe-webxr`, `barba-js` —
+are meant for marketing-site scrollytelling / WebXR / page-routing
+transitions and don't fit a small in-app settings panel; the existing
+`framer-motion` (already a project dependency, already used everywhere in
+this dashboard) covers every animation this feature needed. Nothing in
+`ckmdesign-system` applied here either, since this project already has
+its own token set (`C` / `FONT_OPTIONS` / `TEXT_COLOR_OPTIONS`) that this
+update extends rather than replaces.)*
+
+## Earn Money / Notes text style (earlier update)
 
 The **Money Today** widget (Earn/Spend labels, notes box, "Today's
 Mood" label) is now also selectable in the Text Style panel — tap its
