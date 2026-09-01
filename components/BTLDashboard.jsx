@@ -2,17 +2,15 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Settings, X, Plus, Smile, Meh, Frown, Image as ImageIcon,
-  LogOut, Trash2, ChevronRight, ChevronDown, ChevronUp, ChevronLeft, Flame, Target, BookOpen,
+  LogOut, Trash2, ChevronRight, ChevronDown, ChevronUp, Flame, Target, BookOpen,
   Repeat, RotateCcw, BarChart3, TrendingUp, Award, Tag, Pencil,
   GripVertical, Pin, PinOff, LayoutGrid, RefreshCw, Maximize2, Move,
-  Calendar, Wallet, IndianRupee, Sparkles, CheckCircle2, NotebookPen, Camera
+  CheckCircle2, Wallet, Camera, Calendar, StickyNote
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend } from "recharts";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { useAuth, signOutUser } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
-import { DotLottieReact } from "@lottiefiles/dotlottie-react";
-import VanillaTilt from "vanilla-tilt";
 
 /* ============================================================
    BEYOND THE LIFE (BTL)  —  personal life-goals dashboard
@@ -32,6 +30,29 @@ const C = {
 
 const STORAGE_KEY = "btl_state_v1";
 const todayISO = () => new Date().toISOString().slice(0, 10);
+/* Union of every date that has ANY memory-worthy activity — goals
+   completed, money logged, a photo added, or a manual note — sorted
+   most-recent-first, for the Memories modal's date strip. */
+function memoryDates(state) {
+  const set = new Set([todayISO()]);
+  Object.keys(state.goalCompletionLog || {}).forEach((d) => {
+    const rec = state.goalCompletionLog[d];
+    if ((rec.daily && rec.daily.length) || (rec.extry && rec.extry.length)) set.add(d);
+  });
+  Object.keys(state.moneyHistory || {}).forEach((d) => {
+    const rec = state.moneyHistory[d];
+    if ((rec.earn || 0) > 0 || (rec.spend || 0) > 0) set.add(d);
+  });
+  Object.keys(state.photoLog || {}).forEach((d) => { if ((state.photoLog[d] || []).length) set.add(d); });
+  (state.memories || []).forEach((m) => set.add(m.date));
+  return Array.from(set).sort((a, b) => (a < b ? 1 : -1));
+}
+function memoryDateLabel(iso) {
+  if (iso === todayISO()) return "Today";
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  if (iso === y.toISOString().slice(0, 10)) return "Yesterday";
+  return new Date(iso).toLocaleDateString(undefined, { day: "2-digit", month: "short" });
+}
 
 /* ---------------- CUSTOMIZABLE WIDGET LAYOUT ----------------
    2026 trend: user-controlled, rearrangeable + FREE-FORM resizable
@@ -171,8 +192,8 @@ function makeDefaultState() {
     memories: [],
     moodLog: {},        // { "2026-08-30": "happy" | "neutral" | "sad" }
     completionHistory: {}, // { "2026-08-30": 62.5 }  -- % of daily+extry goals done that day
-    goalCompletionHistory: {}, // { "2026-08-30": { daily: [{id,text,icon,category}], extra: [...] } } -- snapshot of which goals were DONE that day, for the Memory Journal
-    imageHistory: {},   // { "2026-08-30": ["data:image/...", ...] } -- every photo uploaded that day, for the Memory Journal gallery
+    goalCompletionLog: {}, // { "2026-08-30": { daily: [{text,icon,category}], extry: [...] } } -- which goals were done, per day
+    photoLog: {},        // { "2026-08-30": ["data:image/...", ...] } -- photos uploaded, per day
     streak: 0,
     lastCompletedDate: null,
     layout: defaultLayout(),
@@ -616,318 +637,6 @@ function MoodBtn({ active, onClick, children, title }) {
     }}>
       {children}
     </button>
-  );
-}
-
-/* ---------------- MEMORY JOURNAL (Glassmorphism 2.0 / Liquid Glass) ----------------
-   Replaces the old flat "type a memory" feed. Clicking "memor" now opens a
-   full day-by-day journal: pick any date on the left rail and the right
-   panel shows exactly which goals were completed that day, every photo
-   added, money earned/spent, mood, and a free-text note for that date. */
-function moodEmoji(mood) {
-  if (mood === "happy") return "🙂";
-  if (mood === "neutral") return "😐";
-  if (mood === "sad") return "🙁";
-  return null;
-}
-function formatDateLong(iso) {
-  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
-    weekday: "long", day: "2-digit", month: "long", year: "numeric",
-  });
-}
-function formatDateShort(iso) {
-  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { day: "2-digit", month: "short" });
-}
-/* Union of every date that has ANY recorded activity, newest first — always
-   includes today so there's somewhere to start writing. */
-function collectLogDates(state) {
-  const set = new Set([
-    ...Object.keys(state.completionHistory || {}),
-    ...Object.keys(state.moneyHistory || {}),
-    ...Object.keys(state.imageHistory || {}),
-    ...Object.keys(state.moodLog || {}),
-    ...(state.memories || []).map((m) => m.date),
-  ]);
-  set.add(todayISO());
-  return Array.from(set).sort((a, b) => (a < b ? 1 : -1));
-}
-
-/* Lightweight 3D tilt (vanilla-tilt) wrapper — used on the date rail cards
-   and the photo thumbnails for a subtle, premium depth feel on hover. */
-function TiltCard({ children, style, onClick, max = 8, glare = true }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    VanillaTilt.init(el, { max, speed: 350, glare, "max-glare": 0.15, scale: 1.02 });
-    return () => { el.vanillaTilt && el.vanillaTilt.destroy(); };
-  }, [max, glare]);
-  return <div ref={ref} onClick={onClick} style={style}>{children}</div>;
-}
-
-function StatPill({ icon, label, value, color }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 10, background: "rgba(255,255,255,0.65)", border: `1px solid ${color}33` }}>
-      <span style={{ color, display: "flex" }}>{icon}</span>
-      <div>
-        <div style={{ fontSize: 8, color: "#8a8579", fontWeight: 700 }}>{label}</div>
-        <div style={{ fontSize: 13, fontWeight: 900, color }}>{value}</div>
-      </div>
-    </div>
-  );
-}
-function SectionLabel({ icon, text }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 800, color: C.dark, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 }}>
-      {icon}{text}
-    </div>
-  );
-}
-function GoalDoneList({ title, color, items }) {
-  return (
-    <div style={{ minWidth: 150, flex: 1 }}>
-      <div style={{ fontSize: 9, fontWeight: 800, color, marginBottom: 4 }}>{title}</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-        {items.map((g, i) => (
-          <motion.div key={g.id || i} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i, 8) * 0.03 }}
-            style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: C.text }}>
-            <CheckCircle2 size={11} color={color} />
-            {g.icon ? <span>{g.icon}</span> : null}
-            <span>{g.text}</span>
-          </motion.div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function MemoryJournalModal({ state, onClose, onAddNote, onRemoveNote, onRemoveImage }) {
-  const dates = useMemo(
-    () => collectLogDates(state),
-    [state.completionHistory, state.moneyHistory, state.imageHistory, state.moodLog, state.memories]
-  );
-  const [selected, setSelected] = useState(dates[0] || todayISO());
-  const [noteVal, setNoteVal] = useState("");
-  const [lightbox, setLightbox] = useState(null); // { date, idx } | null
-
-  useEffect(() => {
-    if (!dates.includes(selected)) setSelected(dates[0] || todayISO());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dates]);
-
-  const idx = dates.indexOf(selected);
-  const goPrevDay = () => { if (idx < dates.length - 1) setSelected(dates[idx + 1]); };
-  const goNextDay = () => { if (idx > 0) setSelected(dates[idx - 1]); };
-
-  const dayGoals = state.goalCompletionHistory?.[selected] || { daily: [], extra: [] };
-  const dayMoney = state.moneyHistory?.[selected] || { earn: 0, spend: 0 };
-  const dayImages = state.imageHistory?.[selected] || [];
-  const dayMood = state.moodLog?.[selected];
-  const dayNotes = (state.memories || []).filter((m) => m.date === selected);
-  const dayPct = state.completionHistory?.[selected];
-  const totalDone = dayGoals.daily.length + dayGoals.extra.length;
-  const hasAnything = totalDone > 0 || dayImages.length > 0 || dayMoney.earn > 0 || dayMoney.spend > 0 || dayNotes.length > 0 || !!dayMood;
-
-  const submitNote = () => {
-    if (!noteVal.trim()) return;
-    onAddNote(selected, noteVal.trim());
-    setNoteVal("");
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
-      style={{
-        position: "absolute", inset: 0, background: "rgba(37,36,34,0.32)", zIndex: 60,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)",
-      }} onClick={onClose}>
-      <motion.div
-        onClick={(e) => e.stopPropagation()}
-        initial={{ opacity: 0, scale: 0.94, y: 18 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 12 }}
-        transition={{ type: "spring", stiffness: 320, damping: 28 }}
-        style={{
-          width: "min(94%, 940px)", height: "min(88%, 620px)", background: "rgba(255,255,255,0.68)",
-          backdropFilter: "blur(18px) saturate(160%)", WebkitBackdropFilter: "blur(18px) saturate(160%)",
-          border: "1px solid rgba(255,255,255,0.6)", borderRadius: 16,
-          boxShadow: "0 20px 60px rgba(37,36,34,0.22)",
-          display: "flex", overflow: "hidden",
-        }}>
-        {/* -------- LEFT: date rail -------- */}
-        <div style={{ width: 190, flexShrink: 0, borderRight: "1px solid rgba(64,61,57,0.12)", display: "flex", flexDirection: "column", background: "rgba(255,252,242,0.45)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "12px 12px 8px" }}>
-            <BookOpen size={14} color={C.dark} />
-            <span style={{ fontWeight: 900, fontSize: 13, color: C.dark }}>Memory Journal</span>
-            <Sparkles size={11} color={C.accent} />
-          </div>
-          <div style={{ flex: 1, overflowY: "auto", padding: "2px 8px 10px" }} className="btl-scroll">
-            {dates.map((d, i) => {
-              const active = d === selected;
-              const pct = state.completionHistory?.[d];
-              const imgs = (state.imageHistory?.[d] || []).length;
-              const mood = moodEmoji(state.moodLog?.[d]);
-              const isToday = d === todayISO();
-              return (
-                <TiltCard key={d} max={6} glare={false} onClick={() => setSelected(d)}
-                  style={{
-                    cursor: "pointer", marginBottom: 6, padding: "7px 9px", borderRadius: 10,
-                    background: active ? C.dark : "rgba(255,255,255,0.75)",
-                    color: active ? "#fff" : C.text,
-                    border: `1px solid ${active ? C.dark : "rgba(221,214,196,0.8)"}`,
-                    transition: "background 150ms ease",
-                  }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 11, fontWeight: 800 }}>
-                      {formatDateShort(d)}{isToday ? " • today" : ""}
-                    </span>
-                    {mood && <span style={{ fontSize: 12 }}>{mood}</span>}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                    <div style={{ flex: 1, height: 4, borderRadius: 2, background: active ? "rgba(255,255,255,0.25)" : "#ece7d8", overflow: "hidden" }}>
-                      <div style={{ width: `${Math.round(pct || 0)}%`, height: "100%", background: C.accent, borderRadius: 2 }} />
-                    </div>
-                    <span style={{ fontSize: 8, opacity: 0.85 }}>{Math.round(pct || 0)}%</span>
-                    {imgs > 0 && (
-                      <span style={{ fontSize: 8, display: "flex", alignItems: "center", gap: 2, opacity: 0.85 }}>
-                        <Camera size={9} />{imgs}
-                      </span>
-                    )}
-                  </div>
-                </TiltCard>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* -------- RIGHT: selected day detail -------- */}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid rgba(64,61,57,0.12)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <motion.span whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
-                style={{ cursor: idx < dates.length - 1 ? "pointer" : "default", opacity: idx < dates.length - 1 ? 1 : 0.25, display: "flex" }}
-                onClick={goPrevDay}><ChevronLeft size={16} /></motion.span>
-              <div>
-                <div style={{ fontWeight: 900, fontSize: 14, color: C.dark, display: "flex", alignItems: "center", gap: 6 }}>
-                  <Calendar size={13} />{formatDateLong(selected)}
-                  {moodEmoji(dayMood) && <span style={{ fontSize: 15 }}>{moodEmoji(dayMood)}</span>}
-                </div>
-                {typeof dayPct === "number" && (
-                  <div style={{ fontSize: 9, color: "#8a8579", marginTop: 2 }}>{Math.round(dayPct)}% of that day's goals completed</div>
-                )}
-              </div>
-              <motion.span whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
-                style={{ cursor: idx > 0 ? "pointer" : "default", opacity: idx > 0 ? 1 : 0.25, display: "flex" }}
-                onClick={goNextDay}><ChevronRight size={16} /></motion.span>
-            </div>
-            <motion.span whileHover={{ scale: 1.15, rotate: 90 }} whileTap={{ scale: 0.9 }} style={{ display: "inline-flex", cursor: "pointer" }}>
-              <X size={16} onClick={onClose} />
-            </motion.span>
-          </div>
-
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={selected}
-              initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.18 }}
-              style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 14 }}
-              className="btl-scroll"
-            >
-              {!hasAnything ? (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 2, minHeight: 220 }}>
-                  <div style={{ width: 120, height: 120 }}>
-                    <DotLottieReact src="https://lottie.host/4db68bbd-31f6-4cd8-84eb-189de081159a/IGmMCqhzpt.lottie" loop autoplay />
-                  </div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#a39c86" }}>Nothing logged for this day yet.</div>
-                </div>
-              ) : (
-                <>
-                  {(dayMoney.earn > 0 || dayMoney.spend > 0) && (
-                    <div style={{ display: "flex", gap: 10 }}>
-                      <StatPill icon={<IndianRupee size={12} />} label="Earned" value={`₹${dayMoney.earn.toFixed(0)}`} color="#4a7c59" />
-                      <StatPill icon={<Wallet size={12} />} label="Spent" value={`₹${dayMoney.spend.toFixed(0)}`} color="#c0392b" />
-                    </div>
-                  )}
-
-                  {totalDone > 0 && (
-                    <div>
-                      <SectionLabel icon={<CheckCircle2 size={12} />} text="Goals Completed" />
-                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                        {dayGoals.daily.length > 0 && <GoalDoneList title="Daily" color={C.accent} items={dayGoals.daily} />}
-                        {dayGoals.extra.length > 0 && <GoalDoneList title="Extra" color={C.blue} items={dayGoals.extra} />}
-                      </div>
-                    </div>
-                  )}
-
-                  {dayImages.length > 0 && (
-                    <div>
-                      <SectionLabel icon={<Camera size={12} />} text={`Photos (${dayImages.length})`} />
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))", gap: 8 }}>
-                        {dayImages.map((src, i2) => (
-                          <TiltCard key={i2} max={14} onClick={() => setLightbox({ date: selected, idx: i2 })}
-                            style={{ position: "relative", cursor: "zoom-in", borderRadius: 8, overflow: "hidden", border: "1px solid #ddd6c4", aspectRatio: "1/1" }}>
-                            <motion.img layoutId={`mem-img-${selected}-${i2}`} src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                          </TiltCard>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <SectionLabel icon={<NotebookPen size={12} />} text="Notes" />
-                    {dayNotes.length === 0 && <div style={{ fontSize: 10, color: "#b3ac99", marginBottom: 6 }}>No note for this day.</div>}
-                    {dayNotes.map((m, i3) => (
-                      <motion.div key={i3} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-                        style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 6, fontSize: 11, padding: "6px 8px", borderRadius: 8, background: "rgba(255,255,255,0.6)", border: "1px solid #ece7d8", marginBottom: 6 }}>
-                        <span>{m.text}</span>
-                        <Trash2 size={11} style={{ cursor: "pointer", flexShrink: 0, opacity: 0.5 }} onClick={() => onRemoveNote(m.date, m.text)} />
-                      </motion.div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </AnimatePresence>
-
-          <div style={{ display: "flex", gap: 6, padding: "10px 16px", borderTop: "1px solid rgba(64,61,57,0.12)" }}>
-            <input value={noteVal} onChange={(e) => setNoteVal(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") submitNote(); }}
-              placeholder={`Write a note for ${formatDateShort(selected)}...`}
-              style={{ flex: 1, fontSize: 11, padding: "7px 10px", borderRadius: 8, border: "1px solid #ddd6c4", background: "rgba(255,255,255,0.7)" }} />
-            <Oval className="btl-oval-btn" onClick={submitNote} style={{ cursor: "pointer", background: C.accent, borderColor: C.accent, color: "#fff", padding: "4px 12px" }}>
-              <Plus size={12} />
-            </Oval>
-          </div>
-        </div>
-      </motion.div>
-
-      <AnimatePresence>
-        {lightbox && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            onClick={(e) => { e.stopPropagation(); setLightbox(null); }}
-            style={{ position: "fixed", inset: 0, background: "rgba(20,19,17,0.82)", zIndex: 80, display: "flex", alignItems: "center", justifyContent: "center", padding: 30 }}>
-            <motion.img
-              layoutId={`mem-img-${lightbox.date}-${lightbox.idx}`}
-              src={(state.imageHistory?.[lightbox.date] || [])[lightbox.idx]}
-              alt="" style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 12, boxShadow: "0 20px 60px rgba(0,0,0,0.4)" }}
-              onClick={(e) => e.stopPropagation()}
-            />
-            <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
-              style={{ position: "absolute", top: 20, right: 26, color: "#fff", cursor: "pointer" }}
-              onClick={() => setLightbox(null)}>
-              <X size={22} />
-            </motion.div>
-            <motion.div whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
-              style={{ position: "absolute", bottom: 20, right: 26, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}
-              onClick={(e) => { e.stopPropagation(); onRemoveImage(lightbox.date, lightbox.idx); setLightbox(null); }}>
-              <Trash2 size={14} /> Remove
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
   );
 }
 
@@ -2002,6 +1711,286 @@ function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
   );
 }
 
+/* ---------------- MEMORY MODAL ----------------
+   A full "on this day" memory viewer — professional glass UI with an
+   inner tab bar (Goals / Money / Photos / Note), a horizontal date
+   strip to browse any day that has activity, and spring-animated
+   transitions throughout (Glassmorphism 2.0 / Liquid Glass style,
+   matching the rest of the app). */
+function MemoryTabButton({ active, onClick, icon, label }) {
+  return (
+    <motion.button
+      onClick={onClick}
+      whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
+      style={{
+        position: "relative", display: "flex", alignItems: "center", gap: 5,
+        fontSize: 10, fontWeight: 800, padding: "6px 10px", borderRadius: 999,
+        border: "1px solid " + (active ? "rgba(64,61,57,0.85)" : "rgba(64,61,57,0.16)"),
+        background: active ? C.dark : "rgba(255,255,255,0.5)",
+        color: active ? "#fff" : C.text, cursor: "pointer", whiteSpace: "nowrap",
+      }}>
+      {icon}{label}
+    </motion.button>
+  );
+}
+
+function MemoryEmpty({ text }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+      style={{ fontSize: 11, color: "#b3ac99", padding: "22px 4px", textAlign: "center" }}>
+      {text}
+    </motion.div>
+  );
+}
+
+function MemoryModal({ open, onClose, state, update }) {
+  const [memDate, setMemDate] = useState(todayISO());
+  const [memTab, setMemTab] = useState("goals");
+  const [memVal, setMemVal] = useState("");
+  const photoInputRef = useRef(null);
+
+  useEffect(() => {
+    if (open) { setMemDate(todayISO()); setMemTab("goals"); setMemVal(""); }
+  }, [open]);
+
+  if (!state) return null;
+  const dates = memoryDates(state);
+  const goalRec = (state.goalCompletionLog && state.goalCompletionLog[memDate]) || { daily: [], extry: [] };
+  const moneyRec = (state.moneyHistory && state.moneyHistory[memDate]) || { earn: 0, spend: 0 };
+  const photos = (state.photoLog && state.photoLog[memDate]) || [];
+  const notesForDate = (state.memories || []).filter((m) => m.date === memDate);
+  const goalCount = goalRec.daily.length + goalRec.extry.length;
+
+  const addNoteForDate = () => {
+    if (!memVal.trim()) return;
+    update((s) => { s.memories = [{ date: memDate, text: memVal.trim() }, ...s.memories]; return s; });
+    setMemVal("");
+  };
+
+  const onPickPhoto = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 1_500_000) { alert("Please pick an image under ~1.5MB."); return; }
+    const reader = new FileReader();
+    reader.onload = () => update((s) => {
+      const existing = (s.photoLog && s.photoLog[memDate]) || [];
+      s.photoLog = { ...(s.photoLog || {}), [memDate]: [...existing, reader.result] };
+      if (memDate === todayISO()) s.uploadedImage = reader.result;
+      return s;
+    });
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const TABS = [
+    { key: "goals", label: "Goals", icon: <CheckCircle2 size={11} />, count: goalCount },
+    { key: "money", label: "Money", icon: <Wallet size={11} />, count: (moneyRec.earn > 0 || moneyRec.spend > 0) ? 1 : 0 },
+    { key: "photos", label: "Photos", icon: <Camera size={11} />, count: photos.length },
+    { key: "note", label: "Note", icon: <StickyNote size={11} />, count: notesForDate.length },
+  ];
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
+          style={{
+            position: "absolute", inset: 0, background: "rgba(37,36,34,0.32)", zIndex: 60,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)", padding: 16,
+          }} onClick={onClose}>
+          <motion.div
+            onClick={(e) => e.stopPropagation()}
+            initial={{ opacity: 0, scale: 0.92, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: 10 }}
+            transition={{ type: "spring", stiffness: 340, damping: 28 }}
+            style={{
+              width: "min(480px, 100%)", maxHeight: "min(600px, 92vh)", background: "rgba(255,255,255,0.7)",
+              backdropFilter: "blur(20px) saturate(170%)", WebkitBackdropFilter: "blur(20px) saturate(170%)",
+              border: "1px solid rgba(255,255,255,0.65)", borderRadius: 18, padding: 16,
+              boxShadow: "0 20px 56px rgba(37,36,34,0.24)",
+              display: "flex", flexDirection: "column", gap: 12, overflow: "hidden",
+            }}>
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <BookOpen size={14} />
+                <span style={{ fontWeight: 800, fontSize: 14 }}>Memories</span>
+              </div>
+              <motion.span whileHover={{ scale: 1.15, rotate: 90 }} whileTap={{ scale: 0.9 }}
+                style={{ display: "inline-flex", cursor: "pointer", color: "#a39c86" }}>
+                <X size={16} onClick={onClose} />
+              </motion.span>
+            </div>
+
+            {/* Date strip */}
+            <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2 }} className="btl-scroll">
+              {dates.map((d) => {
+                const active = d === memDate;
+                return (
+                  <motion.button
+                    key={d}
+                    onClick={() => setMemDate(d)}
+                    whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
+                    style={{
+                      flexShrink: 0, display: "flex", alignItems: "center", gap: 4,
+                      fontSize: 10, fontWeight: 800, padding: "6px 11px", borderRadius: 999,
+                      border: `1.5px solid ${active ? C.blue : "rgba(64,61,57,0.16)"}`,
+                      background: active ? C.blue : "rgba(255,255,255,0.55)",
+                      color: active ? C.dark : "#7a7568", cursor: "pointer", whiteSpace: "nowrap",
+                    }}>
+                    <Calendar size={10} />
+                    {memoryDateLabel(d)}
+                  </motion.button>
+                );
+              })}
+            </div>
+
+            {/* Sub-tabs */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {TABS.map((t) => (
+                <MemoryTabButton key={t.key} active={memTab === t.key} onClick={() => setMemTab(t.key)}
+                  icon={t.icon} label={t.count ? `${t.label} · ${t.count}` : t.label} />
+              ))}
+            </div>
+
+            {/* Tab content */}
+            <div style={{ flex: 1, minHeight: 220, overflowY: "auto" }} className="btl-scroll">
+              <AnimatePresence mode="wait">
+                {memTab === "goals" && (
+                  <motion.div key="goals" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.18 }}
+                    style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {goalCount === 0 && <MemoryEmpty text="No goals were marked done on this date." />}
+                    {goalRec.daily.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 9, fontWeight: 800, color: "#a39c86", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 }}>Daily Goals</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          {goalRec.daily.map((g, i) => (
+                            <motion.div key={i} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: Math.min(i, 8) * 0.03 }}
+                              style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, padding: "6px 9px", borderRadius: 9, background: "rgba(74,124,89,0.1)" }}>
+                              <CheckCircle2 size={13} color="#4a7c59" style={{ flexShrink: 0 }} />
+                              {g.icon ? <span>{g.icon}</span> : null}
+                              <span>{g.text}</span>
+                            </motion.div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {goalRec.extry.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 9, fontWeight: 800, color: "#a39c86", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.4 }}>Extry Goals</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                          {goalRec.extry.map((g, i) => (
+                            <motion.div key={i} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: Math.min(i, 8) * 0.03 }}
+                              style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, padding: "6px 9px", borderRadius: 9, background: "rgba(52,109,181,0.1)" }}>
+                              <CheckCircle2 size={13} color={C.blue} style={{ flexShrink: 0 }} />
+                              {g.icon ? <span>{g.icon}</span> : null}
+                              <span>{g.text}</span>
+                            </motion.div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+
+                {memTab === "money" && (
+                  <motion.div key="money" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.18 }}>
+                    {moneyRec.earn === 0 && moneyRec.spend === 0 ? (
+                      <MemoryEmpty text="No money logged on this date." />
+                    ) : (
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+                          style={{ flex: 1, borderRadius: 12, padding: "14px 12px", background: "rgba(74,124,89,0.12)", border: "1px solid rgba(74,124,89,0.25)" }}>
+                          <div style={{ fontSize: 9, fontWeight: 800, color: "#4a7c59", textTransform: "uppercase", letterSpacing: 0.4 }}>Earned</div>
+                          <div style={{ fontSize: 20, fontWeight: 900, color: "#4a7c59", marginTop: 4 }}>₹{moneyRec.earn || 0}</div>
+                        </motion.div>
+                        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.05 }}
+                          style={{ flex: 1, borderRadius: 12, padding: "14px 12px", background: "rgba(224,122,95,0.12)", border: "1px solid rgba(224,122,95,0.25)" }}>
+                          <div style={{ fontSize: 9, fontWeight: 800, color: "#e07a5f", textTransform: "uppercase", letterSpacing: 0.4 }}>Spent</div>
+                          <div style={{ fontSize: 20, fontWeight: 900, color: "#e07a5f", marginTop: 4 }}>₹{moneyRec.spend || 0}</div>
+                        </motion.div>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+
+                {memTab === "photos" && (
+                  <motion.div key="photos" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.18 }}
+                    style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <input ref={photoInputRef} type="file" accept="image/*" onChange={onPickPhoto} style={{ display: "none" }} />
+                    <motion.div whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+                      onClick={() => photoInputRef.current?.click()}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                        fontSize: 10, fontWeight: 800, padding: "8px", borderRadius: 10, cursor: "pointer",
+                        border: "1.5px dashed rgba(64,61,57,0.3)", background: "rgba(255,255,255,0.4)", color: C.text,
+                      }}>
+                      <Camera size={12} /> Add a photo for {memoryDateLabel(memDate)}
+                    </motion.div>
+                    {photos.length === 0 ? (
+                      <MemoryEmpty text="No photos added on this date." />
+                    ) : (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                        {photos.map((src, i) => (
+                          <motion.img key={i} src={src} initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: Math.min(i, 8) * 0.04 }}
+                            style={{ width: "100%", height: 76, objectFit: "cover", borderRadius: 8, border: "1px solid rgba(255,255,255,0.7)" }} />
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+
+                {memTab === "note" && (
+                  <motion.div key="note" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.18 }}
+                    style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input value={memVal} onChange={(e) => setMemVal(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") addNoteForDate(); }}
+                        placeholder={`Write a note for ${memoryDateLabel(memDate)}...`}
+                        style={{
+                          flex: 1, fontSize: 11, padding: "7px 9px", borderRadius: 8,
+                          border: "1px solid #ddd6c4", background: "rgba(255,255,255,0.7)",
+                        }} />
+                      <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={addNoteForDate}
+                        style={{
+                          fontSize: 10, fontWeight: 800, padding: "0 12px", borderRadius: 8, border: "none",
+                          background: C.dark, color: "#fff", cursor: "pointer",
+                        }}>Save</motion.button>
+                    </div>
+                    {notesForDate.length === 0 ? (
+                      <MemoryEmpty text="No note written for this date yet." />
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {notesForDate.map((m, i) => (
+                          <motion.div key={i} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: Math.min(i, 8) * 0.03 }}
+                            style={{ fontSize: 11, padding: "8px 10px", borderRadius: 9, background: "rgba(244,211,94,0.16)" }}>
+                            {m.text}
+                          </motion.div>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 export default function App() {
   const { user: fbUser } = useAuth();
   const [state, setState] = useState(null);
@@ -2067,17 +2056,15 @@ export default function App() {
     const total = s.dailyGoals.length + s.extryGoals.length;
     const done = s.dailyGoals.filter((g) => g.done).length + s.extryGoals.filter((g) => g.done).length;
     const pct = total ? (done / total) * 100 : 0;
-    const today = todayISO();
-    s.completionHistory = { ...s.completionHistory, [today]: pct };
-    // Snapshot exactly which goals are done today, so the Memory Journal can
-    // show "what did I finish on this day" even after a goal is later
-    // un-checked, edited, or removed.
-    const snap = (g) => ({ id: g.id, text: g.text, icon: g.icon || "", category: g.category || "other" });
-    s.goalCompletionHistory = {
-      ...s.goalCompletionHistory,
-      [today]: {
-        daily: s.dailyGoals.filter((g) => g.done).map(snap),
-        extra: s.extryGoals.filter((g) => g.done).map(snap),
+    s.completionHistory = { ...s.completionHistory, [todayISO()]: pct };
+    // Snapshot exactly which goals were completed today, so the Memories
+    // view can show "what did I finish on this date" later on.
+    const day = todayISO();
+    s.goalCompletionLog = {
+      ...s.goalCompletionLog,
+      [day]: {
+        daily: s.dailyGoals.filter((g) => g.done).map((g) => ({ text: g.text, icon: g.icon, category: g.category })),
+        extry: s.extryGoals.filter((g) => g.done).map((g) => ({ text: g.text, icon: g.icon, category: g.category })),
       },
     };
     return s;
@@ -2157,67 +2144,20 @@ export default function App() {
     return s;
   });
 
-  /* Downscale + re-encode as JPEG before storing. Firestore caps a whole
-     document at 1MB, and imageHistory now keeps every photo ever uploaded
-     (not just today's), so raw phone-camera photos would blow that limit
-     within a handful of uploads. This keeps each stored photo small
-     (~40-120KB) while still looking sharp inside the journal gallery. */
-  function compressImageFile(file, maxDim = 900, quality = 0.72) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = reject;
-      reader.onload = () => {
-        const img = new window.Image();
-        img.onerror = reject;
-        img.onload = () => {
-          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-          const w = Math.max(1, Math.round(img.width * scale));
-          const h = Math.max(1, Math.round(img.height * scale));
-          const canvas = document.createElement("canvas");
-          canvas.width = w; canvas.height = h;
-          const ctx = canvas.getContext("2d");
-          ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL("image/jpeg", quality));
-        };
-        img.src = reader.result;
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-
   const onImageFile = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 8_000_000) { alert("Please pick an image under ~8MB."); return; }
-    compressImageFile(file).then((dataUrl) => {
-      update((s) => {
-        s.uploadedImage = dataUrl;
-        // Keep every photo added today for the Memory Journal gallery (in
-        // addition to `uploadedImage`, which stays as "today's latest" for
-        // the small preview on the Earn Money card).
-        const today = todayISO();
-        const existing = (s.imageHistory && s.imageHistory[today]) || [];
-        s.imageHistory = { ...(s.imageHistory || {}), [today]: [...existing, dataUrl] };
-        return s;
-      });
-    }).catch(() => alert("Couldn't read that image, try another one."));
-    e.target.value = "";
+    if (file.size > 1_500_000) { alert("Please pick an image under ~1.5MB."); return; }
+    const reader = new FileReader();
+    reader.onload = () => update((s) => {
+      s.uploadedImage = reader.result;
+      const day = todayISO();
+      const existing = (s.photoLog && s.photoLog[day]) || [];
+      s.photoLog = { ...(s.photoLog || {}), [day]: [...existing, reader.result] };
+      return s;
+    });
+    reader.readAsDataURL(file);
   };
-  const removeMemoryImage = (date, idx) => update((s) => {
-    const existing = (s.imageHistory && s.imageHistory[date]) || [];
-    s.imageHistory = { ...(s.imageHistory || {}), [date]: existing.filter((_, i) => i !== idx) };
-    return s;
-  });
-  const addMemoryNote = (date, text) => update((s) => {
-    s.memories = [{ date, text }, ...s.memories];
-    return s;
-  });
-  const removeMemoryNote = (date, text) => update((s) => {
-    const idx = s.memories.findIndex((m) => m.date === date && m.text === text);
-    if (idx === -1) return s;
-    s.memories = s.memories.filter((_, i) => i !== idx);
-    return s;
-  });
 
   const updateLayout = (fn) => update((s) => { s.layout = fn(s.layout); return s; });
   const resetLayout = () => update((s) => { s.layout = defaultLayout(); return s; });
@@ -2392,18 +2332,8 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* ---------- MEMORY JOURNAL MODAL (Glassmorphism 2.0 / Liquid Glass) ---------- */}
-      <AnimatePresence>
-        {memOpen && (
-          <MemoryJournalModal
-            state={state}
-            onClose={() => setMemOpen(false)}
-            onAddNote={addMemoryNote}
-            onRemoveNote={removeMemoryNote}
-            onRemoveImage={removeMemoryImage}
-          />
-        )}
-      </AnimatePresence>
+      {/* ---------- MEMORY MODAL (Glassmorphism 2.0 / Liquid Glass) ---------- */}
+      <MemoryModal open={memOpen} onClose={() => setMemOpen(false)} state={state} update={update} />
     </div>
   );
 }

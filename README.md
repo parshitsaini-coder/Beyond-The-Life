@@ -125,32 +125,6 @@ Direction for the dashboard's look and feel going forward:
   Implemented with `framer-motion`'s `Reorder` API and a 6-column CSS grid
   (`gridAutoFlow: "row dense"`) that reflows automatically as widgets are
   reordered or resized.
-- **Memory Journal** — the header's "memor" button now opens a full
-  day-by-day journal instead of a flat note feed. Pick any date on the left
-  rail (mood, mini progress ring, photo count at a glance) and the right
-  panel shows exactly which Daily/Extra goals were completed that day,
-  every photo uploaded that day (click to open a full-screen lightbox,
-  with a shared-layout zoom transition), money earned/spent, and a
-  free-text note for that date. Uses `vanilla-tilt` for subtle 3D tilt on
-  the date cards and photo thumbnails, and a Lottie animation
-  (`@lottiefiles/dotlottie-react`) for the empty-state.
-
-## New dependencies for the Memory Journal
-Two small packages power the new journal — pull them in with:
-```bash
-npm install
-```
-(`package.json` already lists `vanilla-tilt` and
-`@lottiefiles/dotlottie-react` — `npm install` picks them up automatically.)
-
-**Note on photo storage:** photos are downscaled + JPEG-compressed in the
-browser before saving (~40–120KB each) rather than stored at full camera
-resolution, because Firestore caps a whole document at 1MB and the journal
-now keeps every photo ever uploaded (not just today's). If you plan to
-upload a *lot* of photos over time, keep an eye on document size in the
-Firebase console — at some point it'll be worth moving photos to Firebase
-Storage (with just a URL saved in Firestore) instead of embedding them as
-base64. Happy to build that migration when you're ready for it.
 
 **Implementation:** use the animation/UI skills already available in this
 workspace rather than hand-rolling motion code:
