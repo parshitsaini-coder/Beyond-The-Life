@@ -1,6 +1,32 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Custom Theme — Dashboard / Analytics / Widgets / Focus Mode (this update)
+## Analytics Summary — customizable metrics, incl. money totals (this update)
+
+The **Analytics Summary** dashboard widget (the ring-chart card with Daily
+/ Extry / Overall / Day Streak) is no longer a fixed set — it's now fully
+editable from **Setting → 🎨 Theme → Analytics Summary**:
+
+- **Add or remove metrics.** Alongside the existing goal-completion rings
+  (Daily/Extry/Overall) and Day Streak, you can now add the **money
+  totals** — Total Earned, Total Spent, and Net Money — as metric tiles
+  right inside the same widget. Anything not wanted can be removed with
+  one tap; the widget shrinks/grows around what's left.
+- **Reorder by dragging.** Active metrics are a `framer-motion`
+  `Reorder.Group` list — drag the grip handle to change the order shown
+  on the dashboard.
+- **Live preview.** The Theme panel shows the exact same widget component
+  used on the dashboard, so what you see while editing is exactly what
+  you get.
+- **Reset** restores the original Daily/Extry/Overall/Streak default.
+
+Every add, remove, and reorder animates with the same spring physics
+(`framer-motion` `AnimatePresence` + `layout` transitions) already used
+throughout the app — tiles pop in/out and slide smoothly into the space
+freed up by their neighbors, no new npm installs required. Stored in
+`state.theme.analyticsSummary.metrics` (an ordered array of metric ids)
+and saved to Firestore per-user like the rest of `state.theme`.
+
+## Custom Theme — Dashboard / Analytics / Widgets / Focus Mode (earlier update)
 
 **Setting → 🎨 Theme** is a new tab (next to Add Goles/Add extry/Add Big
 Goal/Add Rule) with four independently-styleable sections, each with its

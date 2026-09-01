@@ -175,6 +175,55 @@ function normalizeWidgetThemes(map) {
   WIDGETS.forEach((w) => { out[w.id] = { bg: typeof src[w.id]?.bg === "string" ? src[w.id].bg : "" }; });
   return out;
 }
+
+/* ---- Analytics Summary — customizable metric set (this update) ----
+   The Analytics Summary widget (and its Settings → Theme panel) no
+   longer shows a hardcoded Daily/Extry/Overall/Streak set — it's an
+   ordered list of metric ids picked from this catalog, so the money
+   totals can be added alongside the goal rings, any metric can be
+   removed, and the order can be dragged. Stored as
+   state.theme.analyticsSummary.metrics (array of ids). */
+const ANALYTICS_SUMMARY_METRICS = [
+  { id: "daily", label: "Daily", type: "ring", color: C.accent },
+  { id: "extry", label: "Extry", type: "ring", color: C.blue },
+  { id: "overall", label: "Overall", type: "ring", color: C.dark },
+  { id: "streak", label: "Day Streak", type: "stat", icon: Flame },
+  { id: "earned", label: "Total Earned", type: "money", color: "#2e7d32", icon: ArrowUpCircle },
+  { id: "spent", label: "Total Spent", type: "money", color: "#c0392b", icon: ArrowDownCircle },
+  { id: "net", label: "Net Money", type: "money", color: C.dark, icon: Wallet },
+];
+const ANALYTICS_SUMMARY_DEFAULT_METRICS = ["daily", "extry", "overall", "streak"];
+function analyticsSummaryMetricMeta(id) {
+  return ANALYTICS_SUMMARY_METRICS.find((m) => m.id === id) || null;
+}
+function normalizeAnalyticsSummaryTheme(t) {
+  const src = t && typeof t === "object" ? t : {};
+  const validIds = ANALYTICS_SUMMARY_METRICS.map((m) => m.id);
+  const seen = new Set();
+  const raw = Array.isArray(src.metrics) ? src.metrics : null;
+  const cleaned = (raw || []).filter((id) => {
+    if (!validIds.includes(id) || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  return { metrics: cleaned.length ? cleaned : ANALYTICS_SUMMARY_DEFAULT_METRICS.slice() };
+}
+/* Computes the live value for every metric from current app state —
+   shared by the dashboard widget and the Theme panel's live preview
+   so they can never disagree. */
+function computeAnalyticsSummaryValues(state) {
+  const dailyPct = state.dailyGoals.length ? (state.dailyGoals.filter((g) => g.done).length / state.dailyGoals.length) * 100 : 0;
+  const extryPct = state.extryGoals.length ? (state.extryGoals.filter((g) => g.done).length / state.extryGoals.length) * 100 : 0;
+  const overallPct = (dailyPct + extryPct) / 2;
+  const earned = state.totalEarnLife || 0;
+  const spent = state.totalSpendLife || 0;
+  return {
+    daily: dailyPct, extry: extryPct, overall: overallPct,
+    streak: state.streak || 0,
+    earned, spent, net: earned - spent,
+  };
+}
+
 function normalizeTheme(t) {
   const src = t && typeof t === "object" ? t : {};
   return {
@@ -182,6 +231,7 @@ function normalizeTheme(t) {
     analytics: normalizeScopeTheme(src.analytics),
     focusMode: normalizeScopeTheme(src.focusMode),
     widgets: normalizeWidgetThemes(src.widgets),
+    analyticsSummary: normalizeAnalyticsSummaryTheme(src.analyticsSummary),
   };
 }
 function defaultTheme() { return normalizeTheme({}); }
@@ -785,7 +835,7 @@ function MoodBtn({ active, onClick, children, title }) {
 }
 
 /* ---------------- SETTINGS PANEL CONTENT (rendered inside the glass modal) ---------------- */
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset }) {
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset }) {
   const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
@@ -844,6 +894,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
       <div style={{ flex: 1, overflowY: "auto", padding: 14 }} className="btl-scroll">
         {mode === "theme" ? (
           <ThemePanel
+            state={state}
             theme={state.theme}
             layoutSizes={state.layout?.sizes}
             onScopeChange={onThemeScopeChange}
@@ -851,6 +902,8 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             onWidgetChange={onWidgetThemeChange}
             onWidgetReset={onWidgetThemeReset}
             onWidgetSize={onWidgetSizePreset}
+            onAnalyticsSummaryChange={onAnalyticsSummaryChange}
+            onAnalyticsSummaryReset={onAnalyticsSummaryReset}
           />
         ) : (
           <>
@@ -2579,28 +2632,66 @@ function MoneyFilterModal({ entries, filters, onApply, onClose }) {
   );
 }
 
-/* ---------------- ANALYTICS SUMMARY (pinnable widget) ---------------- */
-function AnalyticsSummaryWidget({ state, onOpen, cardBg }) {
-  const dailyPct = state.dailyGoals.length ? (state.dailyGoals.filter((g) => g.done).length / state.dailyGoals.length) * 100 : 0;
-  const extryPct = state.extryGoals.length ? (state.extryGoals.filter((g) => g.done).length / state.extryGoals.length) * 100 : 0;
-  const overallPct = (dailyPct + extryPct) / 2;
+/* ---------------- ANALYTICS SUMMARY (pinnable, customizable widget) ----------------
+   Renders whichever metrics the user picked in Settings → Theme →
+   Analytics Summary, in their chosen order — goal-completion rings,
+   the day streak, and/or the money totals (Earned/Spent/Net). Each
+   metric mounts/reorders/unmounts with a spring, via framer-motion's
+   AnimatePresence + layout animations (popLayout mode keeps neighbors
+   sliding smoothly into the freed/claimed space). */
+function AnalyticsSummaryMetric({ meta, value }) {
+  if (meta.type === "ring") {
+    return <RingStat pct={value} label={meta.label} color={meta.color} />;
+  }
+  const Icon = meta.icon;
+  const display = meta.type === "money"
+    ? `${value < 0 ? "-" : ""}₹${Math.abs(Math.round(value))}`
+    : String(Math.round(value)).padStart(3, "0");
+  return (
+    <div style={{ textAlign: "center", minWidth: 42 }}>
+      <div style={{
+        minWidth: 34, height: 34, borderRadius: meta.type === "money" ? 10 : "50%",
+        background: meta.type === "money" ? "transparent" : C.dark,
+        color: meta.type === "money" ? (meta.color || C.dark) : "#fff",
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
+        fontSize: meta.type === "money" ? 12 : 12, fontWeight: 900, margin: "0 auto 2px", padding: "0 4px",
+      }}>
+        {meta.type === "money" && Icon && <Icon size={11} />}
+        {display}
+      </div>
+      <div style={{ fontSize: 8, fontWeight: 700, color: "#8a8579", whiteSpace: "nowrap" }}>{meta.label}</div>
+    </div>
+  );
+}
+function AnalyticsSummaryWidget({ state, onOpen, cardBg, metrics }) {
+  const values = computeAnalyticsSummaryValues(state);
+  const activeIds = metrics && metrics.length ? metrics : ANALYTICS_SUMMARY_DEFAULT_METRICS;
+  const activeMetrics = activeIds.map(analyticsSummaryMetricMeta).filter(Boolean);
   return (
     <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 10, background: cardBg || "#fff", width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: C.dark, display: "flex", alignItems: "center", gap: 5 }}><BarChart3 size={13} /> Analytics Summary</span>
         <Oval className="btl-oval-btn" onClick={onOpen} style={{ cursor: "pointer", fontSize: 9, padding: "2px 9px" }}>Open full <ChevronRight size={11} style={{ marginLeft: 2 }} /></Oval>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 18, flex: 1 }}>
-        <RingStat pct={dailyPct} label="Daily" color={C.accent} />
-        <RingStat pct={extryPct} label="Extry" color={C.blue} />
-        <RingStat pct={overallPct} label="Overall" color={C.dark} />
-        <div style={{ marginLeft: "auto", textAlign: "center" }}>
-          <div style={{
-            width: 34, height: 34, borderRadius: "50%", background: C.dark, color: "#fff",
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, margin: "0 auto 2px",
-          }}>{String(state.streak).padStart(3, "0")}</div>
-          <div style={{ fontSize: 8, fontWeight: 700, color: "#8a8579" }}>Day Streak</div>
-        </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, flexWrap: "wrap", overflow: "hidden" }}>
+        <AnimatePresence mode="popLayout" initial={false}>
+          {activeMetrics.map((meta) => (
+            <motion.div
+              key={meta.id} layout
+              initial={{ opacity: 0, scale: 0.5, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.5, y: -10 }}
+              transition={{ type: "spring", stiffness: 360, damping: 26 }}
+            >
+              <AnalyticsSummaryMetric meta={meta} value={values[meta.id]} />
+            </motion.div>
+          ))}
+        </AnimatePresence>
+        {!activeMetrics.length && (
+          <span style={{ fontSize: 9, color: "#b3ac99", fontWeight: 700 }}>
+            No metrics selected — pick some in Settings → Theme → Analytics Summary
+          </span>
+        )}
       </div>
     </div>
   );
@@ -3466,14 +3557,131 @@ function WidgetsThemeEditor({ widgetThemes, layoutSizes, onWidgetChange, onWidge
   );
 }
 
-/* Top-level Theme tab shown inside Settings — four sub-sections. */
-function ThemePanel({ theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize }) {
+/* Analytics Summary — metric picker. A live preview (the exact same
+   AnalyticsSummaryWidget rendered on the dashboard) sits on top, an
+   Reorder.Group of active metrics (drag the grip to reorder, tap X to
+   remove) below it, and a row of "+ add" pills for whatever's left —
+   every add/remove/reorder ripples into the preview immediately via
+   framer-motion layout animations. */
+function AnalyticsSummaryThemeEditor({ state, metrics, onChange, onReset }) {
+  const activeIds = metrics && metrics.length ? metrics : ANALYTICS_SUMMARY_DEFAULT_METRICS;
+  const activeMetrics = activeIds.map(analyticsSummaryMetricMeta).filter(Boolean);
+  const inactiveMetrics = ANALYTICS_SUMMARY_METRICS.filter((m) => !activeIds.includes(m.id));
+  const isDefault = activeIds.length === ANALYTICS_SUMMARY_DEFAULT_METRICS.length
+    && activeIds.every((id, i) => id === ANALYTICS_SUMMARY_DEFAULT_METRICS[i]);
+
+  const handleReorder = (newOrder) => onChange(newOrder.map((m) => m.id));
+  const handleRemove = (id) => onChange(activeIds.filter((x) => x !== id));
+  const handleAdd = (id) => onChange([...activeIds, id]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+      transition={{ type: "spring", stiffness: 320, damping: 28 }}
+      style={{ border: "1px solid #ece7d8", borderRadius: 10, background: "rgba(255,255,255,0.7)", overflow: "hidden" }}
+    >
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6, padding: "8px 10px",
+        borderBottom: "1px solid #ece7d8", background: "rgba(255,252,242,0.6)",
+      }}>
+        <BarChart3 size={12} style={{ color: C.dark }} />
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>Analytics Summary — metrics</span>
+        <div style={{ flex: 1 }} />
+        {!isDefault && (
+          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={onReset} title="Reset Analytics Summary metrics" style={{
+            border: "1px solid #ddd6c4", background: "#fff", color: "#8a8579", borderRadius: 999,
+            padding: "2px 8px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
+          }}><RefreshCw size={10} /> Reset</motion.button>
+        )}
+      </div>
+
+      <div style={{ padding: "10px" }}>
+        <div style={{ fontSize: 9, color: "#8a8579", marginBottom: 10, lineHeight: 1.5 }}>
+          Add or remove what shows in the Analytics Summary widget — goal-completion rings, streak, and now the money
+          totals too. Drag the grip to reorder.
+        </div>
+
+        {/* Live preview — the exact widget shown on the dashboard */}
+        <div style={{ height: 100, marginBottom: 12 }}>
+          <AnalyticsSummaryWidget state={state} onOpen={() => {}} metrics={activeIds} />
+        </div>
+
+        {/* Active metrics — drag to reorder, X to remove */}
+        <div style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", marginBottom: 5 }}>Showing ({activeMetrics.length})</div>
+        {activeMetrics.length ? (
+          <Reorder.Group axis="y" values={activeMetrics} onReorder={handleReorder} style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+            <AnimatePresence initial={false}>
+              {activeMetrics.map((m) => (
+                <Reorder.Item
+                  key={m.id} value={m}
+                  initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12, height: 0 }}
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  whileDrag={{ scale: 1.03, boxShadow: "0 4px 14px rgba(37,36,34,0.15)" }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 7, padding: "6px 8px",
+                    border: "1px solid #ece7d8", borderRadius: 8, background: "#fff", cursor: "grab",
+                  }}
+                >
+                  <GripVertical size={12} style={{ color: "#c7c1ae", flexShrink: 0 }} />
+                  <span style={{ fontSize: 10, fontWeight: 800, color: C.dark, flex: 1 }}>{m.label}</span>
+                  <span style={{
+                    fontSize: 8, fontWeight: 700, color: "#8a8579", textTransform: "uppercase",
+                    background: "#f4f1e8", borderRadius: 5, padding: "1px 5px",
+                  }}>{m.type === "ring" ? "goal %" : m.type === "money" ? "money" : "streak"}</span>
+                  <motion.button
+                    whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+                    onClick={() => handleRemove(m.id)} title={`Remove ${m.label}`}
+                    style={{ border: "none", background: "none", cursor: "pointer", color: "#b3ac99", display: "flex", padding: 2 }}
+                  ><X size={12} /></motion.button>
+                </Reorder.Item>
+              ))}
+            </AnimatePresence>
+          </Reorder.Group>
+        ) : (
+          <div style={{ fontSize: 9, color: "#b3ac99", fontStyle: "italic", padding: "6px 2px" }}>Nothing selected — add a metric below.</div>
+        )}
+
+        {/* Inactive metrics — tap + to add */}
+        {!!inactiveMetrics.length && (
+          <>
+            <div style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", margin: "12px 0 5px" }}>Add a metric</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <AnimatePresence initial={false}>
+                {inactiveMetrics.map((m) => {
+                  const Icon = m.icon;
+                  return (
+                    <motion.button
+                      key={m.id} layout
+                      initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }}
+                      transition={{ type: "spring", stiffness: 380, damping: 26 }}
+                      whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }}
+                      onClick={() => handleAdd(m.id)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9.5, fontWeight: 800,
+                        padding: "5px 10px", borderRadius: 999, border: "1px dashed #ddd6c4",
+                        background: "rgba(255,255,255,0.6)", color: C.text,
+                      }}
+                    ><Plus size={11} /> {Icon && <Icon size={11} style={{ color: m.color }} />} {m.label}</motion.button>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          </>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+/* Top-level Theme tab shown inside Settings — five sub-sections. */
+function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset }) {
   const [section, setSection] = useState("dashboard");
   const t = normalizeTheme(theme);
   const SECTIONS = [
     { key: "dashboard", label: "Dashboard", icon: <LayoutGrid size={10} /> },
     { key: "analytics", label: "Analytics", icon: <BarChart3 size={10} /> },
     { key: "widgets", label: "Widgets", icon: <Palette size={10} /> },
+    { key: "analyticsSummary", label: "Analytics Summary", icon: <PiggyBank size={10} /> },
     { key: "focusMode", label: "Focus Mode", icon: <Target size={10} /> },
   ];
   return (
@@ -3512,6 +3720,12 @@ function ThemePanel({ theme, layoutSizes, onScopeChange, onScopeReset, onWidgetC
           <WidgetsThemeEditor
             key="widgets" widgetThemes={t.widgets} layoutSizes={layoutSizes}
             onWidgetChange={onWidgetChange} onWidgetReset={onWidgetReset} onWidgetSize={onWidgetSize}
+          />
+        )}
+        {section === "analyticsSummary" && (
+          <AnalyticsSummaryThemeEditor
+            key="analyticsSummary" state={state} metrics={t.analyticsSummary.metrics}
+            onChange={onAnalyticsSummaryChange} onReset={onAnalyticsSummaryReset}
           />
         )}
         {section === "focusMode" && (
@@ -4186,6 +4400,18 @@ function BTLDashboardInner() {
     s.layout = { ...s.layout, sizes: { ...s.layout.sizes, [id]: { ...preset } } };
     return s;
   });
+  const setAnalyticsSummaryMetrics = (metricIds) => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.analyticsSummary = normalizeAnalyticsSummaryTheme({ metrics: metricIds });
+    s.theme = theme;
+    return s;
+  });
+  const resetAnalyticsSummaryMetrics = () => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.analyticsSummary = normalizeAnalyticsSummaryTheme({});
+    s.theme = theme;
+    return s;
+  });
 
   const theme = normalizeTheme(state.theme);
   const dashTheme = { bg: theme.dashboard.bg || C.bg, text: theme.dashboard.text || C.text };
@@ -4202,7 +4428,7 @@ function BTLDashboardInner() {
     dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyles?.dailyGoals} cardBg={theme.widgets.dailyGoals?.bg} />,
     extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} cardBg={theme.widgets.extryGoals?.bg} />,
     earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} cardBg={theme.widgets.earnMoney?.bg} />,
-    analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} />,
+    analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} metrics={theme.analyticsSummary.metrics} />,
   };
 
   return (
@@ -4373,6 +4599,7 @@ function BTLDashboardInner() {
               onThemeScopeChange={setThemeScope} onThemeScopeReset={resetThemeScope}
               onWidgetThemeChange={setWidgetTheme} onWidgetThemeReset={resetWidgetTheme}
               onWidgetSizePreset={setWidgetSizePreset}
+              onAnalyticsSummaryChange={setAnalyticsSummaryMetrics} onAnalyticsSummaryReset={resetAnalyticsSummaryMetrics}
             />
           </motion.div>
         )}
