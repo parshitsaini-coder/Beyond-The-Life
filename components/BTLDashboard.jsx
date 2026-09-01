@@ -101,6 +101,10 @@ const TEXT_COLOR_OPTIONS = [
   { id: "#c0392b", label: "Red", swatch: "#c0392b" },
 ];
 const DEFAULT_TEXT_STYLE = { scale: 1, color: "", font: "", bold: false };
+/* Widgets whose free-text content can be individually styled — pick one
+   in the Text Style panel (click its name in the reorder list) and only
+   that widget's text changes; the others are untouched until selected. */
+const TEXT_STYLE_WIDGET_IDS = ["bigGoals", "lifeRules", "dailyGoals", "extryGoals"];
 function normalizeTextStyle(ts) {
   const t = ts && typeof ts === "object" ? ts : {};
   const scale = Math.min(TEXT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, Number(t.scale) || 1));
@@ -111,6 +115,12 @@ function normalizeTextStyle(ts) {
     bold: !!t.bold,
   };
 }
+function normalizeTextStyles(map) {
+  const src = map && typeof map === "object" ? map : {};
+  const out = {};
+  TEXT_STYLE_WIDGET_IDS.forEach((id) => { out[id] = normalizeTextStyle(src[id]); });
+  return out;
+}
 
 const DEFAULT_LAYOUT = {
   order: WIDGETS.map((w) => w.id),
@@ -120,7 +130,7 @@ const DEFAULT_LAYOUT = {
   },
   pinned: { analyticsSummary: false },
   hidden: {},
-  textStyle: DEFAULT_TEXT_STYLE,
+  textStyles: {},
 };
 function defaultLayout() {
   return {
@@ -128,7 +138,7 @@ function defaultLayout() {
     sizes: Object.fromEntries(Object.entries(DEFAULT_LAYOUT.sizes).map(([k, v]) => [k, { ...v }])),
     pinned: { ...DEFAULT_LAYOUT.pinned },
     hidden: {},
-    textStyle: { ...DEFAULT_TEXT_STYLE },
+    textStyles: {},
   };
 }
 /* Normalizes any stored size value into a valid { w, h } object:
@@ -161,8 +171,13 @@ function ensureLayoutDefaults(s) {
   WIDGETS.forEach((w) => { sizes[w.id] = normalizeSize(rawSizes[w.id]); });
   const pinned = { ...DEFAULT_LAYOUT.pinned, ...(layout.pinned || {}) };
   const hidden = { ...(layout.hidden || {}) };
-  const textStyle = normalizeTextStyle(layout.textStyle);
-  return { ...s, layout: { order, sizes, pinned, hidden, textStyle } };
+  // Migrate a pre-existing single global `textStyle` (old format) by
+  // seeding every text widget with it once; new per-widget `textStyles`
+  // takes priority if already present.
+  const legacyGlobal = layout.textStyle && typeof layout.textStyle === "object" ? layout.textStyle : null;
+  const rawTextStyles = layout.textStyles || (legacyGlobal ? Object.fromEntries(TEXT_STYLE_WIDGET_IDS.map((id) => [id, legacyGlobal])) : {});
+  const textStyles = normalizeTextStyles(rawTextStyles);
+  return { ...s, layout: { order, sizes, pinned, hidden, textStyles } };
 }
 
 /* ---------------- GOAL MANAGEMENT: categories & priorities ---------------- */
@@ -2708,11 +2723,20 @@ function WidgetGrid({ layout, widgets, editable = false, onResize, onReorder }) 
 
 /* ---------------- LAYOUT EDITOR (drag to reorder / pin, drag corners below to free-form resize) ---------------- */
 function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
+  const [activeTextWidget, setActiveTextWidget] = useState(TEXT_STYLE_WIDGET_IDS[0]);
   const togglePin = (id) => onChange((l) => ({ ...l, pinned: { ...l.pinned, [id]: !l.pinned[id] } }));
   const toggleHidden = (id) => onChange((l) => ({ ...l, hidden: { ...(l.hidden || {}), [id]: !(l.hidden || {})[id] } }));
   const onWidgetResize = (id, size) => onChange((l) => ({ ...l, sizes: { ...l.sizes, [id]: normalizeSize(size) } }));
-  const updateTextStyle = (patch) => onChange((l) => ({ ...l, textStyle: normalizeTextStyle({ ...normalizeTextStyle(l.textStyle), ...patch }) }));
-  const resetTextStyle = () => onChange((l) => ({ ...l, textStyle: { ...DEFAULT_TEXT_STYLE } }));
+  const updateTextStyle = (patch) => onChange((l) => {
+    const styles = normalizeTextStyles(l.textStyles);
+    styles[activeTextWidget] = normalizeTextStyle({ ...styles[activeTextWidget], ...patch });
+    return { ...l, textStyles: styles };
+  });
+  const resetTextStyle = () => onChange((l) => {
+    const styles = normalizeTextStyles(l.textStyles);
+    styles[activeTextWidget] = { ...DEFAULT_TEXT_STYLE };
+    return { ...l, textStyles: styles };
+  });
 
   return (
     <motion.div
@@ -2759,18 +2783,36 @@ function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
             const isPinned = !!layout.pinned[id];
             const isHidden = !!(layout.hidden || {})[id];
             const shown = isAnalytics ? isPinned : !isHidden;
+            const isTextStylable = TEXT_STYLE_WIDGET_IDS.includes(id);
+            const isActiveText = isTextStylable && activeTextWidget === id;
             return (
               <Reorder.Item
                 key={id} value={id}
                 whileDrag={{ scale: 1.03, boxShadow: "0 10px 26px rgba(37,36,34,0.18)", cursor: "grabbing" }}
                 style={{
                   display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
-                  background: "rgba(255,255,255,0.85)", border: "1px solid #ece7d8", borderRadius: 8,
+                  background: isActiveText ? "rgba(252,163,17,0.10)" : "rgba(255,255,255,0.85)",
+                  border: `1px solid ${isActiveText ? C.accent : "#ece7d8"}`, borderRadius: 8,
                   listStyle: "none", opacity: shown ? 1 : 0.6,
                 }}
               >
                 <GripVertical size={14} style={{ color: "#b3ac99", cursor: "grab", flexShrink: 0 }} />
-                <span style={{ fontSize: 11, fontWeight: 700, color: C.dark, flex: 1 }}>{w.label}</span>
+                {isTextStylable ? (
+                  <motion.span
+                    whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+                    onClick={() => setActiveTextWidget(id)}
+                    title="Select to edit this widget's text style below"
+                    style={{
+                      fontSize: 11, fontWeight: 700, color: isActiveText ? C.accent : C.dark, flex: 1, cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 5,
+                    }}
+                  >
+                    <Type size={10} style={{ opacity: isActiveText ? 1 : 0.35, flexShrink: 0 }} />
+                    {w.label}
+                  </motion.span>
+                ) : (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.dark, flex: 1 }}>{w.label}</span>
+                )}
                 {isAnalytics ? (
                   <motion.button whileTap={{ scale: 0.92 }} onClick={() => togglePin(id)} title={isPinned ? "Unpin from dashboard" : "Pin to dashboard"} style={{
                     border: `1px solid ${isPinned ? C.accent : "#ddd6c4"}`, background: isPinned ? C.accent : "#fff",
@@ -2797,7 +2839,16 @@ function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
           })}
         </Reorder.Group>
 
-        <TextStylePanel textStyle={layout.textStyle} onChange={updateTextStyle} onReset={resetTextStyle} />
+        <div style={{ fontSize: 10, color: "#8a8579", marginTop: 14, lineHeight: 1.4, display: "flex", alignItems: "center", gap: 5 }}>
+          <Type size={11} style={{ flexShrink: 0 }} />
+          Tap a widget's name above (Big Goals, Life Rules, Daily/Entry Goals) to select it, then style only that one below.
+        </div>
+        <TextStylePanel
+          widgetLabel={WIDGETS.find((w) => w.id === activeTextWidget)?.label || ""}
+          textStyle={(layout.textStyles || {})[activeTextWidget]}
+          onChange={updateTextStyle}
+          onReset={resetTextStyle}
+        />
 
         <div style={{ fontSize: 10, color: "#8a8579", margin: "16px 0 8px", lineHeight: 1.4, display: "flex", alignItems: "center", gap: 5 }}>
           <Maximize2 size={11} style={{ flexShrink: 0 }} />
@@ -2811,12 +2862,15 @@ function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
 }
 
 /* ---------------- TEXT STYLE PANEL (font size / color / font / bold for widget text) ----------------
-   Lives inside the Customize Layout tab. Controls state.layout.textStyle,
-   which the free-text widgets (Life Big Goals, Life Rules, Daily Goals,
-   Entry Goals) read to scale/recolor/re-style their own text — each
-   widget applies the multiplier to its own base sizes in JS, so nested
-   text never compounds the way a blanket CSS em-scale would. */
-function TextStylePanel({ textStyle, onChange, onReset }) {
+   Lives inside the Customize Layout tab. Click a widget's name in the
+   reorder list above to make it "active"; this panel then edits only
+   that widget's entry in state.layout.textStyles — each of the four
+   text widgets (Life Big Goals, Life Rules, Daily Goals, Entry Goals)
+   keeps its own independent size/color/font/bold, and switching the
+   active widget switches which one these controls affect. Every widget
+   applies its own scale to its own base sizes in JS (not a blanket CSS
+   scale), so nested text never compounds the way a CSS em-chain would. */
+function TextStylePanel({ widgetLabel, textStyle, onChange, onReset }) {
   const ts = normalizeTextStyle(textStyle);
   const scalePct = Math.round(ts.scale * 100);
   const isDefault = ts.scale === 1 && !ts.color && !ts.font && !ts.bold;
@@ -2835,9 +2889,20 @@ function TextStylePanel({ textStyle, onChange, onReset }) {
         borderBottom: "1px solid #ece7d8", background: "rgba(255,252,242,0.6)",
       }}>
         <Type size={12} style={{ color: C.dark, flexShrink: 0 }} />
-        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark, flex: 1 }}>Text Style</span>
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>Text Style</span>
+        <AnimatePresence mode="wait">
+          <motion.span
+            key={widgetLabel}
+            initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+            style={{
+              fontSize: 9, fontWeight: 700, color: C.accent, background: "rgba(252,163,17,0.14)",
+              borderRadius: 999, padding: "2px 8px",
+            }}
+          >{widgetLabel}</motion.span>
+        </AnimatePresence>
+        <div style={{ flex: 1 }} />
         {!isDefault && (
-          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={onReset} title="Reset text style" style={{
+          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={onReset} title={`Reset ${widgetLabel} text style`} style={{
             border: "1px solid #ddd6c4", background: "#fff", color: "#8a8579", borderRadius: 999,
             padding: "2px 8px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
           }}><RefreshCw size={10} /> Reset</motion.button>
@@ -2847,7 +2912,7 @@ function TextStylePanel({ textStyle, onChange, onReset }) {
       <div style={{ padding: "10px 10px 12px" }}>
         {/* live preview */}
         <motion.div
-          key={`${scalePct}-${ts.color}-${ts.font}-${ts.bold}`}
+          key={`${widgetLabel}-${scalePct}-${ts.color}-${ts.font}-${ts.bold}`}
           initial={{ opacity: 0.4 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}
           style={{
             border: "1px solid #ece7d8", borderRadius: 8, background: "#fff", padding: "10px 12px", marginBottom: 12,
@@ -2859,7 +2924,7 @@ function TextStylePanel({ textStyle, onChange, onReset }) {
           }}>
             Become financially free
           </div>
-          <div style={{ fontSize: 9, color: "#b3ac99", marginTop: 4 }}>Live preview — applies to Big Goals, Life Rules & goal lists</div>
+          <div style={{ fontSize: 9, color: "#b3ac99", marginTop: 4 }}>Live preview — only {widgetLabel} will change</div>
         </motion.div>
 
         {/* font size */}
@@ -3636,10 +3701,10 @@ function BTLDashboardInner() {
      a corner handle resizes the exact same widget the user sees on
      their normal dashboard. */
   const widgetsMap = {
-    bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} textStyle={state.layout.textStyle} />,
-    lifeRules: <TextList title="Life Rules" items={state.lifeRules} textStyle={state.layout.textStyle} />,
-    dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyle} />,
-    extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyle} />,
+    bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} textStyle={state.layout.textStyles?.bigGoals} />,
+    lifeRules: <TextList title="Life Rules" items={state.lifeRules} textStyle={state.layout.textStyles?.lifeRules} />,
+    dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyles?.dailyGoals} />,
+    extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} />,
     earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} />,
   };

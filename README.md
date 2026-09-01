@@ -1,6 +1,18 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Text Style + Hide widgets (this update)
+## Per-widget Text Style (this update)
+
+Text Style controls now apply to **one widget at a time**, not all four
+at once. In **Customize Layout**, tap a widget's name (Life Big Goals,
+Life Rules, Daily Goals, or Entry Goals) in the reorder list — it
+highlights with an amber border and a small text-icon, and the **Text
+Style** panel below switches to editing just that widget (its label
+shows next to "Text Style"). Font size / bold / font / color changes
+now only affect the selected widget; pick a different one any time to
+style it separately, and each widget remembers its own settings
+independently (`state.layout.textStyles[widgetId]`).
+
+## Text Style + Hide widgets (earlier update)
 
 **Customize Layout** now has a **Text Style** panel (below the reorder
 list) with a live preview and:
