@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Component } from "react";
 import {
   Settings, X, Plus, Smile, Meh, Frown, Image as ImageIcon,
   LogOut, Trash2, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Flame, Target, BookOpen,
@@ -1922,7 +1922,7 @@ function MemTiltPhoto({ src, onClick, index }) {
       style={{
         position: "relative", width: "100%", aspectRatio: "1", borderRadius: 12, overflow: "hidden",
         cursor: "zoom-in", boxShadow: "0 8px 20px rgba(37,36,34,0.18)",
-        transformStyle: "preserve-3d", border: "1px solid rgba(255,255,255,0.65)",
+        border: "1px solid rgba(255,255,255,0.65)",
       }}>
       <img src={src} alt="memory" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", pointerEvents: "none" }} />
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(140deg, rgba(255,255,255,0.35), transparent 45%)", pointerEvents: "none" }} />
@@ -2034,21 +2034,43 @@ function MemoriesModal({ state, onAddMemory, onClose }) {
     setMemInput("");
   };
 
+  // Bug fix: closing used to be wired to the backdrop click AND the header
+  // "X" both calling onClose() directly, regardless of whether the photo
+  // lightbox was still open/mid-animation on top of it. If a user clicked
+  // outside the card while a photo was open, the whole modal (and its
+  // nested AnimatePresence for the lightbox) got yanked out of the DOM in
+  // the middle of an animation — framer-motion never got to finish/clean
+  // up that transition, which left the app in a broken, unresponsive state.
+  // Fix: always close the lightbox first; only close the whole modal once
+  // nothing is still animating on top of it.
+  const handleRequestClose = () => {
+    if (lightbox) { setLightbox(null); return; }
+    onClose();
+  };
+
   return (
     <motion.div
-      onClick={(e) => e.stopPropagation()}
-      initial={{ opacity: 0, scale: 0.94, y: 18 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.96, y: 12 }}
-      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
       style={{
-        width: "min(960px, 95vw)", height: "min(640px, 88vh)",
-        background: "rgba(255,252,242,0.72)",
-        backdropFilter: "blur(22px) saturate(180%)", WebkitBackdropFilter: "blur(22px) saturate(180%)",
-        border: "1px solid rgba(255,255,255,0.65)", borderRadius: 20,
-        boxShadow: "0 30px 80px rgba(37,36,34,0.28), inset 0 1px 0 rgba(255,255,255,0.6)",
-        display: "flex", overflow: "hidden", position: "relative",
-      }}>
+        position: "absolute", inset: 0, background: "rgba(37,36,34,0.32)", zIndex: 60,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+      }}
+      onClick={handleRequestClose}>
+      <motion.div
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.94, y: 18 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 12 }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        style={{
+          width: "min(960px, 95vw)", height: "min(640px, 88vh)",
+          background: "rgba(255,252,242,0.72)",
+          backdropFilter: "blur(22px) saturate(180%)", WebkitBackdropFilter: "blur(22px) saturate(180%)",
+          border: "1px solid rgba(255,255,255,0.65)", borderRadius: 20,
+          boxShadow: "0 30px 80px rgba(37,36,34,0.28), inset 0 1px 0 rgba(255,255,255,0.6)",
+          display: "flex", overflow: "hidden", position: "relative",
+        }}>
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)", zIndex: 1 }} />
 
       {/* ---------- SIDEBAR: date timeline ---------- */}
@@ -2078,7 +2100,7 @@ function MemoriesModal({ state, onAddMemory, onClose }) {
             </div>
             <div style={{ fontSize: 10, color: "#8a8579" }}>{fmt.weekday} · {Math.round(summary.pct || 0)}% of goals done</div>
           </div>
-          <motion.div whileHover={{ scale: 1.15, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: C.dark }}>
+          <motion.div whileHover={{ scale: 1.15, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={handleRequestClose} style={{ cursor: "pointer", color: C.dark }}>
             <X size={18} />
           </motion.div>
         </div>
@@ -2106,23 +2128,22 @@ function MemoriesModal({ state, onAddMemory, onClose }) {
         </div>
 
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 18px 18px" }} className="btl-scroll">
-          <AnimatePresence mode="wait">
-            <motion.div key={tabKey + selectedDate} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.18 }}>
-              {tabKey === "goals" && <MemGoalsPanel summary={summary} />}
-              {tabKey === "money" && <MemMoneyPanel summary={summary} />}
-              {tabKey === "photos" && <MemPhotosPanel summary={summary} onOpen={setLightbox} />}
-              {tabKey === "notes" && <MemNotesPanel summary={summary} memInput={memInput} setMemInput={setMemInput} onSubmit={submitMemory} />}
-            </motion.div>
-          </AnimatePresence>
+          <motion.div key={tabKey + selectedDate} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.18 }}>
+            {tabKey === "goals" && <MemGoalsPanel summary={summary} />}
+            {tabKey === "money" && <MemMoneyPanel summary={summary} />}
+            {tabKey === "photos" && <MemPhotosPanel summary={summary} onOpen={setLightbox} />}
+            {tabKey === "notes" && <MemNotesPanel summary={summary} memInput={memInput} setMemInput={setMemInput} onSubmit={submitMemory} />}
+          </motion.div>
         </div>
       </div>
 
-      <AnimatePresence>{lightbox && <MemPhotoLightbox src={lightbox} onClose={() => setLightbox(null)} />}</AnimatePresence>
+        <AnimatePresence>{lightbox && <MemPhotoLightbox src={lightbox} onClose={() => setLightbox(null)} />}</AnimatePresence>
+      </motion.div>
     </motion.div>
   );
 }
 
-export default function App() {
+function BTLDashboardInner() {
   const { user: fbUser } = useAuth();
   const [state, setState] = useState(null);
   const [tab, setTab] = useState("dashboard");
@@ -2475,18 +2496,61 @@ export default function App() {
 
       {/* ---------- MEMORIES MODAL (Glassmorphism 2.0 / Liquid Glass — full journal, tabbed) ---------- */}
       <AnimatePresence>
-        {memOpen && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
-            style={{
-              position: "absolute", inset: 0, background: "rgba(37,36,34,0.32)", zIndex: 60,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
-            }} onClick={() => setMemOpen(false)}>
-            <MemoriesModal state={state} onAddMemory={addMemory} onClose={() => setMemOpen(false)} />
-          </motion.div>
-        )}
+        {memOpen && <MemoriesModal state={state} onAddMemory={addMemory} onClose={() => setMemOpen(false)} />}
       </AnimatePresence>
     </div>
+  );
+}
+
+/* ----------------------------------------------------------------
+   ERROR BOUNDARY — a defensive safety net.
+   Previously, any uncaught runtime error anywhere in the tree (e.g. a
+   third-party animation library hitting an edge case) would leave
+   React's event system dead: the DOM would still be visible, but
+   nothing would respond to clicks anymore, with no way to recover
+   short of a full page reload. This catches that instead of letting
+   the whole dashboard go silently unresponsive, and offers a one-click
+   recovery so the person never gets stuck.
+   ---------------------------------------------------------------- */
+class BTLErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error, info) {
+    console.error("BTL dashboard crashed:", error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          fontFamily: "Inter, system-ui, sans-serif", height: "100%", display: "flex",
+          flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
+          background: C.bg, color: C.dark, borderRadius: 14, padding: 24, textAlign: "center",
+        }}>
+          <div style={{ fontWeight: 900, fontSize: 15 }}>Something went wrong.</div>
+          <div style={{ fontSize: 11, color: "#8a8579", maxWidth: 320 }}>
+            A part of the dashboard hit an unexpected error. Your data is safe — tap below to reload this view.
+          </div>
+          <button
+            onClick={() => this.setState({ hasError: false })}
+            style={{ border: "none", background: C.dark, color: "#fff", borderRadius: 999, padding: "8px 18px", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+            Reload dashboard
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function App() {
+  return (
+    <BTLErrorBoundary>
+      <BTLDashboardInner />
+    </BTLErrorBoundary>
   );
 }
