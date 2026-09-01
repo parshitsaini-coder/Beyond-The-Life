@@ -6,7 +6,8 @@ import {
   Repeat, RotateCcw, BarChart3, TrendingUp, TrendingDown, Award, Tag, Pencil,
   GripVertical, Pin, PinOff, LayoutGrid, RefreshCw, Maximize2, Move,
   CheckCircle2, Wallet, StickyNote, Camera, Sparkles, Download, ZoomIn, CalendarDays,
-  ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft
+  ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft,
+  Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
@@ -1278,8 +1279,18 @@ function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
    Category breakdown (donut + ranked list), an earn-vs-spend trend chart
    with a 7/14/30-day range toggle, and a scrollable recent-activity feed
    built from state.moneyEntries (individual Add-money popup submissions). */
-function MoneyManagementTab({ state, onClose }) {
+function MoneyManagementTab({ state, onClose, onResetData }) {
   const [range, setRange] = useState(14); // 7 | 14 | 30
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
+
+  const handleResetConfirm = () => {
+    onResetData?.();
+    setResetOpen(false);
+    setResetDone(true);
+    setTimeout(() => setResetDone(false), 2200);
+  };
 
   const moneySummary = useMemo(() => {
     const earn = state.totalEarnLife || 0;
@@ -1322,7 +1333,7 @@ function MoneyManagementTab({ state, onClose }) {
   const recentEntries = entries.slice(0, 14);
 
   return (
-    <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, background: C.bg, borderRadius: "10px 10px 0 0" }}>
         <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
           <ArrowLeft size={15} color={C.dark} />
@@ -1330,6 +1341,24 @@ function MoneyManagementTab({ state, onClose }) {
         <Wallet size={14} color={C.dark} />
         <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Money Management</span>
         <div style={{ flex: 1 }} />
+        <motion.button
+          onClick={() => setSummaryOpen(true)}
+          whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
+          title="Day-by-day breakdown with photos"
+          style={{
+            border: `1px solid ${C.text}`, borderRadius: 999, padding: "5px 11px", background: "#fff",
+            display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: C.dark,
+          }}
+        ><ListChecks size={12} /> Summary</motion.button>
+        <motion.button
+          onClick={() => setResetOpen(true)}
+          whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
+          title="Reset all Money Management data"
+          style={{
+            border: "1px solid #c0392b40", borderRadius: 999, padding: "5px 11px", background: "#c0392b0f",
+            display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: "#c0392b",
+          }}
+        ><RotateCcw size={12} /> Reset</motion.button>
         <button onClick={onClose} style={{
           border: "none", borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
           display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
@@ -1455,10 +1484,10 @@ function MoneyManagementTab({ state, onClose }) {
                     initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i, 8) * 0.02 }}
                     style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 8px", borderRadius: 8, background: i % 2 ? "transparent" : "#faf8f0" }}
                   >
-                    {isEarn ? (
-                      e.image
-                        ? <img src={e.image} alt="" style={{ width: 28, height: 28, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
-                        : <div style={{ width: 28, height: 28, borderRadius: 7, background: "#4a7c5918", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ArrowUpCircle size={14} color="#4a7c59" /></div>
+                    {e.image ? (
+                      <img src={e.image} alt="" style={{ width: 28, height: 28, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
+                    ) : isEarn ? (
+                      <div style={{ width: 28, height: 28, borderRadius: 7, background: "#4a7c5918", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ArrowUpCircle size={14} color="#4a7c59" /></div>
                     ) : (
                       <div style={{ width: 28, height: 28, borderRadius: 7, background: `${cat.color}22`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 13 }}>{cat.emoji}</div>
                     )}
@@ -1478,6 +1507,23 @@ function MoneyManagementTab({ state, onClose }) {
           )}
         </div>
       </div>
+
+      <AnimatePresence>{summaryOpen && <MoneySummaryModal state={state} onClose={() => setSummaryOpen(false)} />}</AnimatePresence>
+      <AnimatePresence>{resetOpen && <MoneyResetModal onClose={() => setResetOpen(false)} onConfirm={handleResetConfirm} />}</AnimatePresence>
+      <AnimatePresence>
+        {resetDone && (
+          <motion.div
+            initial={{ opacity: 0, x: "-50%", y: -10, scale: 0.94 }} animate={{ opacity: 1, x: "-50%", y: 0, scale: 1 }} exit={{ opacity: 0, x: "-50%", y: -8, scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 340, damping: 26 }}
+            style={{
+              position: "absolute", top: 12, left: "50%", zIndex: 95,
+              display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 999,
+              background: "rgba(74,124,89,0.95)", color: "#fff", fontSize: 11, fontWeight: 800,
+              boxShadow: "0 10px 26px rgba(74,124,89,0.35)",
+            }}
+          ><ShieldCheck size={13} /> Money Management data reset ✓</motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1583,8 +1629,43 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
   const canConfirm = !busy && (isEarn || !!category);
   const handleConfirm = () => {
     if (!canConfirm) return;
-    onConfirm({ image: isEarn ? image : null, category: isEarn ? null : category, note: note.trim() });
+    onConfirm({ image: image || null, category: isEarn ? null : category, note: note.trim() });
   };
+
+  // Shared photo dropzone — used by both Earn (optional attach) and now
+  // Spend (optional receipt/bill photo) so every money entry can carry
+  // an image, same visual treatment either way.
+  const photoDropzone = (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 800, color: C.dark, marginBottom: 6 }}>📷 Attach a photo (optional)</div>
+      <motion.div
+        whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
+        onClick={() => fileRef.current?.click()}
+        style={{
+          border: `1.5px dashed ${image ? accent : "#ddd6c4"}`, borderRadius: 12, cursor: "pointer",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          gap: 6, padding: image ? 8 : 20, background: "rgba(255,255,255,0.5)",
+        }}
+      >
+        {image ? (
+          <img src={image} alt="attachment" style={{ width: "100%", maxHeight: 140, objectFit: "cover", borderRadius: 8 }} />
+        ) : busy ? (
+          <span style={{ fontSize: 10, color: "#a39c86" }}>Reading photo…</span>
+        ) : (
+          <>
+            <ImageIcon size={22} color="#c9c2ac" />
+            <span style={{ fontSize: 9, color: "#a39c86", textAlign: "center" }}>{isEarn ? "Tap to attach an image with this earning" : "Tap to attach a receipt / bill photo"}</span>
+          </>
+        )}
+      </motion.div>
+      {image && (
+        <div onClick={() => setImage(null)} style={{ textAlign: "center", marginTop: 6, fontSize: 9, color: "#c0392b", cursor: "pointer", fontWeight: 700 }}>
+          Remove photo
+        </div>
+      )}
+      <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
+    </div>
+  );
 
   return (
     <motion.div
@@ -1640,35 +1721,7 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
         </div>
 
         {isEarn ? (
-          <div>
-            <div style={{ fontSize: 10, fontWeight: 800, color: C.dark, marginBottom: 6 }}>📷 Attach a photo (optional)</div>
-            <motion.div
-              whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
-              onClick={() => fileRef.current?.click()}
-              style={{
-                border: `1.5px dashed ${image ? accent : "#ddd6c4"}`, borderRadius: 12, cursor: "pointer",
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                gap: 6, padding: image ? 8 : 20, background: "rgba(255,255,255,0.5)",
-              }}
-            >
-              {image ? (
-                <img src={image} alt="attachment" style={{ width: "100%", maxHeight: 140, objectFit: "cover", borderRadius: 8 }} />
-              ) : busy ? (
-                <span style={{ fontSize: 10, color: "#a39c86" }}>Reading photo…</span>
-              ) : (
-                <>
-                  <ImageIcon size={22} color="#c9c2ac" />
-                  <span style={{ fontSize: 9, color: "#a39c86", textAlign: "center" }}>Tap to attach an image with this earning</span>
-                </>
-              )}
-            </motion.div>
-            {image && (
-              <div onClick={() => setImage(null)} style={{ textAlign: "center", marginTop: 6, fontSize: 9, color: "#c0392b", cursor: "pointer", fontWeight: 700 }}>
-                Remove photo
-              </div>
-            )}
-            <input ref={fileRef} type="file" accept="image/*" onChange={handleFile} style={{ display: "none" }} />
-          </div>
+          photoDropzone
         ) : (
           <div>
             <div style={{ fontSize: 10, fontWeight: 800, color: C.dark, marginBottom: 8 }}>Pick a category</div>
@@ -1698,6 +1751,7 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
                 );
               })}
             </motion.div>
+            <div style={{ marginBottom: 12 }}>{photoDropzone}</div>
           </div>
         )}
 
@@ -1720,6 +1774,313 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
         >
           {isEarn ? "Add Earning" : "Done"}
         </motion.button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* ---------------- MONEY RESET — PASSWORD GATE (Glassmorphism 2.0 / Liquid Glass) ----------------
+   Opens when "Reset" is tapped in Money Management. Wipes moneyEntries,
+   moneyHistory and the life-time earn/spend totals — but only after the
+   single supported password ("1000") is entered correctly. A wrong
+   attempt shakes the card and shows an inline error instead of closing,
+   so it can't be dismissed by accident. */
+const RESET_PASSWORD = "1000";
+function MoneyResetModal({ onClose, onConfirm }) {
+  const [pwd, setPwd] = useState("");
+  const [show, setShow] = useState(false);
+  const [error, setError] = useState(false);
+  const [shakeKey, setShakeKey] = useState(0);
+  const [confirming, setConfirming] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const submit = () => {
+    if (pwd === RESET_PASSWORD) {
+      setConfirming(true);
+      // Tiny beat so the "verified" state is visible before the whole
+      // popup unmounts — feels intentional rather than an instant snap.
+      setTimeout(() => onConfirm(), 420);
+    } else {
+      setError(true);
+      setShakeKey((k) => k + 1);
+      setPwd("");
+      inputRef.current?.focus();
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
+      style={{
+        position: "absolute", inset: 0, background: "rgba(37,36,34,0.4)", zIndex: 85,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(5px)", WebkitBackdropFilter: "blur(5px)",
+      }}
+      onClick={onClose}
+    >
+      <motion.div
+        key={shakeKey}
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.88, y: 24 }}
+        animate={error
+          ? { opacity: 1, scale: 1, y: 0, x: [0, -10, 10, -8, 8, -4, 4, 0] }
+          : { opacity: 1, scale: 1, y: 0, x: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: 16 }}
+        transition={error ? { x: { duration: 0.45, ease: "easeInOut" }, default: { type: "spring", stiffness: 320, damping: 26 } } : { type: "spring", stiffness: 320, damping: 26 }}
+        style={{
+          width: "min(340px, 90vw)",
+          background: "rgba(255,252,242,0.8)",
+          backdropFilter: "blur(24px) saturate(190%)", WebkitBackdropFilter: "blur(24px) saturate(190%)",
+          border: `1px solid ${error ? "rgba(192,57,43,0.45)" : "rgba(255,255,255,0.65)"}`, borderRadius: 18,
+          boxShadow: "0 30px 70px rgba(37,36,34,0.32), inset 0 1px 0 rgba(255,255,255,0.6)",
+          padding: 20, position: "relative", boxSizing: "border-box",
+        }}
+      >
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)" }} />
+
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 14 }}>
+          <motion.div
+            animate={confirming ? { scale: [1, 1.15, 1], rotate: [0, 8, -8, 0] } : {}}
+            style={{
+              width: 46, height: 46, borderRadius: "50%", flexShrink: 0, marginBottom: 8,
+              background: confirming ? "#4a7c5920" : "#c0392b18", border: `1px solid ${confirming ? "#4a7c5955" : "#c0392b45"}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            {confirming ? <ShieldCheck size={22} color="#4a7c59" /> : <Lock size={20} color="#c0392b" />}
+          </motion.div>
+          <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>{confirming ? "Verified — resetting…" : "Reset Money Management"}</div>
+          <div style={{ fontSize: 9.5, color: "#8a8579", marginTop: 2, maxWidth: 260 }}>
+            {confirming ? "Clearing entries, history and totals." : "This wipes all Money Management data — earnings, spending, categories and totals. Enter the password to confirm."}
+          </div>
+        </div>
+
+        {!confirming && (
+          <>
+            <div style={{ position: "relative", marginBottom: error ? 6 : 14 }}>
+              <input
+                ref={inputRef}
+                type={show ? "text" : "password"}
+                value={pwd}
+                onChange={(e) => { setPwd(e.target.value); setError(false); }}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+                placeholder="Enter password"
+                style={{
+                  width: "100%", fontSize: 12, padding: "10px 34px 10px 12px", borderRadius: 10,
+                  border: `1.5px solid ${error ? "#c0392b" : "#ddd6c4"}`, outline: "none", boxSizing: "border-box",
+                  background: "rgba(255,255,255,0.7)", color: C.dark, fontWeight: 700, letterSpacing: show ? 0 : 2,
+                }}
+              />
+              <div onClick={() => setShow((v) => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", cursor: "pointer", color: "#a39c86", display: "flex" }}>
+                {show ? <EyeOff size={15} /> : <Eye size={15} />}
+              </div>
+            </div>
+
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                  style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9.5, color: "#c0392b", fontWeight: 700, marginBottom: 12, overflow: "hidden" }}
+                >
+                  <AlertCircle size={12} /> Incorrect password — try again.
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div style={{ display: "flex", gap: 8, marginTop: error ? 0 : 4 }}>
+              <motion.button
+                onClick={onClose}
+                whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+                style={{ flex: 1, border: "1px solid #ddd6c4", background: "rgba(255,255,255,0.6)", borderRadius: 10, padding: "10px 0", fontSize: 11.5, fontWeight: 800, color: C.dark, cursor: "pointer" }}
+              >
+                Cancel
+              </motion.button>
+              <motion.button
+                onClick={submit}
+                disabled={!pwd}
+                whileHover={pwd ? { y: -1 } : undefined} whileTap={pwd ? { scale: 0.96 } : undefined}
+                style={{ flex: 1, border: "none", borderRadius: 10, padding: "10px 0", fontSize: 11.5, fontWeight: 900, color: "#fff", cursor: pwd ? "pointer" : "not-allowed", background: pwd ? "#c0392b" : "#ddd6c4" }}
+              >
+                Reset
+              </motion.button>
+            </div>
+          </>
+        )}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* ---------------- MONEY SUMMARY — day-by-day breakdown (large glass popup) ----------------
+   Opened from Money Management's "Summary" button. Mirrors the Memories
+   modal's date-sidebar layout, but focused purely on money: pick a date
+   on the left, see every earn/spend entry logged that day on the right —
+   amount, category or attached photo, and note — plus a day total strip.
+   Reuses MemPhotoLightbox for full-screen photo viewing. */
+function MoneySummaryModal({ state, onClose }) {
+  const entries = state.moneyEntries || [];
+  const dates = useMemo(() => {
+    const set = new Set(entries.map((e) => e.date));
+    return Array.from(set).sort((a, b) => (a < b ? 1 : -1));
+  }, [entries]);
+  const [selectedDate, setSelectedDate] = useState(dates[0] || todayISO());
+  const [lightbox, setLightbox] = useState(null);
+
+  useEffect(() => {
+    if (dates.length && !dates.includes(selectedDate)) setSelectedDate(dates[0]);
+  }, [dates.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const dayEntries = useMemo(() => entries.filter((e) => e.date === selectedDate), [entries, selectedDate]);
+  const dayAgg = (state.moneyHistory && state.moneyHistory[selectedDate]) || { earn: 0, spend: 0 };
+  const dayNet = (dayAgg.earn || 0) - (dayAgg.spend || 0);
+
+  const handleRequestClose = () => {
+    if (lightbox) { setLightbox(null); return; }
+    onClose();
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
+      style={{
+        position: "absolute", inset: 0, background: "rgba(37,36,34,0.32)", zIndex: 60,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+      }}
+      onClick={handleRequestClose}>
+      <motion.div
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.94, y: 18 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 12 }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        style={{
+          width: "min(960px, 95vw)", height: "min(640px, 88vh)",
+          background: "rgba(255,252,242,0.72)",
+          backdropFilter: "blur(22px) saturate(180%)", WebkitBackdropFilter: "blur(22px) saturate(180%)",
+          border: "1px solid rgba(255,255,255,0.65)", borderRadius: 20,
+          boxShadow: "0 30px 80px rgba(37,36,34,0.28), inset 0 1px 0 rgba(255,255,255,0.6)",
+          display: "flex", overflow: "hidden", position: "relative",
+        }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)", zIndex: 1 }} />
+
+        {/* ---------- SIDEBAR: date timeline ---------- */}
+        <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid rgba(255,255,255,0.55)", display: "flex", flexDirection: "column", background: "rgba(255,255,255,0.25)" }}>
+          <div style={{ padding: "14px 14px 8px", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            <ListChecks size={14} color={C.accent} />
+            <span style={{ fontWeight: 900, fontSize: 13, color: C.dark }}>Summary</span>
+            <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: "#9c9584", background: "rgba(255,255,255,0.6)", borderRadius: 999, padding: "2px 7px" }}>{dates.length}</span>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", padding: "2px 8px 10px" }} className="btl-scroll">
+            {dates.length === 0 && (
+              <div style={{ fontSize: 10, color: "#a39c88", padding: "10px 6px" }}>No money logged yet — use Add on the dashboard to record your first entry.</div>
+            )}
+            {dates.map((d, i) => {
+              const agg = (state.moneyHistory && state.moneyHistory[d]) || { earn: 0, spend: 0 };
+              const net = (agg.earn || 0) - (agg.spend || 0);
+              const fmt = formatMemDate(d);
+              const dayImgs = entries.filter((e) => e.date === d && e.image);
+              return (
+                <motion.div
+                  key={d} onClick={() => setSelectedDate(d)}
+                  initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i, 12) * 0.02 }}
+                  whileHover={{ x: 2 }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 10, cursor: "pointer",
+                    marginBottom: 2, position: "relative",
+                    background: d === selectedDate ? "rgba(255,255,255,0.85)" : "transparent",
+                    boxShadow: d === selectedDate ? "0 3px 10px rgba(37,36,34,0.12)" : "none",
+                  }}>
+                  {d === selectedDate && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
+                      style={{ position: "absolute", inset: 0, borderRadius: 10, border: `1px solid ${C.accent}`, pointerEvents: "none" }} />
+                  )}
+                  <div style={{ width: 34, textAlign: "center", flexShrink: 0 }}>
+                    <div style={{ fontWeight: 900, fontSize: 13, color: C.dark, lineHeight: 1 }}>{fmt.day}</div>
+                    <div style={{ fontSize: 8, color: "#a39c88", textTransform: "uppercase" }}>{fmt.month}</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: net >= 0 ? "#4a7c59" : "#c0392b" }}>{net >= 0 ? "+" : ""}₹{net.toFixed(0)} net</div>
+                    <div style={{ fontSize: 8, color: "#a39c88" }}>{entries.filter((e) => e.date === d).length} {entries.filter((e) => e.date === d).length === 1 ? "entry" : "entries"}</div>
+                  </div>
+                  {dayImgs[0] && (
+                    <img src={dayImgs[0].image} alt="" style={{ width: 22, height: 22, borderRadius: 6, objectFit: "cover", border: "1px solid rgba(255,255,255,0.7)", flexShrink: 0 }} />
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ---------- DETAIL PANE ---------- */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "14px 18px 10px", display: "flex", alignItems: "center", gap: 12, borderBottom: "1px solid rgba(255,255,255,0.55)", flexShrink: 0 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 900, fontSize: 15, color: C.dark }}>{formatMemDate(selectedDate).full}</div>
+              <div style={{ fontSize: 10, color: "#8a8579" }}>{formatMemDate(selectedDate).weekday} · {dayEntries.length} {dayEntries.length === 1 ? "entry" : "entries"} logged</div>
+            </div>
+            <motion.div whileHover={{ scale: 1.15, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={handleRequestClose} style={{ cursor: "pointer", color: C.dark }}>
+              <X size={18} />
+            </motion.div>
+          </div>
+
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 18px 18px" }} className="btl-scroll">
+            {/* day total strip */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+              <MoneyStatCard label="Earned" value={dayAgg.earn || 0} color="#4a7c59" Icon={ArrowUpCircle} />
+              <MoneyStatCard label="Spent" value={dayAgg.spend || 0} color="#c0392b" Icon={ArrowDownCircle} />
+              <MoneyStatCard label="Net" value={dayNet} color={dayNet >= 0 ? "#4a7c59" : "#c0392b"} Icon={PiggyBank} />
+            </div>
+
+            {dayEntries.length === 0 ? (
+              <MemEmptyState icon={Wallet} text="Nothing logged on this day." />
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {dayEntries.map((e, i) => {
+                  const isEarn = e.type === "earn";
+                  const cat = !isEarn ? spendCatInfo(e.category) : null;
+                  return (
+                    <motion.div
+                      key={e.id || i}
+                      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 10) * 0.03 }}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 12, padding: 10, borderRadius: 12,
+                        background: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.7)",
+                      }}
+                    >
+                      {e.image ? (
+                        <motion.img
+                          src={e.image} alt="" onClick={() => setLightbox(e.image)}
+                          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.96 }}
+                          style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover", flexShrink: 0, cursor: "zoom-in", border: "1px solid rgba(255,255,255,0.8)" }}
+                        />
+                      ) : (
+                        <div style={{
+                          width: 44, height: 44, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                          background: isEarn ? "#4a7c5918" : `${cat.color}22`, fontSize: isEarn ? undefined : 18,
+                        }}>
+                          {isEarn ? <ArrowUpCircle size={19} color="#4a7c59" /> : cat.emoji}
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 800, color: C.dark }}>{isEarn ? "Earning" : cat.label}</div>
+                        {e.note && <div style={{ fontSize: 9.5, color: "#8a8579", marginTop: 1 }}>{e.note}</div>}
+                        <div style={{ fontSize: 8.5, color: "#a39c88", marginTop: 1 }}>{new Date(e.ts || Date.now()).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</div>
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 900, color: isEarn ? "#4a7c59" : "#c0392b", flexShrink: 0 }}>
+                        {isEarn ? "+" : "−"}₹{(e.amount || 0).toFixed(0)}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <AnimatePresence>{lightbox && <MemPhotoLightbox src={lightbox} onClose={() => setLightbox(null)} />}</AnimatePresence>
       </motion.div>
     </motion.div>
   );
@@ -2630,7 +2991,7 @@ function BTLDashboardInner() {
       const entry = {
         id: `${Date.now()}-${Math.random()}`, date: day, type: mode, amount,
         category: mode === "spend" ? (category || "other") : undefined,
-        image: mode === "earn" ? (image || null) : undefined,
+        image: image || null,
         note: note || "", ts: Date.now(),
       };
       s.moneyEntries = [entry, ...(s.moneyEntries || [])].slice(0, 300);
@@ -2648,6 +3009,19 @@ function BTLDashboardInner() {
     });
     setMoneyModal(null);
   };
+
+  // Fired only after the password gate in MoneyResetModal accepts "1000".
+  // Wipes every trace of Money Management data — individual entries, the
+  // daily aggregate history that powers the trend chart, and the
+  // lifetime earn/spend totals shown in the header ovals — without
+  // touching goals, streaks, memories or anything else in state.
+  const resetMoneyData = () => update((s) => {
+    s.moneyEntries = [];
+    s.moneyHistory = {};
+    s.totalEarnLife = 0;
+    s.totalSpendLife = 0;
+    return s;
+  });
 
   const onImageFile = (e) => {
     const file = e.target.files?.[0];
@@ -2744,7 +3118,7 @@ function BTLDashboardInner() {
         </div>
       ) : tab === "money" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <MoneyManagementTab state={state} onClose={() => setTab("analytics")} />
+          <MoneyManagementTab state={state} onClose={() => setTab("analytics")} onResetData={resetMoneyData} />
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>

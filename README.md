@@ -1,5 +1,36 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## Money popup photos + Reset + Summary (this update)
+
+- **Spend Money popup** now also has the optional "📷 Attach a photo"
+  dropzone (receipt/bill photo), same as Earn Money already had — pick a
+  category *and* optionally attach a photo, then note, then **Done**.
+  Every entry's `image` field is stored regardless of type now, and the
+  Recent Activity / Summary lists prefer the photo thumbnail over the
+  category emoji when one's attached.
+- **Money Management → Reset**: a **Reset** button in the header opens a
+  glass password popup (same Glassmorphism 2.0 look, spring entrance +
+  a shake animation on a wrong attempt). Only the password **`1000`** is
+  accepted. On success it wipes `moneyEntries`, `moneyHistory`,
+  `totalEarnLife` and `totalSpendLife` — nothing else in state (goals,
+  streaks, memories) is touched — and shows a brief "reset ✓" toast.
+- **Money Management → Summary**: a **Summary** button opens a large
+  glass popup (same date-sidebar layout as the Memories modal) — pick a
+  date on the left, see every earn/spend entry logged that day on the
+  right with its photo or category icon, note, and ± amount, plus a
+  day-total strip (Earned / Spent / Net). Tapping a photo opens the same
+  full-screen lightbox used elsewhere in the app.
+
+Built entirely with `framer-motion` (already a project dependency) —
+no new npm installs required. `lottie-animations` / Magic UI / Zdog-style
+libraries were considered per the workspace's animation skills, but
+they're CDN/script-tag tools meant for marketing-site decoration, not a
+great fit for small in-app popups; framer-motion's spring physics
+(already used everywhere else here, including the hand-rolled tilt-hover
+on Memories photos) keeps this update visually and technically
+consistent with the rest of the codebase.
+
+
 This turns your Claude-artifact dashboard into a real, deployable web app:
 - **Real Google sign-in** via Firebase Authentication
 - **Real database** via Firestore, locked down per-user with security rules
