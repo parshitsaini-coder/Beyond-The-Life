@@ -50,7 +50,6 @@ const WIDGETS = [
   { id: "dailyGoals", label: "Daily Goals" },
   { id: "extryGoals", label: "Extry Goals" },
   { id: "earnMoney", label: "Earn Money / Notes" },
-  { id: "mood", label: "Date & Mood" },
   { id: "analyticsSummary", label: "Analytics Summary" },
 ];
 const GRID_COLS = 6;          // grid columns widget widths snap to
@@ -79,7 +78,7 @@ const DEFAULT_LAYOUT = {
   order: WIDGETS.map((w) => w.id),
   sizes: {
     bigGoals: { w: 3, h: 172 }, lifeRules: { w: 3, h: 172 }, dailyGoals: { w: 3, h: 215 }, extryGoals: { w: 3, h: 215 },
-    earnMoney: { w: 3, h: 240 }, mood: { w: 3, h: 240 }, analyticsSummary: { w: 6, h: 260 },
+    earnMoney: { w: 3, h: 240 }, analyticsSummary: { w: 6, h: 260 },
   },
   pinned: { analyticsSummary: false },
 };
@@ -111,7 +110,9 @@ function normalizeSize(size) {
    normalizeSize), and any new widgets added later. */
 function ensureLayoutDefaults(s) {
   const layout = s.layout || {};
-  const order = Array.isArray(layout.order) && layout.order.length ? layout.order.slice() : DEFAULT_LAYOUT.order.slice();
+  const validIds = WIDGETS.map((w) => w.id);
+  let order = Array.isArray(layout.order) && layout.order.length ? layout.order.slice() : DEFAULT_LAYOUT.order.slice();
+  order = order.filter((id) => validIds.includes(id)); // drop retired widgets (e.g. the old standalone "mood" date-list widget)
   WIDGETS.forEach((w) => { if (!order.includes(w.id)) order.push(w.id); });
   const rawSizes = { ...DEFAULT_LAYOUT.sizes, ...(layout.sizes || {}) };
   const sizes = {};
@@ -595,43 +596,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
   );
 }
 
-/* ---------------- DATE / MOOD COLUMN ---------------- */
-function DateMoodColumn({ moodLog, onSetMood }) {
-  const days = [];
-  for (let i = -6; i <= 7; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    days.push(d.toISOString().slice(0, 10));
-  }
-  const today = todayISO();
-  return (
-    <div style={{ width: "100%", display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
-      <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, flexShrink: 0 }}>DATE</Oval>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: "#fff" }} className="btl-scroll">
-        {days.map((d) => {
-          const mood = moodLog[d];
-          const isToday = d === today;
-          return (
-            <div key={d} style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "5px 6px", borderBottom: "1px solid #f0ece0",
-              background: isToday ? "#fff3df" : "transparent",
-            }}>
-              <span style={{ fontSize: 9, fontWeight: isToday ? 800 : 500, color: C.dark }}>
-                {new Date(d).toLocaleDateString(undefined, { day: "2-digit", month: "short" })}
-              </span>
-              <div style={{ display: "flex", gap: 3 }}>
-                <MoodBtn active={mood === "happy"} onClick={() => onSetMood(d, "happy")} title="Happy"><Smile size={13} /></MoodBtn>
-                <MoodBtn active={mood === "neutral"} onClick={() => onSetMood(d, "neutral")} title="Neutral"><Meh size={13} /></MoodBtn>
-                <MoodBtn active={mood === "sad"} onClick={() => onSetMood(d, "sad")} title="Sad"><Frown size={13} /></MoodBtn>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+/* ---------------- TODAY'S MOOD (compact — lives inside the Earn Money / Notes card) ---------------- */
 function MoodBtn({ active, onClick, children, title }) {
   return (
     <button title={title} onClick={onClick} className="btl-mood-btn" style={{
@@ -1339,9 +1304,9 @@ function AnalyticsTab({ state, onClose }) {
 }
 
 /* ---------------- EARN MONEY / SPEND MONEY / NOTES / IMAGE (extracted as a widget) ---------------- */
-function EarnMoneyNotesCard({ state, update, addEarnToday, addSpendToday, onImageFile, fileRef }) {
+function EarnMoneyNotesCard({ state, update, addEarnToday, addSpendToday, onImageFile, fileRef, todayMood, onSetMood }) {
   return (
-    <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box" }} className="btl-scroll">
+    <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box", display: "flex", flexDirection: "column" }} className="btl-scroll">
       <div style={{ display: "flex", gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 4, color: "#4a7c59" }}>Earn Money Today :-</div>
@@ -1389,6 +1354,20 @@ function EarnMoneyNotesCard({ state, update, addEarnToday, addSpendToday, onImag
             : <div style={{ width: 44, height: 44, borderRadius: 6, border: "1px dashed #ddd6c4", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9c2ac" }}><ImageIcon size={16} /></div>}
           <Oval className="btl-oval-btn" onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", fontSize: 8, padding: "2px 6px" }}>image Uplode</Oval>
           <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: "none" }} />
+        </div>
+      </div>
+
+      {/* Today's Mood — replaces the old standalone multi-day "DATE" widget.
+          Only today's mood lives here now, right in the card's own free space. */}
+      <div style={{
+        marginTop: 10, paddingTop: 8, borderTop: "1px solid #f0ece0",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <span style={{ fontSize: 10, fontWeight: 800, color: C.dark }}>Today's Mood :-</span>
+        <div style={{ display: "flex", gap: 5 }}>
+          <MoodBtn active={todayMood === "happy"} onClick={() => onSetMood("happy")} title="Happy"><Smile size={15} /></MoodBtn>
+          <MoodBtn active={todayMood === "neutral"} onClick={() => onSetMood("neutral")} title="Neutral"><Meh size={15} /></MoodBtn>
+          <MoodBtn active={todayMood === "sad"} onClick={() => onSetMood("sad")} title="Sad"><Frown size={15} /></MoodBtn>
         </div>
       </div>
     </div>
@@ -2333,8 +2312,7 @@ function BTLDashboardInner() {
     lifeRules: <TextList title="Life Rules" items={state.lifeRules} />,
     dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} />,
     extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} />,
-    earnMoney: <EarnMoneyNotesCard state={state} update={update} addEarnToday={addEarnToday} addSpendToday={addSpendToday} onImageFile={onImageFile} fileRef={fileRef} />,
-    mood: <DateMoodColumn moodLog={state.moodLog} onSetMood={setMood} />,
+    earnMoney: <EarnMoneyNotesCard state={state} update={update} addEarnToday={addEarnToday} addSpendToday={addSpendToday} onImageFile={onImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} />,
   };
 
