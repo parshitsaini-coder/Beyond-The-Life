@@ -9,7 +9,43 @@ This turns your Claude-artifact dashboard into a real, deployable web app:
 Your dashboard UI, colors, animations, goal/streak logic, analytics — all
 unchanged. Only the login screen and the storage layer were swapped.
 
-## Memories upgrade (this update)
+## Money popup + Money Management tab (this update)
+
+Clicking **Add** next to Earn Money or Spend Money no longer commits the
+amount straight away — it opens a glass popup (same Glassmorphism 2.0 /
+Liquid Glass look as Memories/Settings, spring entrance animation):
+
+- **Earn Money popup** — shows the amount, then only an optional
+  "attach a photo" dropzone (no categories). Tap **Add Earning** to save.
+- **Spend Money popup** — shows the amount, then an animated,
+  staggered-entrance category grid: **Food, Health, Cloth, Friends,
+  Traveling, Shopping, Bills, Entertainment, Other**. Pick one to enable
+  **Done**. Both popups also have an optional one-line note field.
+
+Every submission is logged to `state.moneyEntries` (date, type, amount,
+category or photo, note) alongside the existing daily `moneyHistory`
+aggregate, so nothing about the old totals/charts breaks.
+
+**Analytics → Money Management**: the Analytics tab now shows a compact
+"Money Management" nav card (with a live Earned/Spent preview) instead of
+the full money chart inline. Tapping it opens a dedicated tab with:
+- Summary strip — Total Earned, Total Spent, Net (life), Entries logged
+- **Spend by category** — donut chart + ranked list with % share
+- **Earn vs spend trend** — the same chart as before, now with a
+  7 / 14 / 30-day range toggle
+- **Recent activity** — a scrollable feed of every entry (category icon or
+  attached photo thumbnail, note, ± amount), newest first
+
+Built entirely with `framer-motion` and `recharts` (both already project
+dependencies) — no new npm installs required. Considered
+`locomotive-scroll` / `lottie-react` / `vanity-tilt` style libraries per
+the workspace's animation skills, but those are script-tag/CDN tools
+meant for scrollytelling marketing sites, not a great fit for a small
+in-app popup — framer-motion's spring physics (already used everywhere
+else in this dashboard) gives the same "professional, glassy, alive"
+feel while staying consistent with the rest of the codebase.
+
+## Memories upgrade (earlier update)
 
 The "memor" button now opens a full **Memories** modal instead of a plain text log:
 
