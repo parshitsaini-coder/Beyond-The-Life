@@ -1958,8 +1958,9 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
    Clicking "Add" no longer commits directly — it opens the glass MoneyEntryModal
    popup (see below), which for Earn just offers an optional photo attach, and
    for Spend requires picking a category before it can be confirmed with "Done". */
-function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFile, fileRef, todayMood, onSetMood, textStyle, cardBg }) {
+function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFile, onImageDrop, fileRef, todayMood, onSetMood, textStyle, cardBg }) {
   const ts = normalizeTextStyle(textStyle);
+  const [dashDragOver, setDashDragOver] = useState(false);
   const labelFontSize = Math.round(10 * ts.scale);
   const notesFontSize = Math.round(9 * ts.scale);
   const tsFontFamily = ts.font ? fontStackFor(ts.font) : undefined;
@@ -2012,9 +2013,26 @@ function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFil
           }}
         />
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-          {state.uploadedImage
-            ? <img src={state.uploadedImage} alt="upload" style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6, border: "1px solid #ddd6c4" }} />
-            : <div style={{ width: 44, height: 44, borderRadius: 6, border: "1px dashed #ddd6c4", display: "flex", alignItems: "center", justifyContent: "center", color: "#c9c2ac" }}><ImageIcon size={16} /></div>}
+          <div
+            onClick={() => fileRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDashDragOver(true); }}
+            onDragLeave={() => setDashDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault(); setDashDragOver(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) onImageDrop(file);
+            }}
+            style={{
+              width: 44, height: 44, borderRadius: 6, cursor: "pointer",
+              border: `1px dashed ${dashDragOver ? "#4a7c59" : "#ddd6c4"}`,
+              background: dashDragOver ? "rgba(74,124,89,0.12)" : undefined,
+              display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
+            }}
+          >
+            {state.uploadedImage
+              ? <img src={state.uploadedImage} alt="upload" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              : <ImageIcon size={16} color="#c9c2ac" />}
+          </div>
           <Oval className="btl-oval-btn" onClick={() => fileRef.current?.click()} style={{ cursor: "pointer", fontSize: 8, padding: "2px 6px" }}>image Uplode</Oval>
           <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: "none" }} />
         </div>
@@ -2049,16 +2067,19 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
   const [image, setImage] = useState(null);
   const [busy, setBusy] = useState(false);
   const [catError, setCatError] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef(null);
 
-  const handleFile = (e) => {
-    const file = e.target.files?.[0];
+  const processFile = (file) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) { alert("Please pick an image file."); return; }
     setBusy(true);
     resizeImageDataUrl(file)
       .then((dataUrl) => { setImage(dataUrl); setBusy(false); })
       .catch(() => { alert("Couldn't read that image, try another one."); setBusy(false); });
+  };
+  const handleFile = (e) => {
+    processFile(e.target.files?.[0]);
     e.target.value = "";
   };
 
@@ -2082,10 +2103,17 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
       <motion.div
         whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
         onClick={() => fileRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault(); setDragOver(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) processFile(file);
+        }}
         style={{
-          border: `1.5px dashed ${image ? accent : "#ddd6c4"}`, borderRadius: 12, cursor: "pointer",
+          border: `1.5px dashed ${dragOver ? accent : image ? accent : "#ddd6c4"}`, borderRadius: 12, cursor: "pointer",
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          gap: 6, padding: image ? 8 : 20, background: "rgba(255,255,255,0.5)",
+          gap: 6, padding: image ? 8 : 20, background: dragOver ? `${accent}14` : "rgba(255,255,255,0.5)",
         }}
       >
         {image ? (
@@ -2095,7 +2123,7 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
         ) : (
           <>
             <ImageIcon size={22} color="#c9c2ac" />
-            <span style={{ fontSize: 9, color: "#a39c86", textAlign: "center" }}>{isEarn ? "Tap to attach an image with this earning" : "Tap to attach a receipt / bill photo"}</span>
+            <span style={{ fontSize: 9, color: "#a39c86", textAlign: "center" }}>{dragOver ? "Drop to attach" : isEarn ? "Tap or drag & drop an image with this earning" : "Tap or drag & drop a receipt / bill photo"}</span>
           </>
         )}
       </motion.div>
@@ -4761,8 +4789,9 @@ function BTLDashboardInner() {
     return s;
   });
 
-  const onImageFile = (e) => {
-    const file = e.target.files?.[0];
+  // Takes a File directly (used by both the hidden <input onChange> and
+  // drag-and-drop onDrop handlers) so both paths share the same logic.
+  const processImageFile = (file) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) { alert("Please pick an image file."); return; }
     if (file.size > 12_000_000) { alert("Please pick an image under ~12MB."); return; }
@@ -4777,6 +4806,9 @@ function BTLDashboardInner() {
         return s;
       });
     }).catch(() => alert("Couldn't read that image, try another one."));
+  };
+  const onImageFile = (e) => {
+    processImageFile(e.target.files?.[0]);
     e.target.value = "";
   };
 
@@ -4864,7 +4896,7 @@ function BTLDashboardInner() {
     lifeRules: <TextList title="Life Rules" items={state.lifeRules} textStyle={state.layout.textStyles?.lifeRules} cardBg={theme.widgets.lifeRules?.bg} />,
     dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyles?.dailyGoals} cardBg={theme.widgets.dailyGoals?.bg} />,
     extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} cardBg={theme.widgets.extryGoals?.bg} />,
-    earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} cardBg={theme.widgets.earnMoney?.bg} />,
+    earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} onImageDrop={processImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} cardBg={theme.widgets.earnMoney?.bg} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} metrics={theme.analyticsSummary.metrics} />,
     calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} textStyle={state.layout.textStyles?.calendar} />,
   };

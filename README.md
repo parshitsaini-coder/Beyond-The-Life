@@ -1,5 +1,25 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## Drag-and-drop image upload (this update)
+
+Every image-attach spot in the app now also accepts **drag-and-drop**,
+not just tap-to-browse:
+
+- **Money Today's "Image Upload"** (the small square next to the notes
+  box) — drag a photo straight onto it; it highlights green while
+  dragging over.
+- **Earn Money popup** — the "Attach a photo" dropzone now also accepts a
+  dragged file (still optional).
+- **Spend Money popup** — same, on the receipt/bill photo dropzone.
+
+Dragging over any of these shows a green highlight and, where there's
+helper text, it switches to "Drop to attach" while hovering. Dropping a
+non-image file still shows the same "Please pick an image file" alert as
+picking one manually. No new npm installs required — plain HTML5 drag-
+and-drop events (`onDragOver`/`onDrop`) wired into the existing upload
+logic, so behavior (resizing, compression, size limit) is identical
+either way you attach a photo.
+
 ## Money Management — Earn Money not persisting (this update, real fix)
 
 Found and fixed the actual root cause of **Earn Money silently not
