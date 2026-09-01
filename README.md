@@ -1,6 +1,17 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Per-widget Text Style (this update)
+## Earn Money / Notes text style (this update)
+
+The **Money Today** widget (Earn/Spend labels, notes box, "Today's
+Mood" label) is now also selectable in the Text Style panel — tap its
+name ("Earn Money / Notes") in the reorder list like any other widget,
+and font size / bold / font / color apply to it independently, same
+full logic as the other four text widgets. Amount inputs and the
+Add/image-upload buttons are left untouched (they're controls, not
+content), and the green "Earn"/red "Spend" label colors stay as the
+default until you pick a custom color for that widget.
+
+## Per-widget Text Style (earlier update)
 
 Text Style controls now apply to **one widget at a time**, not all four
 at once. In **Customize Layout**, tap a widget's name (Life Big Goals,

@@ -104,7 +104,7 @@ const DEFAULT_TEXT_STYLE = { scale: 1, color: "", font: "", bold: false };
 /* Widgets whose free-text content can be individually styled — pick one
    in the Text Style panel (click its name in the reorder list) and only
    that widget's text changes; the others are untouched until selected. */
-const TEXT_STYLE_WIDGET_IDS = ["bigGoals", "lifeRules", "dailyGoals", "extryGoals"];
+const TEXT_STYLE_WIDGET_IDS = ["bigGoals", "lifeRules", "dailyGoals", "extryGoals", "earnMoney"];
 function normalizeTextStyle(ts) {
   const t = ts && typeof ts === "object" ? ts : {};
   const scale = Math.min(TEXT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, Number(t.scale) || 1));
@@ -1729,12 +1729,17 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
    Clicking "Add" no longer commits directly — it opens the glass MoneyEntryModal
    popup (see below), which for Earn just offers an optional photo attach, and
    for Spend requires picking a category before it can be confirmed with "Done". */
-function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFile, fileRef, todayMood, onSetMood }) {
+function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFile, fileRef, todayMood, onSetMood, textStyle }) {
+  const ts = normalizeTextStyle(textStyle);
+  const labelFontSize = Math.round(10 * ts.scale);
+  const notesFontSize = Math.round(9 * ts.scale);
+  const tsFontFamily = ts.font ? fontStackFor(ts.font) : undefined;
+  const tsWeight = ts.bold ? 900 : 800;
   return (
     <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box", display: "flex", flexDirection: "column" }} className="btl-scroll">
       <div style={{ display: "flex", gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 4, color: "#4a7c59" }}>Earn Money Today :-</div>
+          <div style={{ fontWeight: tsWeight, fontSize: labelFontSize, marginBottom: 4, color: ts.color || "#4a7c59", fontFamily: tsFontFamily }}>Earn Money Today :-</div>
           <div style={{ display: "flex", gap: 4 }}>
             <input
               value={state.earnToday} onChange={(e) => update((s) => { s.earnToday = e.target.value; return s; })}
@@ -1746,7 +1751,7 @@ function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFil
           </div>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 10, marginBottom: 4, color: "#c0392b" }}>Spend Money Today :-</div>
+          <div style={{ fontWeight: tsWeight, fontSize: labelFontSize, marginBottom: 4, color: ts.color || "#c0392b", fontFamily: tsFontFamily }}>Spend Money Today :-</div>
           <div style={{ display: "flex", gap: 4 }}>
             <input
               value={state.spendToday} onChange={(e) => update((s) => { s.spendToday = e.target.value; return s; })}
@@ -1771,7 +1776,11 @@ function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFil
             });
           }}
           placeholder="notes"
-          style={{ flex: 1, minHeight: 44, maxHeight: 44, fontSize: 9, padding: 5, borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", resize: "none" }}
+          style={{
+            flex: 1, minHeight: 44, maxHeight: 44, fontSize: notesFontSize, padding: 5, borderRadius: 6,
+            border: "1px solid #ddd6c4", outline: "none", resize: "none",
+            fontFamily: tsFontFamily, fontWeight: ts.bold ? 700 : undefined, color: ts.color || undefined,
+          }}
         />
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
           {state.uploadedImage
@@ -1788,7 +1797,7 @@ function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFil
         marginTop: 10, paddingTop: 8, borderTop: "1px solid #f0ece0",
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
-        <span style={{ fontSize: 10, fontWeight: 800, color: C.dark }}>Today's Mood :-</span>
+        <span style={{ fontSize: labelFontSize, fontWeight: tsWeight, color: ts.color || C.dark, fontFamily: tsFontFamily }}>Today's Mood :-</span>
         <div style={{ display: "flex", gap: 5 }}>
           <MoodBtn active={todayMood === "happy"} onClick={() => onSetMood("happy")} title="Happy"><Smile size={15} /></MoodBtn>
           <MoodBtn active={todayMood === "neutral"} onClick={() => onSetMood("neutral")} title="Neutral"><Meh size={15} /></MoodBtn>
@@ -2841,7 +2850,7 @@ function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
 
         <div style={{ fontSize: 10, color: "#8a8579", marginTop: 14, lineHeight: 1.4, display: "flex", alignItems: "center", gap: 5 }}>
           <Type size={11} style={{ flexShrink: 0 }} />
-          Tap a widget's name above (Big Goals, Life Rules, Daily/Entry Goals) to select it, then style only that one below.
+          Tap a widget's name above (Big Goals, Life Rules, Daily/Entry Goals, Earn Money / Notes) to select it, then style only that one below.
         </div>
         <TextStylePanel
           widgetLabel={WIDGETS.find((w) => w.id === activeTextWidget)?.label || ""}
@@ -3705,7 +3714,7 @@ function BTLDashboardInner() {
     lifeRules: <TextList title="Life Rules" items={state.lifeRules} textStyle={state.layout.textStyles?.lifeRules} />,
     dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyles?.dailyGoals} />,
     extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} />,
-    earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} />,
+    earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} />,
   };
 
