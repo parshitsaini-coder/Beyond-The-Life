@@ -1,5 +1,52 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## Analytics tab — "Deep Analytics" (this update, 8 new pro widgets)
+
+A new **🔬 Deep Analytics** section at the bottom of **Analytics & Insights**,
+below the Money nav card. Every widget is computed from data that already
+exists in `state` — nothing fabricated:
+
+1. **Category performance** — animated bar per goal category (Health,
+   Money, Career, Relations, Personal, Other), done/total + completion %.
+2. **Priority performance** — same, split by High/Medium/Low priority.
+3. **Best & toughest weekdays** — a bar chart of average completion by
+   day of week (last 13 weeks of `completionHistory`), best day in green,
+   toughest in red.
+4. **Streak record** — current streak (`state.streak`) side-by-side with
+   your longest-ever run of ≥70%-complete consecutive days, with a 🏆
+   callout when you're on your all-time best.
+5. **Mood distribution** — a donut of Happy/Neutral/Sad across every
+   logged day in `moodLog`.
+6. **Money velocity — last 14 days** — a combo chart (earn bars, spend
+   bars, net line) from `moneyHistory`, plus the net change vs. the
+   previous 14-day window.
+7. **Subtask completion** — a radial progress ring over how many
+   subtasks (across every goal) are checked off.
+8. **Weekly momentum** — this week's average completion vs. last week's,
+   with an up/down callout — the same comparison Smart Insights already
+   makes in text, now as its own visual.
+
+Every card fades/slides in with a staggered spring on open and lifts
+slightly on hover; bars, the radial ring, and chart series animate in
+rather than snapping into place. Colors are pulled from the app's own
+palette (category colors, priority colors, `C.accent`/`C.blue`/`C.dark`)
+so nothing clashes with the rest of the theme. Empty-state widgets (e.g.
+no subtasks yet, fewer than 2 weeks of history) show a short explainer
+instead of a blank/misleading chart. Built with `framer-motion` and the
+`recharts` primitives already used elsewhere in this file — no new npm
+installs required.
+
+## Quick-nav floating button (this update)
+
+A round arrow button now sits in the bottom-right corner of the
+dashboard card (visible on every tab). Tap it and it fans out — one at a
+time, staggered — into round icon buttons for **memor**, **Focus Mode**,
+**Layout**, **Analytics**, and **Setting**; tap any one to jump straight
+there. The **Layout** and **Analytics** buttons have been removed from
+the top header bar (Focus Mode, memor and Setting remain there) since
+the quick-nav button now covers them. Built with `framer-motion`, no new
+npm installs required.
+
 ## Drag-and-drop image upload (this update)
 
 Every image-attach spot in the app now also accepts **drag-and-drop**,

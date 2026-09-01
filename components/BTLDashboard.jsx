@@ -1343,6 +1343,318 @@ function Heatmap({ completionHistory, accentColor }) {
 
 function moodToNum(m) { return m === "happy" ? 1 : m === "neutral" ? 0.5 : m === "sad" ? 0 : null; }
 
+/* ---------------- ANALYTICS TAB — "Deep Analytics" pro widgets (this update) ----------------
+   8 extra data-driven trackers rendered below the existing Money nav
+   card: category & priority completion, best/toughest weekday, streak
+   record, mood distribution, 14-day money velocity, subtask completion,
+   and week-over-week momentum. Every number here comes from `state`
+   that already exists (completionHistory, moodLog, dailyGoals/extryGoals,
+   moneyHistory, streak) — nothing is fabricated. Card shell + entrance/
+   hover motion via framer-motion (already used everywhere else in this
+   file); charts via the recharts primitives already imported up top.
+   Colors are pulled from the app's own palette (CATEGORIES / PRIORITIES
+   / C), so nothing clashes with the rest of the theme. */
+const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function ProCard({ title, icon: Icon, color, index, wide, children }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 260, damping: 26, delay: index * 0.06 }}
+      whileHover={{ y: -3, boxShadow: "0 14px 26px rgba(37,36,34,0.12)" }}
+      style={{
+        flex: wide ? "1 1 100%" : "1 1 260px", minWidth: wide ? undefined : 240,
+        border: "1px solid #ece7d8", borderRadius: 10, padding: 12, boxSizing: "border-box",
+        background: `linear-gradient(160deg, ${color}0d, transparent)`,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+        <Icon size={13} color={color} />
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>{title}</span>
+      </div>
+      {children}
+    </motion.div>
+  );
+}
+
+function EmptyNote({ text }) {
+  return <div style={{ fontSize: 9.5, color: "#b3ac99", padding: "8px 0" }}>{text}</div>;
+}
+
+function AnimatedBarRow({ label, pct, color, rightLabel, delay }) {
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9.5, color: "#7a7566", marginBottom: 3 }}>
+        <span>{label}</span>
+        <span style={{ fontWeight: 800, color: C.dark }}>{rightLabel !== undefined ? rightLabel : `${pct}%`}</span>
+      </div>
+      <div style={{ height: 7, borderRadius: 999, background: "#f0ece0", overflow: "hidden" }}>
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
+          transition={{ type: "spring", stiffness: 90, damping: 20, delay: delay || 0 }}
+          style={{ height: "100%", borderRadius: 999, background: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function RadialMini({ pct, color, size = 54 }) {
+  const r = (size - 8) / 2;
+  const circ = 2 * Math.PI * r;
+  return (
+    <svg width={size} height={size} style={{ flexShrink: 0 }}>
+      <circle cx={size / 2} cy={size / 2} r={r} stroke="#f0ece0" strokeWidth={6} fill="none" />
+      <motion.circle
+        cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={6} fill="none" strokeLinecap="round"
+        strokeDasharray={circ} initial={{ strokeDashoffset: circ }} animate={{ strokeDashoffset: circ - (circ * pct) / 100 }}
+        transition={{ type: "spring", stiffness: 80, damping: 20 }}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+      />
+      <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={900} fill={C.dark}>{pct}%</text>
+    </svg>
+  );
+}
+
+function DeepAnalyticsGrid({ state, ac }) {
+  const categoryStats = useMemo(() => {
+    const tally = {};
+    CATEGORIES.forEach((c) => { tally[c.key] = { done: 0, total: 0 }; });
+    [...(state.dailyGoals || []), ...(state.extryGoals || [])].forEach((g) => {
+      const key = tally[g.category] ? g.category : "other";
+      tally[key].total++; if (g.done) tally[key].done++;
+    });
+    return CATEGORIES.map((c) => ({ ...c, ...tally[c.key], rate: tally[c.key].total ? Math.round((tally[c.key].done / tally[c.key].total) * 100) : 0 })).filter((c) => c.total > 0);
+  }, [state.dailyGoals, state.extryGoals]);
+
+  const priorityStats = useMemo(() => {
+    const tally = {};
+    PRIORITIES.forEach((p) => { tally[p.key] = { done: 0, total: 0 }; });
+    [...(state.dailyGoals || []), ...(state.extryGoals || [])].forEach((g) => {
+      const key = tally[g.priority] ? g.priority : "medium";
+      tally[key].total++; if (g.done) tally[key].done++;
+    });
+    return PRIORITIES.map((p) => ({ ...p, ...tally[p.key], rate: tally[p.key].total ? Math.round((tally[p.key].done / tally[p.key].total) * 100) : 0 }));
+  }, [state.dailyGoals, state.extryGoals]);
+
+  const weekdayStats = useMemo(() => {
+    const entries = Object.entries(state.completionHistory || {});
+    const byDow = Array.from({ length: 7 }, () => ({ sum: 0, n: 0 }));
+    entries.forEach(([iso, pct]) => {
+      const dow = new Date(iso + "T00:00:00").getDay();
+      byDow[dow].sum += pct; byDow[dow].n++;
+    });
+    const data = byDow.map((v, i) => ({ day: WEEKDAY_NAMES[i], avg: v.n ? Math.round(v.sum / v.n) : 0, n: v.n }));
+    let bestI = -1, worstI = -1, bestV = -1, worstV = 101;
+    data.forEach((d, i) => { if (d.n > 0) { if (d.avg > bestV) { bestV = d.avg; bestI = i; } if (d.avg < worstV) { worstV = d.avg; worstI = i; } } });
+    return { data, bestI, worstI };
+  }, [state.completionHistory]);
+
+  // "Good day" threshold for streak purposes — same spirit as the Calendar
+  // widget's checkmark, kept independent from the Heatmap's tint breakpoints.
+  const streakStats = useMemo(() => {
+    const hist = state.completionHistory || {};
+    const dates = Object.keys(hist).sort();
+    let longest = 0, run = 0, prevGood = null;
+    dates.forEach((iso) => {
+      const pct = hist[iso];
+      const d = new Date(iso + "T00:00:00");
+      if (pct >= 70) {
+        run = prevGood && (d - prevGood) / 86400000 === 1 ? run + 1 : 1;
+        longest = Math.max(longest, run);
+        prevGood = d;
+      } else { run = 0; prevGood = null; }
+    });
+    return { longest, current: state.streak || 0 };
+  }, [state.completionHistory, state.streak]);
+
+  const moodDist = useMemo(() => {
+    const vals = Object.values(state.moodLog || {});
+    const total = vals.length;
+    const counts = { happy: 0, neutral: 0, sad: 0 };
+    vals.forEach((m) => { if (counts[m] !== undefined) counts[m]++; });
+    return { total, counts };
+  }, [state.moodLog]);
+
+  const moneyVelocity = useMemo(() => {
+    const hist = state.moneyHistory || {};
+    const days = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0, 10);
+      const v = hist[iso] || { earn: 0, spend: 0 };
+      days.push({ date: d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }), earn: v.earn || 0, spend: v.spend || 0, net: (v.earn || 0) - (v.spend || 0) });
+    }
+    const thisSum = days.reduce((s, d) => s + d.net, 0);
+    let prevSum = 0;
+    for (let i = 27; i >= 14; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const v = hist[d.toISOString().slice(0, 10)];
+      if (v) prevSum += (v.earn || 0) - (v.spend || 0);
+    }
+    return { days, thisSum, delta: thisSum - prevSum };
+  }, [state.moneyHistory]);
+
+  const subtaskStats = useMemo(() => {
+    let done = 0, total = 0;
+    [...(state.dailyGoals || []), ...(state.extryGoals || [])].forEach((g) => {
+      (g.subtasks || []).forEach((s) => { total++; if (s.done) done++; });
+    });
+    return { done, total, rate: total ? Math.round((done / total) * 100) : 0 };
+  }, [state.dailyGoals, state.extryGoals]);
+
+  const momentum = useMemo(() => {
+    const hist = state.completionHistory || {};
+    const today = new Date();
+    const isoOf = (d) => d.toISOString().slice(0, 10);
+    let thisSum = 0, thisN = 0, lastSum = 0, lastN = 0;
+    for (let i = 0; i < 7; i++) { const d = new Date(today); d.setDate(d.getDate() - i); const v = hist[isoOf(d)]; if (v !== undefined) { thisSum += v; thisN++; } }
+    for (let i = 7; i < 14; i++) { const d = new Date(today); d.setDate(d.getDate() - i); const v = hist[isoOf(d)]; if (v !== undefined) { lastSum += v; lastN++; } }
+    return { thisAvg: thisN ? Math.round(thisSum / thisN) : 0, lastAvg: lastN ? Math.round(lastSum / lastN) : 0, hasData: thisN > 0 && lastN > 0 };
+  }, [state.completionHistory]);
+
+  const moodTotal = moodDist.total || 0;
+  const moodPct = (k) => (moodTotal ? Math.round((moodDist.counts[k] / moodTotal) * 100) : 0);
+  const MOOD_COLORS = { happy: "#4a7c59", neutral: C.blue, sad: "#e07a5f" };
+  const moodPie = [
+    { name: "Happy", value: moodDist.counts.happy, color: MOOD_COLORS.happy },
+    { name: "Neutral", value: moodDist.counts.neutral, color: MOOD_COLORS.neutral },
+    { name: "Sad", value: moodDist.counts.sad, color: MOOD_COLORS.sad },
+  ].filter((s) => s.value > 0);
+
+  const momentumDelta = momentum.thisAvg - momentum.lastAvg;
+
+  return (
+    <div>
+      <div style={{ fontSize: 11, fontWeight: 800, color: ac.sectionHeader || C.dark, margin: "20px 0 8px" }}>🔬 Deep Analytics</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+
+        <ProCard title="Category performance" icon={Tag} color={C.accent} index={0}>
+          {categoryStats.length ? categoryStats.map((c, i) => (
+            <AnimatedBarRow key={c.key} label={c.label} pct={c.rate} color={c.color} rightLabel={`${c.done}/${c.total} · ${c.rate}%`} delay={i * 0.05} />
+          )) : <EmptyNote text="Add categories to your goals to see this breakdown." />}
+        </ProCard>
+
+        <ProCard title="Priority performance" icon={Award} color={C.blue} index={1}>
+          {priorityStats.some((p) => p.total > 0) ? priorityStats.map((p, i) => (
+            <AnimatedBarRow key={p.key} label={p.label} pct={p.rate} color={p.color} rightLabel={`${p.done}/${p.total} · ${p.rate}%`} delay={i * 0.05} />
+          )) : <EmptyNote text="No priorities set on your goals yet." />}
+        </ProCard>
+
+        <ProCard title="Best & toughest weekdays" icon={CalendarDays} color="#4a7c59" index={2} wide>
+          {weekdayStats.data.some((d) => d.n > 0) ? (
+            <div style={{ height: 130 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={weekdayStats.data} margin={{ top: 6, right: 8, left: -22, bottom: 0 }}>
+                  <CartesianGrid stroke="#f0ece0" vertical={false} />
+                  <XAxis dataKey="day" tick={{ fontSize: 9, fill: "#b3ac99" }} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: "#b3ac99" }} width={28} />
+                  <Tooltip formatter={(v, n, p) => [`${v}%`, p.payload.n ? `${p.payload.n} day(s)` : "No data"]} contentStyle={{ fontSize: 10 }} />
+                  <Bar dataKey="avg" radius={[6, 6, 0, 0]} isAnimationActive animationDuration={900}>
+                    {weekdayStats.data.map((d, i) => (
+                      <Cell key={i} fill={i === weekdayStats.bestI ? "#4a7c59" : i === weekdayStats.worstI ? "#e07a5f" : tintHex(C.accent, 0.35)} />
+                    ))}
+                  </Bar>
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : <EmptyNote text="Log a few more days to see your weekday pattern." />}
+        </ProCard>
+
+        <ProCard title="Streak record" icon={Flame} color="#e07a5f" index={3}>
+          <div style={{ display: "flex", gap: 16, alignItems: "center", justifyContent: "space-around", padding: "4px 0" }}>
+            <div style={{ textAlign: "center" }}>
+              <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 16 }}
+                style={{ fontSize: 22, fontWeight: 900, color: C.accent }}>{String(streakStats.current).padStart(3, "0")}</motion.div>
+              <div style={{ fontSize: 9, color: "#b3ac99" }}>Current streak</div>
+            </div>
+            <div style={{ width: 1, height: 30, background: "#ece7d8" }} />
+            <div style={{ textAlign: "center" }}>
+              <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 16, delay: 0.1 }}
+                style={{ fontSize: 22, fontWeight: 900, color: C.dark }}>{String(streakStats.longest).padStart(3, "0")}</motion.div>
+              <div style={{ fontSize: 9, color: "#b3ac99" }}>Longest streak</div>
+            </div>
+          </div>
+          {streakStats.current > 0 && streakStats.current >= streakStats.longest && (
+            <div style={{ marginTop: 8, textAlign: "center", fontSize: 9.5, fontWeight: 800, color: "#4a7c59" }}>🏆 You're on your all-time best run!</div>
+          )}
+        </ProCard>
+
+        <ProCard title="Mood distribution" icon={Smile} color="#4a7c59" index={4}>
+          {moodPie.length ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 90, height: 90, flexShrink: 0 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={moodPie} dataKey="value" nameKey="name" innerRadius={26} outerRadius={42} paddingAngle={3} isAnimationActive animationDuration={800}>
+                      {moodPie.map((s, i) => <Cell key={i} fill={s.color} />)}
+                    </Pie>
+                    <Tooltip formatter={(v, n) => [`${v} day(s)`, n]} contentStyle={{ fontSize: 10 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {[["Happy", MOOD_COLORS.happy, moodPct("happy")], ["Neutral", MOOD_COLORS.neutral, moodPct("neutral")], ["Sad", MOOD_COLORS.sad, moodPct("sad")]].map(([label, color, pct]) => (
+                  <div key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9.5, color: C.text }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                    {label} · <b style={{ color: C.dark }}>{pct}%</b>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : <EmptyNote text="Log your mood a few times to see this chart." />}
+        </ProCard>
+
+        <ProCard title="Money velocity — last 14 days" icon={PiggyBank} color={C.accent} index={5} wide>
+          <div style={{ height: 130 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={moneyVelocity.days} margin={{ top: 6, right: 8, left: -22, bottom: 0 }}>
+                <CartesianGrid stroke="#f0ece0" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 8, fill: "#b3ac99" }} interval={2} />
+                <YAxis tick={{ fontSize: 9, fill: "#b3ac99" }} width={30} />
+                <Tooltip contentStyle={{ fontSize: 10 }} />
+                <Bar dataKey="earn" fill={tintHex("#4a7c59", 0.2)} radius={[3, 3, 0, 0]} isAnimationActive animationDuration={900} />
+                <Bar dataKey="spend" fill={tintHex("#e07a5f", 0.2)} radius={[3, 3, 0, 0]} isAnimationActive animationDuration={900} />
+                <Line type="monotone" dataKey="net" stroke={C.dark} strokeWidth={2} dot={false} isAnimationActive animationDuration={1000} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+          <div style={{ textAlign: "right", fontSize: 9.5, marginTop: 4, color: moneyVelocity.delta >= 0 ? "#4a7c59" : "#e07a5f", fontWeight: 800 }}>
+            {moneyVelocity.delta >= 0 ? "▲" : "▼"} ₹{Math.abs(Math.round(moneyVelocity.delta))} net vs. previous 14 days
+          </div>
+        </ProCard>
+
+        <ProCard title="Subtask completion" icon={ListChecks} color={C.blue} index={6}>
+          {subtaskStats.total ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <RadialMini pct={subtaskStats.rate} color={C.blue} />
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 900, color: C.dark }}>{subtaskStats.done}/{subtaskStats.total}</div>
+                <div style={{ fontSize: 9, color: "#b3ac99" }}>Subtasks completed across all goals</div>
+              </div>
+            </div>
+          ) : <EmptyNote text="Add subtasks to a goal to track this." />}
+        </ProCard>
+
+        <ProCard title="Weekly momentum" icon={momentumDelta >= 0 ? TrendingUp : TrendingDown} color={momentumDelta >= 0 ? "#4a7c59" : "#e07a5f"} index={7}>
+          {momentum.hasData ? (
+            <>
+              <AnimatedBarRow label="Last week" pct={momentum.lastAvg} color={tintHex(C.dark, 0.4)} delay={0} />
+              <AnimatedBarRow label="This week" pct={momentum.thisAvg} color={momentumDelta >= 0 ? "#4a7c59" : "#e07a5f"} delay={0.08} />
+              <div style={{ textAlign: "center", fontSize: 10.5, fontWeight: 800, color: momentumDelta >= 0 ? "#4a7c59" : "#e07a5f", marginTop: 2 }}>
+                {momentumDelta >= 0 ? "▲" : "▼"} {Math.abs(momentumDelta)}% {momentumDelta >= 0 ? "up" : "down"} vs last week
+              </div>
+            </>
+          ) : <EmptyNote text="Keep logging — momentum needs 2 weeks of data." />}
+        </ProCard>
+
+      </div>
+    </div>
+  );
+}
+
 function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
   const [showShare, setShowShare] = useState(false);
   const at = normalizeScopeTheme(state.theme?.analytics);
@@ -1639,6 +1951,8 @@ function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
           </div>
           <ChevronRight size={18} color="#a39c86" />
         </motion.div>
+
+        <DeepAnalyticsGrid state={state} ac={ac} />
       </div>
       {showShare && <ShareJourneyModal state={state} lifeScore={lifeScore} onClose={() => setShowShare(false)} />}
     </div>
@@ -5050,20 +5364,6 @@ function BTLDashboardInner() {
                 border: `1px solid ${focusMode ? C.accent : dashTheme.text}`, background: focusMode ? C.accent : dashTheme.bg, color: focusMode ? "#fff" : dashTheme.text,
                 borderRadius: 999, padding: "4px 14px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
               }}><Target size={14} /> Focus Mode</motion.button>
-            <motion.button
-              onClick={() => setTab("layout")} title="Rearrange, resize, and pin widgets"
-              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
-              style={{
-                border: `1px solid ${dashTheme.text}`, background: dashTheme.bg, color: dashTheme.text, borderRadius: 999, padding: "4px 14px",
-                display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-              }}><LayoutGrid size={14} /> Layout</motion.button>
-            <motion.button
-              onClick={() => setTab("analytics")}
-              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
-              style={{
-                border: `1px solid ${dashTheme.text}`, background: dashTheme.bg, color: dashTheme.text, borderRadius: 999, padding: "4px 14px",
-                display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-              }}><BarChart3 size={14} /> Analytics</motion.button>
             <motion.button
               onClick={() => setSettingsOpen(true)}
               whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
