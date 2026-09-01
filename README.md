@@ -1,6 +1,27 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Money Management — Spend "Done" button bug fix (this update)
+## Money Management — Earn Money not persisting (this update, real fix)
+
+Found and fixed the actual root cause of **Earn Money silently not
+saving**: every earn entry was being written with `category: undefined`.
+Firestore's `setDoc()` **rejects the entire write** whenever any field —
+even a nested one inside an array — is `undefined`. That meant:
+
+- The earn amount briefly showed up in the browser tab (local state
+  update), making it *look* like it worked.
+- The save to Firestore silently failed (only logged to the browser
+  console).
+- Because saves resend the whole `state` document, **every save from
+  that point on also failed** — including totals, goals, everything —
+  until the page was refreshed and the unsaved earn entry was gone.
+
+Fix: earn entries now simply omit the `category` field instead of
+setting it to `undefined` (spend entries still get a real category
+string, unaffected). Verified end-to-end — added an earning, forced a
+save, reloaded the app fresh from the (mocked) database, and the total
+now correctly survives the reload instead of reverting to ₹0.
+
+## Money Management — Spend "Done" button bug fix (earlier update)
 
 Fixed a real bug: in the **Spend Money** popup, tapping **Done** without
 first picking a category did nothing — the button was silently disabled
@@ -14,10 +35,7 @@ with no explanation, so it looked like money simply wouldn't add. Now:
 - Picking a category clears the warning immediately, and **Done** commits
   the entry exactly as before.
 
-**Earn Money** was already working correctly (Add → popup → "Add
-Earning") and is unchanged. No new npm installs required — same
-`framer-motion` shake/animation primitives already used elsewhere in this
-modal.
+No new npm installs required for either fix.
 
 ## Money Management — per-element custom colors (this update)
 

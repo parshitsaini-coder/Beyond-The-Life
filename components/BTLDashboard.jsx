@@ -4724,7 +4724,11 @@ function BTLDashboardInner() {
       const day = todayISO();
       const entry = {
         id: `${Date.now()}-${Math.random()}`, date: day, type: mode, amount,
-        category: mode === "spend" ? (category || "other") : undefined,
+        // IMPORTANT: never write `undefined` into a Firestore document —
+        // the SDK rejects the entire save (silently failing every future
+        // save too, since the whole state doc is re-sent each time).
+        // Earn entries simply omit `category` instead of setting it to undefined.
+        ...(mode === "spend" ? { category: category || "other" } : {}),
         image: image || null,
         note: note || "", ts: Date.now(),
       };
