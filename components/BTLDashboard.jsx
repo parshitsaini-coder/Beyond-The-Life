@@ -1802,7 +1802,7 @@ function MemDateRow({ date, active, onClick, summary, index }) {
         boxShadow: active ? "0 3px 10px rgba(37,36,34,0.12)" : "none",
       }}>
       {active && (
-        <motion.div layoutId="memDatePill" transition={{ type: "spring", stiffness: 380, damping: 32 }}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
           style={{ position: "absolute", inset: 0, borderRadius: 10, border: `1px solid ${C.accent}`, pointerEvents: "none" }} />
       )}
       <div style={{ width: 34, textAlign: "center", flexShrink: 0 }}>
@@ -2119,8 +2119,8 @@ function MemoriesModal({ state, onAddMemory, onClose }) {
                   <span style={{ fontSize: 8, fontWeight: 800, color: active ? "#fff" : C.dark, background: active ? C.accent : "rgba(64,61,57,0.12)", borderRadius: 999, padding: "1px 5px" }}>{count}</span>
                 )}
                 {active && (
-                  <motion.div layoutId="memTabIndicator" transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                    style={{ position: "absolute", left: 8, right: 8, bottom: 0, height: 2, borderRadius: 2, background: C.accent }} />
+                  <motion.div initial={{ opacity: 0, scaleX: 0.5 }} animate={{ opacity: 1, scaleX: 1 }} transition={{ duration: 0.18 }}
+                    style={{ position: "absolute", left: 8, right: 8, bottom: 0, height: 2, borderRadius: 2, background: C.accent, transformOrigin: "center" }} />
                 )}
               </div>
             );
