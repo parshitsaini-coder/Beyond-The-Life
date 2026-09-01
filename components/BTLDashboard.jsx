@@ -8,11 +8,11 @@ import {
   CheckCircle2, Wallet, StickyNote, Camera, Sparkles, Download, ZoomIn, CalendarDays,
   ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft,
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
-  Type, Palette, Bold, Baseline
+  Type, Palette, Bold, Baseline, User, LogIn
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
-import { useAuth, signOutUser } from "@/lib/AuthContext";
+import { useAuth, signOutUser, signInWithGoogle } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
 
 /* ============================================================
@@ -635,12 +635,140 @@ function MilestoneBanner({ streak, visible }) {
   );
 }
 
+/* ---------------- PROFILE — avatar button + glass account popup (this update) ----------------
+   A round profile avatar now sits in the header's top-right cluster, right where the plain
+   sign-out icon used to be on its own. Tapping it fans open a Glassmorphism 2.0 popup —
+   spring entrance, same blur/border/shadow recipe as the Memories/Money glass modals — anchored
+   to that same top-right corner (dropping down over the Earn/Spend Money + Analytics Summary
+   widgets underneath it), showing the signed-in Google account: photo, name, email, and Sign
+   Out. If for any reason nobody's signed in yet (AuthGuard normally prevents this on
+   /dashboard, but the popup handles it gracefully anyway), it shows a single "Continue with
+   Google" button instead — Firebase's Google OAuth creates the account on first use, so one
+   button covers both login and signup, no separate signup form needed. Built entirely with
+   framer-motion (already a project dependency) — no new npm installs required. */
+function ProfileAvatar({ user, size = 32 }) {
+  const initial = (user?.displayName || user?.email || "?").trim().charAt(0).toUpperCase();
+  return user?.photoURL ? (
+    <img
+      src={user.photoURL} alt={user.displayName || "Profile"} referrerPolicy="no-referrer"
+      style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", display: "block", flexShrink: 0 }}
+    />
+  ) : (
+    <div style={{
+      width: size, height: size, borderRadius: "50%", background: C.accent, color: "#fff", flexShrink: 0,
+      display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.42, fontWeight: 800,
+    }}>
+      {initial}
+    </div>
+  );
+}
+
+function ProfileButton({ user, open, onToggle }) {
+  return (
+    <motion.button
+      onClick={onToggle} title={user ? (user.displayName || "Profile") : "Sign in"}
+      whileHover={{ y: -2 }} whileTap={{ scale: 0.93 }}
+      transition={{ type: "spring", stiffness: 420, damping: 22 }}
+      style={{
+        border: `2px solid ${open ? C.accent : "transparent"}`, borderRadius: "50%", padding: 0,
+        background: "transparent", cursor: "pointer", lineHeight: 0, display: "flex",
+      }}
+    >
+      {user ? <ProfileAvatar user={user} size={30} /> : (
+        <div style={{
+          width: 30, height: 30, borderRadius: "50%", background: "#e9e4d3", color: C.dark,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}><User size={15} /></div>
+      )}
+    </motion.button>
+  );
+}
+
+function ProfilePopup({ user, open, onClose, onSignOut, onSignIn }) {
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          {/* invisible click-outside catcher, closes the popup without touching anything under it */}
+          <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 90 }} />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.92, y: -10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: -8 }}
+            transition={{ type: "spring", stiffness: 380, damping: 28 }}
+            style={{
+              position: "absolute", top: "calc(100% + 10px)", right: 0, width: 280, zIndex: 91,
+              background: "rgba(255,252,242,0.8)",
+              backdropFilter: "blur(22px) saturate(180%)", WebkitBackdropFilter: "blur(22px) saturate(180%)",
+              border: "1px solid rgba(255,255,255,0.65)", borderRadius: 16,
+              boxShadow: "0 24px 60px rgba(37,36,34,0.28), inset 0 1px 0 rgba(255,255,255,0.6)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)" }} />
+            {user ? (
+              <div style={{ padding: 18 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                  <ProfileAvatar user={user} size={48} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 900, color: C.dark, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {user.displayName || "Signed in"}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "#8a8579", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {user.email}
+                    </div>
+                  </div>
+                </div>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 6, fontSize: 9.5, fontWeight: 700, color: "#4a7c59",
+                  background: "rgba(74,124,89,0.12)", borderRadius: 999, padding: "4px 10px", width: "fit-content", marginBottom: 14,
+                }}>
+                  <ShieldCheck size={11} /> Signed in with Google
+                </div>
+                <motion.button
+                  onClick={onSignOut} whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 22 }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    border: "1px solid rgba(192,57,43,0.35)", background: "rgba(255,255,255,0.55)", color: "#c0392b",
+                    borderRadius: 10, padding: "9px 0", fontSize: 12, fontWeight: 800, cursor: "pointer",
+                  }}
+                >
+                  <LogOut size={14} /> Sign out
+                </motion.button>
+              </div>
+            ) : (
+              <div style={{ padding: 18, textAlign: "center" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: C.dark, marginBottom: 4 }}>Not signed in</div>
+                <div style={{ fontSize: 10.5, color: "#8a8579", marginBottom: 14, lineHeight: 1.4 }}>
+                  Sign in with Google — new here? The same button creates your account too.
+                </div>
+                <motion.button
+                  onClick={onSignIn} whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 22 }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    border: `1px solid ${C.dark}`, background: "#fff", color: C.dark,
+                    borderRadius: 10, padding: "9px 0", fontSize: 12, fontWeight: 800, cursor: "pointer",
+                  }}
+                >
+                  <LogIn size={14} /> Continue with Google
+                </motion.button>
+              </div>
+            )}
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
 /* ---------------- QUICK-NAV FAB (this update) ----------------
    Floating round arrow button, bottom-right corner of the dashboard
    card. Tap it and it fans out — left, one at a time with a staggered
    spring — into a row of round avatar/logo buttons for every top-nav
-   shortcut (memor, Focus Mode, Layout, Analytics, Setting), so they're
-   reachable from one thumb-friendly spot instead of the full header
+   shortcut (memor, Focus Mode, Layout, Analytics, Money Management,
+   Setting), so they're reachable from one thumb-friendly spot instead of the full header
    row. Tap any avatar to jump straight there (closes itself after);
    tap the arrow again (it flips 180°) to fold them back away. Persists
    across every tab, not just the main dashboard. */
@@ -652,6 +780,7 @@ function QuickNavFab({ tab, setTab, focusMode, setFocusMode, setMemOpen, setSett
     { key: "focus", label: "Focus Mode", icon: Target, bg: focusMode ? C.accent : "#fff", fg: focusMode ? "#fff" : C.dark, ring: !focusMode, onClick: () => { setFocusMode((v) => !v); setOpen(false); } },
     { key: "layout", label: "Layout", icon: LayoutGrid, bg: C.dark, fg: "#fff", onClick: () => { setTab("layout"); setOpen(false); } },
     { key: "analytics", label: "Analytics", icon: BarChart3, bg: C.dark, fg: "#fff", onClick: () => { setTab("analytics"); setOpen(false); } },
+    { key: "money", label: "Money Management", icon: Wallet, bg: C.accent, fg: "#fff", onClick: () => { setTab("money"); setOpen(false); } },
     { key: "setting", label: "Setting", icon: Settings, bg: C.dark, fg: "#fff", onClick: () => { setSettingsOpen(true); setOpen(false); } },
   ];
 
@@ -4711,7 +4840,48 @@ function BarRow({ label, value, max, color }) {
     </div>
   );
 }
-function MemMoneyPanel({ summary }) {
+function MemMoneyEntryRow({ entry, index, onOpenPhoto }) {
+  const isEarn = entry.type === "earn";
+  const cat = !isEarn ? spendCatInfo(entry.category) : null;
+  const color = isEarn ? "#4a7c59" : "#c0392b";
+  const Icon = isEarn ? ArrowUpCircle : ArrowDownCircle;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
+      whileHover={{ x: 2, boxShadow: "0 6px 16px rgba(37,36,34,0.1)" }}
+      style={{
+        display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 12,
+        background: "rgba(255,255,255,0.62)", border: "1px solid rgba(255,255,255,0.7)",
+      }}
+    >
+      <div style={{
+        width: 30, height: 30, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+        background: `${color}18`,
+      }}>
+        <Icon size={15} color={color} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>
+          {isEarn ? "Earning" : cat ? `${cat.emoji} ${cat.label}` : "Spend"}
+        </div>
+        {entry.note ? (
+          <div style={{ fontSize: 9.5, color: "#8a8579", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{entry.note}</div>
+        ) : null}
+      </div>
+      <div style={{ fontSize: 12.5, fontWeight: 900, color, flexShrink: 0 }}>{isEarn ? "+" : "-"}₹{Number(entry.amount).toFixed(0)}</div>
+      {entry.image ? (
+        <motion.img
+          src={entry.image} alt=""
+          onClick={() => onOpenPhoto(entry.image)}
+          whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.94 }}
+          style={{ width: 34, height: 34, borderRadius: 8, objectFit: "cover", cursor: "zoom-in", flexShrink: 0, border: "1px solid rgba(255,255,255,0.85)", boxShadow: "0 3px 8px rgba(37,36,34,0.16)" }}
+        />
+      ) : null}
+    </motion.div>
+  );
+}
+
+function MemMoneyPanel({ summary, entries, onOpenPhoto }) {
   const { earn, spend } = summary;
   if (!earn && !spend) return <MemEmptyState icon={Wallet} text="No money logged on this day." />;
   const max = Math.max(earn, spend, 1);
@@ -4723,10 +4893,18 @@ function MemMoneyPanel({ summary }) {
         <MoneyStatCard label="Spent" value={spend} color="#c0392b" Icon={TrendingDown} />
         <MoneyStatCard label="Net" value={net} color={net >= 0 ? "#4a7c59" : "#c0392b"} Icon={Wallet} />
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: entries.length ? 16 : 0 }}>
         <BarRow label="Earned" value={earn} max={max} color="#4a7c59" />
         <BarRow label="Spent" value={spend} max={max} color="#c0392b" />
       </div>
+      {entries.length > 0 && (
+        <div>
+          <div style={{ fontSize: 9, fontWeight: 800, color: "#8a8579", marginBottom: 6 }}>Where it went ({entries.length})</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {entries.map((e, i) => <MemMoneyEntryRow key={e.id || i} entry={e} index={i} onOpenPhoto={onOpenPhoto} />)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4852,10 +5030,14 @@ function MemoriesModal({ state, onAddMemory, onClose }) {
   }, [dates.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const summary = useMemo(() => getMemDaySummary(state, selectedDate), [state, selectedDate]);
+  const dayMoneyEntries = useMemo(
+    () => (state.moneyEntries || []).filter((e) => e.date === selectedDate),
+    [state.moneyEntries, selectedDate]
+  );
   const fmt = formatMemDate(selectedDate);
   const counts = {
     goals: summary.completedDaily.length + summary.completedExtry.length,
-    money: (summary.earn || summary.spend) ? 1 : 0,
+    money: dayMoneyEntries.length || ((summary.earn || summary.spend) ? 1 : 0),
     photos: summary.images.length,
     notes: summary.memoryNotes.length + (summary.dayNotes ? 1 : 0),
   };
@@ -4962,7 +5144,7 @@ function MemoriesModal({ state, onAddMemory, onClose }) {
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 18px 18px" }} className="btl-scroll">
           <motion.div key={tabKey + selectedDate} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.18 }}>
             {tabKey === "goals" && <MemGoalsPanel summary={summary} />}
-            {tabKey === "money" && <MemMoneyPanel summary={summary} />}
+            {tabKey === "money" && <MemMoneyPanel summary={summary} entries={dayMoneyEntries} onOpenPhoto={setLightbox} />}
             {tabKey === "photos" && <MemPhotosPanel summary={summary} onOpen={setLightbox} />}
             {tabKey === "notes" && <MemNotesPanel summary={summary} memInput={memInput} setMemInput={setMemInput} onSubmit={submitMemory} />}
           </motion.div>
@@ -4984,6 +5166,7 @@ function BTLDashboardInner() {
   const [milestoneStreak, setMilestoneStreak] = useState(null);
   const [memOpen, setMemOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [moneyModal, setMoneyModal] = useState(null); // { mode: "earn"|"spend", amount } | null
   const [focusMode, setFocusMode] = useState(false);
   const [saveStatus, setSaveStatus] = useState("idle"); // "idle" | "saving" | "saved"
@@ -5386,10 +5569,14 @@ function BTLDashboardInner() {
               <RingStat pct={dailyPct} label="Daily Goal" sub="Staytus" color={C.accent} />
               <RingStat pct={extryPct} label="Extry Goal" sub="Staytus" color={C.blue} />
               <RingStat pct={overallPct} label="Goal" color={C.dark} />
-              <motion.button onClick={signOutUser} title="Sign out" whileHover={{ y: -2 }} whileTap={{ scale: 1.15 }}
-                style={{ border: "none", background: "transparent", cursor: "pointer", color: "#b3ac99" }}>
-                <LogOut size={15} />
-              </motion.button>
+              <div style={{ position: "relative" }}>
+                <ProfileButton user={fbUser} open={profileOpen} onToggle={() => setProfileOpen((v) => !v)} />
+                <ProfilePopup
+                  user={fbUser} open={profileOpen} onClose={() => setProfileOpen(false)}
+                  onSignOut={() => { signOutUser(); setProfileOpen(false); }}
+                  onSignIn={() => { signInWithGoogle(); setProfileOpen(false); }}
+                />
+              </div>
             </div>
           </div>
 

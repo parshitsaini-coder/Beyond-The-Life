@@ -1,5 +1,52 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## Profile avatar + account popup (this update)
+
+A round **profile avatar** now sits in the header's top-right cluster —
+right where the plain sign-out icon used to sit on its own, next to the
+Day Streak badge and the Daily/Extry/Overall goal rings. Tapping it fans
+open a **Glassmorphism 2.0 popup** (same blur/border/shadow recipe as the
+Memories and Money glass modals, spring entrance/exit) that drops down
+from that same top-right corner, over the Earn/Spend Money and Analytics
+Summary widgets underneath:
+
+- **Signed in** — shows your Google photo (or a colored initial if you
+  have none), display name, email, and a "Signed in with Google" badge,
+  plus a **Sign out** button (moved here from the old standalone icon).
+- **Not signed in** (edge case — `AuthGuard` already keeps signed-out
+  users on `/login` before they ever reach `/dashboard`, but the popup
+  handles it gracefully anyway) — shows a single **Continue with
+  Google** button. Firebase's Google OAuth creates the account
+  automatically the first time someone uses it, so one button covers
+  both **login and signup** — no separate signup form is needed.
+- Clicking anywhere outside the popup closes it.
+
+Built entirely with `framer-motion` (already a project dependency) — no
+new npm installs required.
+
+## Memories — Money tab now shows "where it went" + photos (earlier update)
+The **Memories → Money** tab for a day used to only show the Earned/Spent/
+Net totals + two bars. It now also lists every individual earn/spend
+entry logged that day, straight from `state.moneyEntries`:
+
+- Green ⬆ for earnings, red ⬇ for spends, with the spend's category chip
+  (🍔 Food, 🚗 Transport, etc.) so you can see exactly what the money was
+  for — matches the category system already used in the Spend Money
+  popup / Money Management tab.
+- The note typed on that entry, if any.
+- **The attached photo, if one was added** (earn or spend can both carry
+  a photo via the existing drag-and-drop/tap-to-browse upload) — shown
+  as a small thumbnail, tap to open in the same full-screen lightbox the
+  Photos tab already uses (download button included).
+- Rows fade/slide in with a staggered entrance, same glass-card style as
+  the rest of the Memories modal.
+- The **Money** tab's badge count now reflects the number of entries
+  that day, not just "has money y/n".
+
+No schema change — every entry already had `category`/`note`/`image` on
+it (used by Money Management); this just surfaces them per-day inside
+Memories too. No new npm installs required.
+
 ## Analytics tab — "Deep Analytics" (this update, 8 new pro widgets)
 
 A new **🔬 Deep Analytics** section at the bottom of **Analytics & Insights**,
@@ -36,7 +83,13 @@ instead of a blank/misleading chart. Built with `framer-motion` and the
 `recharts` primitives already used elsewhere in this file — no new npm
 installs required.
 
-## Quick-nav floating button (this update)
+## Quick-nav floating button — Money Management shortcut (this update)
+The quick-nav fan-out (bottom-right corner) now has a 6th button: a
+**Money Management** shortcut with a wallet icon (orange, matching the
+app's money accent color), jumping straight to that tab. Order is
+memor → Focus Mode → Layout → Analytics → Money Management → Setting.
+
+## Quick-nav floating button (earlier update)
 
 A round arrow button now sits in the bottom-right corner of the
 dashboard card (visible on every tab). Tap it and it fans out — one at a
