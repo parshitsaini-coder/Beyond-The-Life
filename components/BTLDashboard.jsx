@@ -101,11 +101,51 @@ const TEXT_COLOR_OPTIONS = [
   { id: "#3d5a80", label: "Blue", swatch: "#3d5a80" },
   { id: "#c0392b", label: "Red", swatch: "#c0392b" },
 ];
+/* ---- Analytics tab — per-element custom colors (this update) ----
+   Every distinctly-colored piece of text/UI inside the Analytics &
+   Insights panel (header, Life Score badge, stat icons, Smart
+   Insights, section headings, heatmap, mood line, Earn/Spend) can now
+   get its own override from Setting → Theme → Analytics, on top of
+   the existing single "Text color" for the scope. Empty string ("")
+   means "use the built-in default" for that element. */
+const ANALYTICS_ELEMENT_COLOR_FIELDS = [
+  { key: "header", label: "Header title (\"Analytics & Insights\")", defaultHex: "#252422" },
+  { key: "lifeScoreRing", label: "Life Score ring & score number", defaultHex: "#fca311" },
+  { key: "lifeScoreDesc", label: "Life Score caption", defaultHex: "#a39c86" },
+  { key: "statAvgIcon", label: "\"Average completion\" icon & value", defaultHex: "#fca311" },
+  { key: "statBestIcon", label: "\"Best day\" icon & value", defaultHex: "#4a7c59" },
+  { key: "statToughIcon", label: "\"Toughest day\" icon & value", defaultHex: "#e07a5f" },
+  { key: "statLabel", label: "Stat captions (under the numbers)", defaultHex: "#b3ac99" },
+  { key: "smartHeader", label: "\"🧠 Smart Insights\" heading", defaultHex: "#252422" },
+  { key: "smartAccent", label: "Smart Insight card accents", defaultHex: "#fca311" },
+  { key: "sectionHeader", label: "Section headings (Daily goal completion / Mood trend / Money)", defaultHex: "#252422" },
+  { key: "heatmap", label: "Heatmap squares", defaultHex: "#fca311" },
+  { key: "moodLine", label: "Mood trend line", defaultHex: "#3d5a80" },
+  { key: "earn", label: "\"Earned\" label & amount", defaultHex: "#4a7c59" },
+  { key: "spend", label: "\"Spent\" label & amount", defaultHex: "#c0392b" },
+];
+function normalizeAnalyticsColors(t) {
+  const src = t && typeof t === "object" ? t : {};
+  const out = {};
+  ANALYTICS_ELEMENT_COLOR_FIELDS.forEach((f) => { out[f.key] = typeof src[f.key] === "string" ? src[f.key] : ""; });
+  return out;
+}
+/* Blends a hex color toward white by `amount` (0 = original, 1 = white) —
+   used to build the heatmap's light-to-full color scale from a single
+   custom "Heatmap" color instead of a fixed amber gradient. */
+function tintHex(hex, amount) {
+  const h = /^#[0-9a-fA-F]{6}$/.test(hex) ? hex.slice(1) : "fca311";
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  const mix = (c) => Math.round(c + (255 - c) * amount);
+  const toHex = (c) => c.toString(16).padStart(2, "0");
+  return `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
+}
+
 const DEFAULT_TEXT_STYLE = { scale: 1, color: "", font: "", bold: false };
 /* Widgets whose free-text content can be individually styled — pick one
    in the Text Style panel (click its name in the reorder list) and only
    that widget's text changes; the others are untouched until selected. */
-const TEXT_STYLE_WIDGET_IDS = ["bigGoals", "lifeRules", "dailyGoals", "extryGoals", "earnMoney"];
+const TEXT_STYLE_WIDGET_IDS = ["bigGoals", "lifeRules", "dailyGoals", "extryGoals", "earnMoney", "calendar"];
 function normalizeTextStyle(ts) {
   const t = ts && typeof ts === "object" ? ts : {};
   const scale = Math.min(TEXT_SCALE_MAX, Math.max(TEXT_SCALE_MIN, Number(t.scale) || 1));
@@ -233,6 +273,7 @@ function normalizeTheme(t) {
     focusMode: normalizeScopeTheme(src.focusMode),
     widgets: normalizeWidgetThemes(src.widgets),
     analyticsSummary: normalizeAnalyticsSummaryTheme(src.analyticsSummary),
+    analyticsColors: normalizeAnalyticsColors(src.analyticsColors),
   };
 }
 function defaultTheme() { return normalizeTheme({}); }
@@ -836,7 +877,7 @@ function MoodBtn({ active, onClick, children, title }) {
 }
 
 /* ---------------- SETTINGS PANEL CONTENT (rendered inside the glass modal) ---------------- */
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset }) {
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsColorChange, onAnalyticsColorReset }) {
   const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
@@ -905,6 +946,8 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             onWidgetSize={onWidgetSizePreset}
             onAnalyticsSummaryChange={onAnalyticsSummaryChange}
             onAnalyticsSummaryReset={onAnalyticsSummaryReset}
+            onAnalyticsColorChange={onAnalyticsColorChange}
+            onAnalyticsColorReset={onAnalyticsColorReset}
           />
         ) : (
           <>
@@ -1145,7 +1188,8 @@ function ShareJourneyModal({ state, lifeScore, onClose }) {
   );
 }
 
-function Heatmap({ completionHistory }) {
+function Heatmap({ completionHistory, accentColor }) {
+  const accent = accentColor || C.accent;
   const WEEKS = 12;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1166,11 +1210,11 @@ function Heatmap({ completionHistory }) {
   }
 
   const colorFor = (pct) => {
-    if (pct === undefined) return "#efece1";
-    if (pct === 0) return "#efece1";
-    if (pct < 40) return "#fde3b0";
-    if (pct < 75) return "#fdbf5e";
-    return C.accent;
+    if (pct === undefined) return tintHex(accent, 0.88);
+    if (pct === 0) return tintHex(accent, 0.88);
+    if (pct < 40) return tintHex(accent, 0.62);
+    if (pct < 75) return tintHex(accent, 0.32);
+    return accent;
   };
 
   return (
@@ -1195,7 +1239,7 @@ function Heatmap({ completionHistory }) {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, color: "#b3ac99", marginTop: 4 }}>
         Less
-        {["#efece1", "#fde3b0", "#fdbf5e", C.accent].map((c) => (
+        {[tintHex(accent, 0.88), tintHex(accent, 0.62), tintHex(accent, 0.32), accent].map((c) => (
           <div key={c} style={{ width: 9, height: 9, borderRadius: 2, background: c }} />
         ))}
         More
@@ -1210,6 +1254,7 @@ function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
   const [showShare, setShowShare] = useState(false);
   const at = normalizeScopeTheme(state.theme?.analytics);
   const atFontFamily = at.font ? fontStackFor(at.font) : undefined;
+  const ac = normalizeAnalyticsColors(state.theme?.analyticsColors);
   const moodData = useMemo(() => {
     const arr = [];
     for (let i = 29; i >= 0; i--) {
@@ -1260,8 +1305,8 @@ function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
     else if (score >= 50) { label = "Building Up"; emoji = "🌱"; color = "#4a7c59"; }
     else if (score >= 30) { label = "Finding Your Rhythm"; emoji = "🧭"; color = C.blue; }
     else { label = "Fresh Start"; emoji = "🌙"; color = "#8a8579"; }
-    return { score, label, emoji, color };
-  }, [state.completionHistory, state.moodLog, state.streak]);
+    return { score, label, emoji, color: ac.lifeScoreRing || color };
+  }, [state.completionHistory, state.moodLog, state.streak, ac.lifeScoreRing]);
 
   const smartInsights = useMemo(() => {
     const cards = [];
@@ -1375,8 +1420,8 @@ function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
         display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
         borderBottom: `1px solid ${C.text}`, background: at.bg || C.bg, borderRadius: "10px 10px 0 0",
       }}>
-        <BarChart3 size={14} color={C.dark} />
-        <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Analytics & Insights</span>
+        <BarChart3 size={14} color={ac.header || C.dark} />
+        <span style={{ fontSize: 13, fontWeight: 800, color: ac.header || C.dark }}>Analytics & Insights</span>
         <div style={{ flex: 1 }} />
         <button onClick={() => setShowShare(true)} style={{
           border: "none", borderRadius: 8, padding: "5px 10px", background: C.accent, color: "#fff",
@@ -1404,52 +1449,55 @@ function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
             <span style={{ fontSize: 7, color: "#a39c86", fontWeight: 700 }}>/ 100</span>
           </div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>{lifeScore.emoji} {lifeScore.label}</div>
-            <div style={{ fontSize: 9, color: "#a39c86", marginTop: 2 }}>Life Score — last 7 days completion, streak & mood combined</div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: ac.header || C.dark }}>{lifeScore.emoji} {lifeScore.label}</div>
+            <div style={{ fontSize: 9, color: ac.lifeScoreDesc || "#a39c86", marginTop: 2 }}>Life Score — last 7 days completion, streak & mood combined</div>
           </div>
         </div>
 
         {/* insights row */}
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 120, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
-            <TrendingUp size={14} color={C.accent} />
-            <div style={{ fontSize: 16, fontWeight: 900, color: C.dark }}>{insights ? `${Math.round(insights.avg)}%` : "—"}</div>
-            <div style={{ fontSize: 9, color: "#b3ac99" }}>Average completion</div>
+            <TrendingUp size={14} color={ac.statAvgIcon || C.accent} />
+            <div style={{ fontSize: 16, fontWeight: 900, color: ac.statAvgIcon || C.dark }}>{insights ? `${Math.round(insights.avg)}%` : "—"}</div>
+            <div style={{ fontSize: 9, color: ac.statLabel || "#b3ac99" }}>Average completion</div>
           </div>
           <div style={{ flex: 1, minWidth: 120, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
-            <Award size={14} color="#4a7c59" />
-            <div style={{ fontSize: 12, fontWeight: 900, color: C.dark }}>{insights ? `${Math.round(insights.best[1])}%` : "—"}</div>
-            <div style={{ fontSize: 9, color: "#b3ac99" }}>Best day{insights ? ` · ${insights.best[0]}` : ""}</div>
+            <Award size={14} color={ac.statBestIcon || "#4a7c59"} />
+            <div style={{ fontSize: 12, fontWeight: 900, color: ac.statBestIcon || C.dark }}>{insights ? `${Math.round(insights.best[1])}%` : "—"}</div>
+            <div style={{ fontSize: 9, color: ac.statLabel || "#b3ac99" }}>Best day{insights ? ` · ${insights.best[0]}` : ""}</div>
           </div>
           <div style={{ flex: 1, minWidth: 120, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
-            <Flame size={14} color="#e07a5f" />
-            <div style={{ fontSize: 12, fontWeight: 900, color: C.dark }}>{insights ? `${Math.round(insights.worst[1])}%` : "—"}</div>
-            <div style={{ fontSize: 9, color: "#b3ac99" }}>Toughest day{insights ? ` · ${insights.worst[0]}` : ""}</div>
+            <Flame size={14} color={ac.statToughIcon || "#e07a5f"} />
+            <div style={{ fontSize: 12, fontWeight: 900, color: ac.statToughIcon || C.dark }}>{insights ? `${Math.round(insights.worst[1])}%` : "—"}</div>
+            <div style={{ fontSize: 9, color: ac.statLabel || "#b3ac99" }}>Toughest day{insights ? ` · ${insights.worst[0]}` : ""}</div>
           </div>
         </div>
 
         {/* Smart insight cards */}
         {smartInsights.length > 0 && (
           <div style={{ marginBottom: 18 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 6 }}>🧠 Smart Insights</div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: ac.smartHeader || C.dark, marginBottom: 6 }}>🧠 Smart Insights</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {smartInsights.map((c, i) => (
-                <div key={i} style={{
-                  display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px",
-                  borderRadius: 8, background: `${c.color}12`, border: `1px solid ${c.color}33`,
-                }}>
-                  <span style={{ fontSize: 15, flexShrink: 0 }}>{c.icon}</span>
-                  <span style={{ fontSize: 10.5, color: C.text, lineHeight: 1.4 }}>{c.text}</span>
-                </div>
-              ))}
+              {smartInsights.map((c, i) => {
+                const cardColor = ac.smartAccent || c.color;
+                return (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px",
+                    borderRadius: 8, background: `${cardColor}12`, border: `1px solid ${cardColor}33`,
+                  }}>
+                    <span style={{ fontSize: 15, flexShrink: 0 }}>{c.icon}</span>
+                    <span style={{ fontSize: 10.5, color: C.text, lineHeight: 1.4 }}>{c.text}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
 
-        <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 6 }}>Daily goal completion — last 13 weeks</div>
-        <Heatmap completionHistory={state.completionHistory || {}} />
+        <div style={{ fontSize: 11, fontWeight: 800, color: ac.sectionHeader || C.dark, marginBottom: 6 }}>Daily goal completion — last 13 weeks</div>
+        <Heatmap completionHistory={state.completionHistory || {}} accentColor={ac.heatmap} />
 
-        <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, margin: "18px 0 6px" }}>Mood trend — last 30 days</div>
+        <div style={{ fontSize: 11, fontWeight: 800, color: ac.sectionHeader || C.dark, margin: "18px 0 6px" }}>Mood trend — last 30 days</div>
         <div style={{ height: 140 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={moodData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
@@ -1457,13 +1505,13 @@ function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
               <XAxis dataKey="date" tick={{ fontSize: 8, fill: "#b3ac99" }} interval={4} />
               <YAxis domain={[0, 1]} ticks={[0, 0.5, 1]} tickFormatter={(v) => v === 1 ? "🙂" : v === 0.5 ? "😐" : "🙁"} tick={{ fontSize: 10 }} width={24} />
               <Tooltip formatter={(v) => v === 1 ? "Happy" : v === 0.5 ? "Neutral" : v === 0 ? "Sad" : "No entry"} labelStyle={{ fontSize: 10 }} contentStyle={{ fontSize: 10 }} />
-              <Line type="monotone" dataKey="mood" stroke={C.blue} strokeWidth={2} dot={{ r: 2 }} connectNulls />
+              <Line type="monotone" dataKey="mood" stroke={ac.moodLine || C.blue} strokeWidth={2} dot={{ r: 2 }} connectNulls />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
         {/* ---------- Money Management nav card — detailed money analytics live in their own tab ---------- */}
-        <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, margin: "20px 0 8px" }}>💰 Money</div>
+        <div style={{ fontSize: 11, fontWeight: 800, color: ac.sectionHeader || C.dark, margin: "20px 0 8px" }}>💰 Money</div>
         <motion.div
           onClick={onOpenMoneyManagement}
           whileHover={{ y: -3, boxShadow: "0 14px 30px rgba(37,36,34,0.14)" }}
@@ -1488,12 +1536,12 @@ function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
           </div>
           <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 8.5, color: "#6b8f77", fontWeight: 700 }}>Earned</div>
-              <div style={{ fontSize: 12, fontWeight: 900, color: "#4a7c59" }}>₹{moneySummary.earn.toFixed(0)}</div>
+              <div style={{ fontSize: 8.5, color: ac.earn || "#6b8f77", fontWeight: 700 }}>Earned</div>
+              <div style={{ fontSize: 12, fontWeight: 900, color: ac.earn || "#4a7c59" }}>₹{moneySummary.earn.toFixed(0)}</div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 8.5, color: "#c0776b", fontWeight: 700 }}>Spent</div>
-              <div style={{ fontSize: 12, fontWeight: 900, color: "#c0392b" }}>₹{moneySummary.spend.toFixed(0)}</div>
+              <div style={{ fontSize: 8.5, color: ac.spend || "#c0776b", fontWeight: 700 }}>Spent</div>
+              <div style={{ fontSize: 12, fontWeight: 900, color: ac.spend || "#c0392b" }}>₹{moneySummary.spend.toFixed(0)}</div>
             </div>
           </div>
           <ChevronRight size={18} color="#a39c86" />
@@ -2653,9 +2701,10 @@ function buildCalendarCells(year, month) {
   while (cells.length % 7 !== 0) cells.push(null);
   return cells;
 }
-function CalendarDayCell({ day, iso, pct, isToday, index }) {
+function CalendarDayCell({ day, iso, pct, isToday, isPast, index, fontSize, fontFamily, fontWeight, textColor }) {
   const done = typeof pct === "number" && pct >= 100;
   const partial = typeof pct === "number" && pct > 0 && pct < 100;
+  const missed = isPast && !done; // day already ended without being finished — gets a "cut" mark
   return (
     <motion.div
       layout
@@ -2665,10 +2714,11 @@ function CalendarDayCell({ day, iso, pct, isToday, index }) {
       whileHover={{ scale: 1.14, zIndex: 1 }}
       style={{
         position: "relative", aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center",
-        borderRadius: 7, fontSize: 9.5, fontWeight: 800,
+        borderRadius: 7, fontSize, fontWeight, fontFamily,
         background: done ? C.accent : partial ? "#fff3d6" : "transparent",
-        color: done ? "#fff" : C.text,
+        color: done ? "#fff" : (textColor || C.text),
         boxShadow: isToday ? `inset 0 0 0 1.5px ${C.dark}` : "none",
+        opacity: missed ? 0.62 : 1,
       }}
     >
       {day}
@@ -2691,10 +2741,44 @@ function CalendarDayCell({ day, iso, pct, isToday, index }) {
           </svg>
         </motion.div>
       )}
+      {missed && (
+        <motion.div
+          initial={{ scale: 0, rotate: 20 }} animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: "spring", stiffness: 520, damping: 18, delay: Math.min(index * 0.012, 0.3) + 0.12 }}
+          title="Day ended without finishing"
+          style={{
+            position: "absolute", bottom: -3, right: -3, width: 11, height: 11, borderRadius: "50%",
+            background: "#c0392b", display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 0 0 1.5px #fff",
+          }}
+        >
+          <svg viewBox="0 0 20 20" width={7} height={7}>
+            <motion.path
+              d="M5 5 L15 15" fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round"
+              initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ duration: 0.2, delay: Math.min(index * 0.012, 0.3) + 0.22 }}
+            />
+            <motion.path
+              d="M15 5 L5 15" fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round"
+              initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ duration: 0.2, delay: Math.min(index * 0.012, 0.3) + 0.32 }}
+            />
+          </svg>
+        </motion.div>
+      )}
     </motion.div>
   );
 }
-function CalendarWidget({ completionHistory, cardBg }) {
+function CalendarWidget({ completionHistory, cardBg, textStyle }) {
+  const ts = normalizeTextStyle(textStyle);
+  const fontFamily = ts.font ? fontStackFor(ts.font) : undefined;
+  const fontWeight = ts.bold ? 800 : 700;
+  const textColor = ts.color || undefined;
+  const titleFontSize = Math.round(11 * (1 + (ts.scale - 1) * 0.5));
+  const monthFontSize = Math.round(9.5 * ts.scale);
+  const weekdayFontSize = Math.round(8 * ts.scale);
+  const dayFontSize = Math.round(9.5 * ts.scale);
+
   const today = useMemo(() => new Date(), []);
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
   const [dir, setDir] = useState(1);
@@ -2716,24 +2800,25 @@ function CalendarWidget({ completionHistory, cardBg }) {
   const cells = useMemo(() => buildCalendarCells(cursor.year, cursor.month), [cursor]);
   const monthLabel = useMemo(() => new Date(cursor.year, cursor.month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }), [cursor]);
   const todayISO = localDateToISO(today);
+  const todayMidnight = useMemo(() => new Date(today.getFullYear(), today.getMonth(), today.getDate()), [today]);
   const isCurrentMonth = cursor.year === today.getFullYear() && cursor.month === today.getMonth();
   const hist = completionHistory || {};
 
   return (
     <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 10, background: cardBg || "#fff", width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark, display: "flex", alignItems: "center", gap: 5 }}><CalendarDays size={13} /> Calendar</span>
+        <span style={{ fontSize: titleFontSize, fontWeight: 800, color: textColor || C.dark, fontFamily, display: "flex", alignItems: "center", gap: 5 }}><CalendarDays size={13} /> Calendar</span>
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
             key={monthLabel}
             initial={{ opacity: 0, x: dir >= 0 ? 8 : -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: dir >= 0 ? -8 : 8 }}
             transition={{ duration: 0.18 }}
-            style={{ fontSize: 9.5, fontWeight: 800, color: "#8a8579" }}
+            style={{ fontSize: monthFontSize, fontWeight: 800, color: textColor || "#8a8579", fontFamily }}
           >{monthLabel}</motion.span>
         </AnimatePresence>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, fontSize: 8, fontWeight: 800, color: "#b3ac99", textAlign: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, fontSize: weekdayFontSize, fontWeight: 800, color: textColor || "#b3ac99", fontFamily, textAlign: "center" }}>
         {CALENDAR_WEEKDAYS.map((d, i) => <div key={i}>{d}</div>)}
       </div>
 
@@ -2750,9 +2835,14 @@ function CalendarWidget({ completionHistory, cardBg }) {
           >
             {cells.map((day, i) => {
               if (!day) return <div key={`blank-${i}`} />;
-              const iso = localDateToISO(new Date(cursor.year, cursor.month, day));
+              const cellDate = new Date(cursor.year, cursor.month, day);
+              const iso = localDateToISO(cellDate);
               return (
-                <CalendarDayCell key={iso} day={day} iso={iso} pct={hist[iso]} isToday={iso === todayISO} index={i} />
+                <CalendarDayCell
+                  key={iso} day={day} iso={iso} pct={hist[iso]} isToday={iso === todayISO}
+                  isPast={cellDate < todayMidnight} index={i}
+                  fontSize={dayFontSize} fontFamily={fontFamily} fontWeight={fontWeight} textColor={textColor}
+                />
               );
             })}
           </motion.div>
@@ -3179,7 +3269,7 @@ function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
 
         <div style={{ fontSize: 10, color: "#8a8579", marginTop: 14, lineHeight: 1.4, display: "flex", alignItems: "center", gap: 5 }}>
           <Type size={11} style={{ flexShrink: 0 }} />
-          Tap a widget's name above (Big Goals, Life Rules, Daily/Entry Goals, Earn Money / Notes) to select it, then style only that one below.
+          Tap a widget's name above (Big Goals, Life Rules, Daily/Entry Goals, Earn Money / Notes, Calendar) to select it, then style only that one below.
         </div>
         <TextStylePanel
           widgetLabel={WIDGETS.find((w) => w.id === activeTextWidget)?.label || ""}
@@ -3619,6 +3709,56 @@ function ScopeThemeEditor({ title, icon, value, onChange, onReset, includeTextCo
   );
 }
 
+/* Analytics tab — one custom color swatch per distinct colored element
+   (header, Life Score badge, stat icons, Smart Insights, section
+   headings, heatmap, mood line, Earn/Spend), on top of the scope-wide
+   background/text/size/font/bold controls above. Every field defaults
+   to "" (built-in look) until a color is picked. */
+function AnalyticsColorsEditor({ value, onChange, onReset }) {
+  const v = normalizeAnalyticsColors(value);
+  const isDefault = ANALYTICS_ELEMENT_COLOR_FIELDS.every((f) => !v[f.key]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+      transition={{ type: "spring", stiffness: 320, damping: 28 }}
+      style={{ border: "1px solid #ece7d8", borderRadius: 10, background: "rgba(255,255,255,0.7)", overflow: "hidden" }}
+    >
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6, padding: "8px 10px",
+        borderBottom: "1px solid #ece7d8", background: "rgba(255,252,242,0.6)",
+      }}>
+        <Palette size={12} style={{ color: C.dark }} />
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>Element colors</span>
+        <div style={{ flex: 1 }} />
+        {!isDefault && (
+          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={onReset} title="Reset element colors" style={{
+            border: "1px solid #ddd6c4", background: "#fff", color: "#8a8579", borderRadius: 999,
+            padding: "2px 8px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
+          }}><RefreshCw size={10} /> Reset</motion.button>
+        )}
+      </div>
+      <div style={{ padding: "10px 10px 12px" }}>
+        <div style={{ fontSize: 9, color: "#8a8579", marginBottom: 10, lineHeight: 1.4 }}>
+          Pick a custom color for any piece of text or accent inside the Analytics &amp; Insights panel —
+          each one below is independent of the others.
+        </div>
+        {ANALYTICS_ELEMENT_COLOR_FIELDS.map((f) => (
+          <ColorSwatchRow
+            key={f.key}
+            icon={<Baseline size={10} />}
+            label={f.label}
+            options={TEXT_COLOR_OPTIONS}
+            value={v[f.key]}
+            onChange={(hex) => onChange(f.key, hex)}
+            defaultSwatchHex={f.defaultHex}
+          />
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
 /* Per-widget background color + Small/Medium/Large size preset list. */
 function WidgetsThemeEditor({ widgetThemes, layoutSizes, onWidgetChange, onWidgetReset, onWidgetSize }) {
   return (
@@ -3820,7 +3960,7 @@ function AnalyticsSummaryThemeEditor({ state, metrics, onChange, onReset }) {
 }
 
 /* Top-level Theme tab shown inside Settings — five sub-sections. */
-function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset }) {
+function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsColorChange, onAnalyticsColorReset }) {
   const [section, setSection] = useState("dashboard");
   const t = normalizeTheme(theme);
   const SECTIONS = [
@@ -3856,11 +3996,18 @@ function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, on
           />
         )}
         {section === "analytics" && (
-          <ScopeThemeEditor
-            key="analytics" title="Analytics" icon={<BarChart3 size={12} style={{ color: C.dark }} />}
-            value={t.analytics} onChange={(p) => onScopeChange("analytics", p)} onReset={() => onScopeReset("analytics")}
-            includeTextControls={true}
-          />
+          <div key="analytics" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <ScopeThemeEditor
+              title="Analytics" icon={<BarChart3 size={12} style={{ color: C.dark }} />}
+              value={t.analytics} onChange={(p) => onScopeChange("analytics", p)} onReset={() => onScopeReset("analytics")}
+              includeTextControls={true}
+            />
+            <AnalyticsColorsEditor
+              value={t.analyticsColors}
+              onChange={(key, hex) => onAnalyticsColorChange(key, hex)}
+              onReset={onAnalyticsColorReset}
+            />
+          </div>
         )}
         {section === "widgets" && (
           <WidgetsThemeEditor
@@ -4558,6 +4705,18 @@ function BTLDashboardInner() {
     s.theme = theme;
     return s;
   });
+  const setAnalyticsColor = (key, hex) => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.analyticsColors = { ...theme.analyticsColors, [key]: hex };
+    s.theme = theme;
+    return s;
+  });
+  const resetAnalyticsColors = () => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.analyticsColors = normalizeAnalyticsColors({});
+    s.theme = theme;
+    return s;
+  });
 
   const theme = normalizeTheme(state.theme);
   const dashTheme = { bg: theme.dashboard.bg || C.bg, text: theme.dashboard.text || C.text };
@@ -4575,7 +4734,7 @@ function BTLDashboardInner() {
     extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} cardBg={theme.widgets.extryGoals?.bg} />,
     earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} cardBg={theme.widgets.earnMoney?.bg} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} metrics={theme.analyticsSummary.metrics} />,
-    calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} />,
+    calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} textStyle={state.layout.textStyles?.calendar} />,
   };
 
   return (
@@ -4747,6 +4906,7 @@ function BTLDashboardInner() {
               onWidgetThemeChange={setWidgetTheme} onWidgetThemeReset={resetWidgetTheme}
               onWidgetSizePreset={setWidgetSizePreset}
               onAnalyticsSummaryChange={setAnalyticsSummaryMetrics} onAnalyticsSummaryReset={resetAnalyticsSummaryMetrics}
+              onAnalyticsColorChange={setAnalyticsColor} onAnalyticsColorReset={resetAnalyticsColors}
             />
           </motion.div>
         )}

@@ -1,6 +1,57 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Calendar widget (this update)
+## Analytics tab — per-element custom colors (this update)
+
+**Setting → 🎨 Theme → Analytics** now has a second card, **Element
+colors**, below the existing background/text/size/font/bold controls.
+Every distinctly-colored piece of the **Analytics & Insights** panel now
+gets its own independent custom-color swatch (pick a preset or use the
+color wheel for any hex), instead of only the one shared "Text color":
+
+- Header title ("Analytics & Insights")
+- Life Score ring & score number
+- Life Score caption
+- "Average completion" / "Best day" / "Toughest day" icons & values (one
+  swatch each)
+- Stat captions (the small text under those three numbers)
+- "🧠 Smart Insights" heading
+- Smart Insight card accents (overrides the per-card auto color so every
+  card matches)
+- Section headings ("Daily goal completion…", "Mood trend…", "💰 Money")
+- Heatmap squares — recolors the whole Less→More scale from one swatch
+  (lighter tints are generated automatically from the color you pick)
+- Mood trend line
+- "Earned" label & amount
+- "Spent" label & amount
+
+Each swatch defaults to the built-in look (empty = unchanged) until you
+pick a color, and a **Reset** button (only shown once something's been
+changed) restores every one of them at once. Stored in
+`state.theme.analyticsColors` and saved to Firestore per-user like the
+rest of `state.theme`. Built with the same `ColorSwatchRow` / preset +
+custom-picker pattern already used everywhere else in the Theme panel —
+no new npm installs required.
+
+## Calendar — text styling + "missed day" mark (earlier update)
+
+Two additions to the Calendar widget:
+
+- **Text Style now works on Calendar too.** In **Layout → Customize
+  Layout**, "Calendar" is now tappable in the reorder list right alongside
+  Big Goals/Life Rules/Daily·Entry Goals/Earn Money — select it and the
+  Text Style panel below (font size, bold, font, color) applies to the
+  widget's title, month label, weekday row, and every day number, exactly
+  the same mechanism already used by the other free-text widgets.
+- **Ended days that weren't finished get a "cut" mark.** Any date that has
+  already passed (before today) and never reached 100% completion now
+  gets a small red ✕ badge — same animated-draw treatment as the green
+  checkmark (two strokes drawn in via `pathLength`), just red and crossed
+  instead of a tick, so a glance at the month shows exactly which days
+  were completed (✓, green) vs. which ended incomplete (✕, red, and
+  slightly faded). Today and future dates are left unmarked since they
+  haven't "ended" yet.
+
+## Calendar widget (earlier update)
 
 A new **Calendar** widget — add it like any other dashboard widget via
 **Layout → Customize Layout** (drag to reorder, resize, hide/show), and
