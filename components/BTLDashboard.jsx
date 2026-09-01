@@ -7,7 +7,7 @@ import {
   GripVertical, Pin, PinOff, LayoutGrid, RefreshCw, Maximize2, Move,
   CheckCircle2, Wallet, StickyNote, Camera, Sparkles, Download, ZoomIn, CalendarDays
 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { useAuth, signOutUser } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
@@ -132,6 +132,27 @@ const CATEGORIES = [
 ];
 const catInfo = (key) => CATEGORIES.find((c) => c.key === key) || CATEGORIES[CATEGORIES.length - 1];
 
+/* ---------------- SPEND MONEY: categories ----------------
+   Shown as selectable chips inside the "Add Money" popup whenever the
+   user is logging an expense. Each has its own color so the Money
+   Management analytics (pie chart, category bars) stay visually
+   consistent everywhere they appear. */
+const SPEND_CATEGORIES = [
+  { key: "food", label: "Food", emoji: "🍔", color: "#e07a5f" },
+  { key: "health", label: "Health", emoji: "💊", color: "#4a7c59" },
+  { key: "cloth", label: "Cloth", emoji: "👕", color: "#98c1d9" },
+  { key: "friends", label: "Friends", emoji: "🎉", color: "#fca311" },
+  { key: "travelling", label: "Travelling", emoji: "✈️", color: "#6c5ce7" },
+  { key: "grocery", label: "Grocery", emoji: "🛒", color: "#f4a259" },
+  { key: "transport", label: "Transport", emoji: "🚗", color: "#7f8c8d" },
+  { key: "bills", label: "Bills & Rent", emoji: "🧾", color: "#c0392b" },
+  { key: "entertainment", label: "Entertainment", emoji: "🎬", color: "#00b894" },
+  { key: "shopping", label: "Shopping", emoji: "🛍️", color: "#e84393" },
+  { key: "education", label: "Education", emoji: "📚", color: "#0984e3" },
+  { key: "other", label: "Other", emoji: "🔖", color: "#b3ac99" },
+];
+const spendCatInfo = (key) => SPEND_CATEGORIES.find((c) => c.key === key) || SPEND_CATEGORIES[SPEND_CATEGORIES.length - 1];
+
 const PRIORITIES = [
   { key: "high", label: "High", color: "#e07a5f" },
   { key: "medium", label: "Medium", color: C.accent },
@@ -167,6 +188,8 @@ function makeDefaultState() {
     totalEarnLife: 0,
     totalSpendLife: 0,
     moneyHistory: {},   // { "2026-08-30": { earn: 100, spend: 40 } }
+    moneyTransactions: [], // [{ id, type: "earn"|"spend", amount, date, category (spend only), image (earn only, dataURL), ts }]
+                            // -- powers the Money Management tab: category breakdown, transaction feed, earn photos
     memories: [],
     moodLog: {},        // { "2026-08-30": "happy" | "neutral" | "sad" }
     completionHistory: {}, // { "2026-08-30": 62.5 }  -- % of daily+extry goals done that day
@@ -211,9 +234,16 @@ function resizeImageDataUrl(file, maxDim = 480, quality = 0.72) {
    lib/btlStorage.js and firestore.rules. These are thin wrappers that
    take the signed-in Firebase user, so the rest of this file barely
    had to change. */
+/* Backfills state.moneyTransactions on old saved states that predate
+   the Add Money popup / Money Management tab, same pattern as
+   ensureLayoutDefaults above. */
+function ensureMoneyDefaults(s) {
+  return { ...s, moneyTransactions: Array.isArray(s.moneyTransactions) ? s.moneyTransactions : [] };
+}
+
 async function loadState(user) {
   const s = await loadStateFromFirestore(user, makeDefaultState, ensureGoalDefaults);
-  return ensureLayoutDefaults(s);
+  return ensureMoneyDefaults(ensureLayoutDefaults(s));
 }
 async function saveState(user, state) {
   return saveStateToFirestore(user, state);
@@ -962,7 +992,7 @@ function Heatmap({ completionHistory }) {
 
 function moodToNum(m) { return m === "happy" ? 1 : m === "neutral" ? 0.5 : m === "sad" ? 0 : null; }
 
-function AnalyticsTab({ state, onClose }) {
+function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
   const [showShare, setShowShare] = useState(false);
   const moodData = useMemo(() => {
     const arr = [];
@@ -1150,6 +1180,16 @@ function AnalyticsTab({ state, onClose }) {
         <BarChart3 size={14} color={C.dark} />
         <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Analytics & Insights</span>
         <div style={{ flex: 1 }} />
+        <motion.button
+          onClick={onOpenMoneyManagement}
+          whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }}
+          transition={{ type: "spring", stiffness: 380, damping: 22 }}
+          style={{
+            border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", marginRight: 6,
+            background: "linear-gradient(135deg,#4a7c59,#c0392b)", color: "#fff", fontSize: 10, fontWeight: 800,
+            display: "flex", alignItems: "center", gap: 5,
+          }}
+        ><Wallet size={12} /> Money Management</motion.button>
         <button onClick={() => setShowShare(true)} style={{
           border: "none", borderRadius: 8, padding: "5px 10px", background: C.accent, color: "#fff",
           fontSize: 10, fontWeight: 800, cursor: "pointer", marginRight: 6,
@@ -1180,6 +1220,28 @@ function AnalyticsTab({ state, onClose }) {
             <div style={{ fontSize: 9, color: "#a39c86", marginTop: 2 }}>Life Score — last 7 days completion, streak & mood combined</div>
           </div>
         </div>
+
+        {/* Money Management entry banner */}
+        <motion.div
+          onClick={onOpenMoneyManagement}
+          whileHover={{ y: -2, boxShadow: "0 14px 30px -12px rgba(37,36,34,0.28)" }} whileTap={{ scale: 0.99 }}
+          transition={{ type: "spring", stiffness: 320, damping: 24 }}
+          style={{
+            display: "flex", alignItems: "center", gap: 12, marginBottom: 16, cursor: "pointer",
+            border: "1px solid rgba(74,124,89,0.35)", borderRadius: 12, padding: "12px 16px",
+            background: "linear-gradient(135deg, #4a7c5914, #c0392b10)",
+          }}
+        >
+          <div style={{
+            width: 42, height: 42, borderRadius: 12, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+            background: "linear-gradient(135deg,#4a7c59,#c0392b)", boxShadow: "0 8px 18px -6px rgba(37,36,34,0.4)",
+          }}><Wallet size={19} color="#fff" /></div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 900, color: C.dark }}>Money Management</div>
+            <div style={{ fontSize: 9.5, color: "#8a8579", marginTop: 1 }}>Category breakdown, transaction history & earn photos</div>
+          </div>
+          <ChevronRight size={16} color={C.dark} />
+        </motion.div>
 
         {/* insights row */}
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
@@ -1303,8 +1365,191 @@ function AnalyticsTab({ state, onClose }) {
   );
 }
 
+/* ---------------- ADD MONEY POPUP ----------------
+   Glassmorphism popup with spring-in animation, opened from the "Add"
+   buttons in the Earn/Spend widget. Earn mode only asks for an
+   (optional) picture — receipt, screenshot, proof of income, whatever.
+   Spend mode asks the user to pick a category. Either way, nothing is
+   saved to state until "Done" is pressed. */
+function MoneyAddModal({ mode, amount, onClose, onConfirm }) {
+  const [category, setCategory] = useState(null);
+  const [image, setImage] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const imgRef = useRef(null);
+  const isEarn = mode === "earn";
+  const canConfirm = isEarn || !!category;
+
+  const pickImage = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { alert("Please pick an image file."); return; }
+    setBusy(true);
+    resizeImageDataUrl(file, 480, 0.72)
+      .then((dataUrl) => setImage(dataUrl))
+      .catch(() => alert("Couldn't read that image, try another one."))
+      .finally(() => setBusy(false));
+    e.target.value = "";
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key="money-modal-overlay"
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        onClick={onClose}
+        style={{
+          position: "fixed", inset: 0, zIndex: 999, background: "rgba(30,26,18,0.45)",
+          backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 18,
+        }}
+      >
+        <motion.div
+          key="money-modal-card"
+          onClick={(e) => e.stopPropagation()}
+          initial={{ opacity: 0, scale: 0.86, y: 26 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.9, y: 18 }}
+          transition={{ type: "spring", stiffness: 340, damping: 26 }}
+          style={{
+            width: "min(92vw, 380px)", maxHeight: "88vh", overflowY: "auto",
+            borderRadius: 22, padding: 20, boxSizing: "border-box",
+            background: "linear-gradient(160deg, rgba(255,255,255,0.82), rgba(255,255,255,0.55))",
+            backdropFilter: "blur(22px) saturate(180%)", WebkitBackdropFilter: "blur(22px) saturate(180%)",
+            border: "1px solid rgba(255,255,255,0.7)",
+            boxShadow: "0 24px 70px -20px rgba(37,36,34,0.45), 0 0 0 1px rgba(255,255,255,0.4) inset",
+          }}
+          className="btl-scroll"
+        >
+          {/* header */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 14, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              background: isEarn ? "linear-gradient(135deg,#4a7c59,#8fbf9f)" : "linear-gradient(135deg,#c0392b,#e07a5f)",
+              boxShadow: `0 8px 20px -6px ${isEarn ? "#4a7c5980" : "#c0392b80"}`,
+            }}>
+              {isEarn ? <TrendingUp size={19} color="#fff" /> : <TrendingDown size={19} color="#fff" />}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 900, color: C.dark }}>{isEarn ? "Add Earning" : "Add Expense"}</div>
+              <div style={{ fontSize: 15, fontWeight: 900, color: isEarn ? "#4a7c59" : "#c0392b" }}>₹{isNaN(amount) ? "0" : amount}</div>
+            </div>
+            <motion.button
+              onClick={onClose} whileHover={{ rotate: 90 }} whileTap={{ scale: 0.85 }}
+              transition={{ type: "spring", stiffness: 300, damping: 18 }}
+              style={{
+                width: 28, height: 28, borderRadius: "50%", border: "none", cursor: "pointer",
+                background: "rgba(64,61,57,0.08)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+              }}
+            ><X size={14} color={C.dark} /></motion.button>
+          </div>
+
+          {isEarn ? (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 8 }}>Attach a picture <span style={{ fontWeight: 500, color: "#a39c86" }}>(optional)</span></div>
+              <motion.div
+                whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }}
+                onClick={() => imgRef.current?.click()}
+                style={{
+                  border: `1.5px dashed ${image ? "#4a7c59" : "#c9c2ac"}`, borderRadius: 16, cursor: "pointer",
+                  padding: image ? 10 : 26, textAlign: "center", background: image ? "transparent" : "rgba(255,255,255,0.4)",
+                  transition: "border-color 150ms ease",
+                }}
+              >
+                {image ? (
+                  <div style={{ position: "relative", display: "inline-block" }}>
+                    <img src={image} alt="earning proof" style={{ width: "100%", maxHeight: 180, objectFit: "cover", borderRadius: 12, display: "block" }} />
+                    <motion.button
+                      onClick={(e) => { e.stopPropagation(); setImage(null); }}
+                      whileTap={{ scale: 0.85 }}
+                      style={{
+                        position: "absolute", top: 6, right: 6, width: 24, height: 24, borderRadius: "50%",
+                        border: "none", cursor: "pointer", background: "rgba(37,36,34,0.72)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}
+                    ><X size={12} color="#fff" /></motion.button>
+                  </div>
+                ) : busy ? (
+                  <div style={{ fontSize: 11, color: "#a39c86" }}>Reading image…</div>
+                ) : (
+                  <>
+                    <Camera size={26} color="#c9c2ac" style={{ marginBottom: 6 }} />
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#8a8579" }}>Tap to send a photo</div>
+                    <div style={{ fontSize: 9, color: "#b3ac99", marginTop: 2 }}>Screenshot, receipt, proof of income…</div>
+                  </>
+                )}
+              </motion.div>
+              <input ref={imgRef} type="file" accept="image/*" onChange={pickImage} style={{ display: "none" }} />
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 8 }}>Choose a category</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                {SPEND_CATEGORIES.map((c) => {
+                  const active = category === c.key;
+                  return (
+                    <motion.button
+                      key={c.key}
+                      onClick={() => setCategory(c.key)}
+                      whileHover={{ y: -2 }} whileTap={{ scale: 0.93 }}
+                      transition={{ type: "spring", stiffness: 380, damping: 20 }}
+                      style={{
+                        border: `1.5px solid ${active ? c.color : "rgba(64,61,57,0.14)"}`,
+                        background: active ? `${c.color}22` : "rgba(255,255,255,0.5)",
+                        borderRadius: 14, padding: "10px 4px", cursor: "pointer",
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                        boxShadow: active ? `0 6px 16px -6px ${c.color}70` : "none",
+                      }}
+                    >
+                      <span style={{ fontSize: 19 }}>{c.emoji}</span>
+                      <span style={{ fontSize: 9, fontWeight: 800, color: active ? c.color : C.text, textAlign: "center", lineHeight: 1.15 }}>{c.label}</span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <motion.button
+            onClick={() => canConfirm && onConfirm({ image, category })}
+            disabled={!canConfirm}
+            whileHover={canConfirm ? { y: -2 } : undefined}
+            whileTap={canConfirm ? { scale: 0.97 } : undefined}
+            transition={{ type: "spring", stiffness: 380, damping: 22 }}
+            style={{
+              marginTop: 18, width: "100%", border: "none", borderRadius: 14, padding: "12px 0",
+              fontSize: 12, fontWeight: 900, letterSpacing: 0.3, cursor: canConfirm ? "pointer" : "not-allowed",
+              color: "#fff", opacity: canConfirm ? 1 : 0.5,
+              background: isEarn ? "linear-gradient(135deg,#4a7c59,#6fa77f)" : "linear-gradient(135deg,#c0392b,#e07a5f)",
+              boxShadow: canConfirm ? `0 10px 24px -8px ${isEarn ? "#4a7c5990" : "#c0392b90"}` : "none",
+            }}
+          >Done ✓</motion.button>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 /* ---------------- EARN MONEY / SPEND MONEY / NOTES / IMAGE (extracted as a widget) ---------------- */
 function EarnMoneyNotesCard({ state, update, addEarnToday, addSpendToday, onImageFile, fileRef, todayMood, onSetMood }) {
+  const [modalMode, setModalMode] = useState(null); // null | "earn" | "spend"
+
+  const openModal = (mode) => {
+    const raw = mode === "earn" ? state.earnToday : state.spendToday;
+    const v = parseFloat(raw);
+    if (isNaN(v) || v <= 0) { alert("Enter an amount first."); return; }
+    setModalMode(mode);
+  };
+
+  const confirmModal = ({ image, category }) => {
+    if (modalMode === "earn") addEarnToday(image || null);
+    else if (modalMode === "spend") addSpendToday(category || "other");
+    setModalMode(null);
+  };
+
+  const modalAmount = modalMode === "earn" ? state.earnToday : state.spendToday;
+
   return (
     <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: "#fff", width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box", display: "flex", flexDirection: "column" }} className="btl-scroll">
       <div style={{ display: "flex", gap: 6 }}>
@@ -1313,11 +1558,11 @@ function EarnMoneyNotesCard({ state, update, addEarnToday, addSpendToday, onImag
           <div style={{ display: "flex", gap: 4 }}>
             <input
               value={state.earnToday} onChange={(e) => update((s) => { s.earnToday = e.target.value; return s; })}
-              onKeyDown={(e) => e.key === "Enter" && addEarnToday()}
+              onKeyDown={(e) => e.key === "Enter" && openModal("earn")}
               type="number" placeholder="₹ amount"
               style={{ flex: 1, minWidth: 0, fontSize: 10, padding: "4px 6px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
             />
-            <button onClick={addEarnToday} style={{ border: "none", background: "#4a7c59", color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer", fontSize: 9, flexShrink: 0 }}>Add</button>
+            <button onClick={() => openModal("earn")} style={{ border: "none", background: "#4a7c59", color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer", fontSize: 9, flexShrink: 0 }}>Add</button>
           </div>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1325,14 +1570,23 @@ function EarnMoneyNotesCard({ state, update, addEarnToday, addSpendToday, onImag
           <div style={{ display: "flex", gap: 4 }}>
             <input
               value={state.spendToday} onChange={(e) => update((s) => { s.spendToday = e.target.value; return s; })}
-              onKeyDown={(e) => e.key === "Enter" && addSpendToday()}
+              onKeyDown={(e) => e.key === "Enter" && openModal("spend")}
               type="number" placeholder="₹ amount"
               style={{ flex: 1, minWidth: 0, fontSize: 10, padding: "4px 6px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
             />
-            <button onClick={addSpendToday} style={{ border: "none", background: "#c0392b", color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer", fontSize: 9, flexShrink: 0 }}>Add</button>
+            <button onClick={() => openModal("spend")} style={{ border: "none", background: "#c0392b", color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer", fontSize: 9, flexShrink: 0 }}>Add</button>
           </div>
         </div>
       </div>
+
+      {modalMode && (
+        <MoneyAddModal
+          mode={modalMode}
+          amount={modalAmount}
+          onClose={() => setModalMode(null)}
+          onConfirm={confirmModal}
+        />
+      )}
       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
         <textarea
           value={state.notes} onChange={(e) => {
@@ -1397,6 +1651,200 @@ function AnalyticsSummaryWidget({ state, onOpen }) {
           <div style={{ fontSize: 8, fontWeight: 700, color: "#8a8579" }}>Day Streak</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------------- MONEY MANAGEMENT TAB ----------------
+   Opened from the "💰 Money Management" card inside Analytics. Deep-dive
+   view into everything the Add Money popup has been collecting:
+   category-wise spend breakdown (donut + bars), an earn-vs-spend trend,
+   a scrollable transaction feed (with category chips / earn photos),
+   and a handful of quick-stat widgets. */
+function MoneyManagementTab({ state, onClose }) {
+  const txns = state.moneyTransactions || [];
+
+  const totals = useMemo(() => {
+    const earn = txns.filter((t) => t.type === "earn").reduce((a, t) => a + t.amount, 0);
+    const spend = txns.filter((t) => t.type === "spend").reduce((a, t) => a + t.amount, 0);
+    return { earn, spend, net: earn - spend };
+  }, [txns]);
+
+  const categoryTotals = useMemo(() => {
+    const map = {};
+    txns.filter((t) => t.type === "spend").forEach((t) => {
+      const key = t.category || "other";
+      map[key] = (map[key] || 0) + t.amount;
+    });
+    return Object.entries(map)
+      .map(([key, value]) => ({ ...spendCatInfo(key), key, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [txns]);
+
+  const maxCategory = Math.max(1, ...categoryTotals.map((c) => c.value));
+  const totalSpendForPct = categoryTotals.reduce((a, c) => a + c.value, 0) || 1;
+
+  const monthStats = useMemo(() => {
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const inMonth = txns.filter((t) => (t.date || "").startsWith(ym));
+    const earn = inMonth.filter((t) => t.type === "earn").reduce((a, t) => a + t.amount, 0);
+    const spend = inMonth.filter((t) => t.type === "spend").reduce((a, t) => a + t.amount, 0);
+    const daysWithSpend = new Set(inMonth.filter((t) => t.type === "spend").map((t) => t.date)).size;
+    return { earn, spend, avgDaily: daysWithSpend ? spend / daysWithSpend : 0 };
+  }, [txns]);
+
+  const earnPhotos = useMemo(() => txns.filter((t) => t.type === "earn" && t.image).slice(0, 12), [txns]);
+  const biggestExpense = useMemo(() => {
+    const spends = txns.filter((t) => t.type === "spend");
+    return spends.length ? spends.reduce((a, b) => (b.amount > a.amount ? b : a)) : null;
+  }, [txns]);
+
+  const [lightbox, setLightbox] = useState(null);
+
+  return (
+    <div style={{
+      border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff",
+      display: "flex", flexDirection: "column", height: "100%", position: "relative",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+        borderBottom: `1px solid ${C.text}`, background: C.bg, borderRadius: "10px 10px 0 0",
+      }}>
+        <Wallet size={14} color={C.dark} />
+        <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Money Management</span>
+        <div style={{ flex: 1 }} />
+        <button onClick={onClose} style={{
+          border: "none", borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
+          display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+        }}><X size={13} color={C.dark} /></button>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: 14 }} className="btl-scroll">
+        {/* life totals */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+          <MoneyStatCard label="Total Earned (life)" value={totals.earn} color="#4a7c59" Icon={TrendingUp} />
+          <MoneyStatCard label="Total Spent (life)" value={totals.spend} color="#c0392b" Icon={TrendingDown} />
+          <MoneyStatCard label="Net (life)" value={totals.net} color={totals.net >= 0 ? C.accent : "#c0392b"} Icon={Wallet} />
+        </div>
+
+        {/* quick-stat widgets */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginBottom: 20 }}>
+          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} style={{ border: "1px solid #ece7d8", borderRadius: 10, padding: 10 }}>
+            <div style={{ fontSize: 9, color: "#b3ac99", fontWeight: 700 }}>This month · spent</div>
+            <div style={{ fontSize: 15, fontWeight: 900, color: "#c0392b" }}>₹{monthStats.spend.toFixed(0)}</div>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.03 }} style={{ border: "1px solid #ece7d8", borderRadius: 10, padding: 10 }}>
+            <div style={{ fontSize: 9, color: "#b3ac99", fontWeight: 700 }}>This month · earned</div>
+            <div style={{ fontSize: 15, fontWeight: 900, color: "#4a7c59" }}>₹{monthStats.earn.toFixed(0)}</div>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} style={{ border: "1px solid #ece7d8", borderRadius: 10, padding: 10 }}>
+            <div style={{ fontSize: 9, color: "#b3ac99", fontWeight: 700 }}>Avg daily spend</div>
+            <div style={{ fontSize: 15, fontWeight: 900, color: C.dark }}>₹{monthStats.avgDaily.toFixed(0)}</div>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.09 }} style={{ border: "1px solid #ece7d8", borderRadius: 10, padding: 10 }}>
+            <div style={{ fontSize: 9, color: "#b3ac99", fontWeight: 700 }}>Top category</div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>
+              {categoryTotals[0] ? `${categoryTotals[0].emoji} ${categoryTotals[0].label}` : "—"}
+            </div>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }} style={{ border: "1px solid #ece7d8", borderRadius: 10, padding: 10 }}>
+            <div style={{ fontSize: 9, color: "#b3ac99", fontWeight: 700 }}>Biggest expense</div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: "#c0392b" }}>
+              {biggestExpense ? `₹${biggestExpense.amount.toFixed(0)}` : "—"}
+            </div>
+          </motion.div>
+        </div>
+
+        {/* category breakdown: donut + bars */}
+        {categoryTotals.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 8 }}>🏷️ Spend by category</div>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ width: 150, height: 150, flexShrink: 0 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={categoryTotals} dataKey="value" nameKey="label"
+                      cx="50%" cy="50%" innerRadius={42} outerRadius={68} paddingAngle={2}
+                      isAnimationActive animationDuration={600}
+                    >
+                      {categoryTotals.map((c) => <Cell key={c.key} fill={c.color} stroke="#fff" strokeWidth={2} />)}
+                    </Pie>
+                    <Tooltip formatter={(v, n) => [`₹${Number(v).toFixed(0)}`, n]} contentStyle={{ fontSize: 10, borderRadius: 8, border: "1px solid #ece7d8" }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ flex: 1, minWidth: 180, display: "flex", flexDirection: "column", gap: 8 }}>
+                {categoryTotals.map((c) => (
+                  <BarRow
+                    key={c.key}
+                    label={`${c.emoji} ${c.label} · ₹${c.value.toFixed(0)} (${Math.round((c.value / totalSpendForPct) * 100)}%)`}
+                    value={c.value} max={maxCategory} color={c.color}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* earn photos */}
+        {earnPhotos.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 8 }}>📸 Earning photos</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {earnPhotos.map((t) => (
+                <motion.img
+                  key={t.id} src={t.image} alt="earning" onClick={() => setLightbox(t.image)}
+                  whileHover={{ scale: 1.06, y: -2 }} whileTap={{ scale: 0.96 }}
+                  style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer" }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* transaction feed */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 8 }}>🧾 Recent transactions</div>
+          {txns.length === 0 ? (
+            <div style={{ fontSize: 10, color: "#b3ac99", padding: "14px 0", textAlign: "center" }}>No transactions logged yet — use "Add" on the Earn/Spend widget.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {txns.slice(0, 40).map((t) => {
+                const isEarn = t.type === "earn";
+                const cat = !isEarn ? spendCatInfo(t.category) : null;
+                return (
+                  <motion.div
+                    key={t.id} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "7px 9px",
+                      border: "1px solid #f0ece0", borderRadius: 10,
+                    }}
+                  >
+                    {isEarn && t.image ? (
+                      <img src={t.image} alt="" onClick={() => setLightbox(t.image)} style={{ width: 30, height: 30, borderRadius: 7, objectFit: "cover", cursor: "pointer", flexShrink: 0 }} />
+                    ) : (
+                      <div style={{
+                        width: 30, height: 30, borderRadius: 7, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                        background: isEarn ? "#4a7c5918" : `${cat.color}22`, fontSize: 14,
+                      }}>{isEarn ? "💰" : cat.emoji}</div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: C.dark }}>{isEarn ? "Earning" : cat.label}</div>
+                      <div style={{ fontSize: 8.5, color: "#a39c86" }}>{t.date}</div>
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 900, color: isEarn ? "#4a7c59" : "#c0392b", flexShrink: 0 }}>
+                      {isEarn ? "+" : "−"}₹{t.amount.toFixed(0)}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+      {lightbox && <MemPhotoLightbox src={lightbox} onClose={() => setLightbox(null)} />}
     </div>
   );
 }
@@ -2257,25 +2705,33 @@ function BTLDashboardInner() {
   const setMood = (date, mood) => update((s) => { s.moodLog = { ...s.moodLog, [date]: mood }; return s; });
   const addMemory = (date, text) => update((s) => { s.memories = [{ date, text }, ...s.memories]; return s; });
 
-  const addEarnToday = () => update((s) => {
+  const addEarnToday = (image) => update((s) => {
     const v = parseFloat(s.earnToday);
     if (!isNaN(v)) {
       s.totalEarnLife = (s.totalEarnLife || 0) + v;
       const day = todayISO();
       const cur = (s.moneyHistory && s.moneyHistory[day]) || { earn: 0, spend: 0 };
       s.moneyHistory = { ...(s.moneyHistory || {}), [day]: { ...cur, earn: cur.earn + v } };
+      s.moneyTransactions = [
+        { id: `${Date.now()}-${Math.random()}`, type: "earn", amount: v, date: day, image: image || null, ts: Date.now() },
+        ...(s.moneyTransactions || []),
+      ].slice(0, 300);
       s.earnToday = "";
     }
     return s;
   });
 
-  const addSpendToday = () => update((s) => {
+  const addSpendToday = (category) => update((s) => {
     const v = parseFloat(s.spendToday);
     if (!isNaN(v)) {
       s.totalSpendLife = (s.totalSpendLife || 0) + v;
       const day = todayISO();
       const cur = (s.moneyHistory && s.moneyHistory[day]) || { earn: 0, spend: 0 };
       s.moneyHistory = { ...(s.moneyHistory || {}), [day]: { ...cur, spend: cur.spend + v } };
+      s.moneyTransactions = [
+        { id: `${Date.now()}-${Math.random()}`, type: "spend", amount: v, date: day, category: category || "other", ts: Date.now() },
+        ...(s.moneyTransactions || []),
+      ].slice(0, 300);
       s.spendToday = "";
     }
     return s;
@@ -2372,7 +2828,11 @@ function BTLDashboardInner() {
         </div>
       ) : tab === "analytics" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <AnalyticsTab state={state} onClose={() => setTab("dashboard")} />
+          <AnalyticsTab state={state} onClose={() => setTab("dashboard")} onOpenMoneyManagement={() => setTab("moneyManagement")} />
+        </div>
+      ) : tab === "moneyManagement" ? (
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <MoneyManagementTab state={state} onClose={() => setTab("analytics")} />
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
