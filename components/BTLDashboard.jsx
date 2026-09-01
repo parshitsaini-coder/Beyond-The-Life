@@ -4608,6 +4608,7 @@ function BTLDashboardInner() {
   const [moneyModal, setMoneyModal] = useState(null); // { mode: "earn"|"spend", amount } | null
   const [focusMode, setFocusMode] = useState(false);
   const [saveStatus, setSaveStatus] = useState("idle"); // "idle" | "saving" | "saved"
+  const [quickMenuOpen, setQuickMenuOpen] = useState(false); // header shortcut flyout (arrow toggle)
   const fileRef = useRef(null);
   const loaded = useRef(false);
 
@@ -4901,6 +4902,17 @@ function BTLDashboardInner() {
     calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} textStyle={state.layout.textStyles?.calendar} />,
   };
 
+  /* Header "quick shortcuts" flyout (arrow toggle, far right of header) —
+     same five destinations as the always-visible nav pills, just as a
+     compact avatar-style row for fast access. */
+  const QUICK_MENU_ITEMS = [
+    { id: "memor", label: "memor", icon: <BookOpen size={15} />, bg: C.blue, onClick: () => setMemOpen(true) },
+    { id: "focusMode", label: "Focus Mode", icon: <Target size={15} />, bg: C.accent, onClick: () => setFocusMode((v) => !v) },
+    { id: "layout", label: "Layout", icon: <LayoutGrid size={15} />, bg: C.dark, onClick: () => setTab("layout") },
+    { id: "analytics", label: "Analytics", icon: <BarChart3 size={15} />, bg: C.dark, onClick: () => setTab("analytics") },
+    { id: "setting", label: "Setting", icon: <Settings size={15} />, bg: C.dark, onClick: () => setSettingsOpen(true) },
+  ];
+
   return (
     <DashboardThemeCtx.Provider value={dashTheme}>
     <div style={{
@@ -5020,6 +5032,64 @@ function BTLDashboardInner() {
                 style={{ border: "none", background: "transparent", cursor: "pointer", color: "#b3ac99" }}>
                 <LogOut size={15} />
               </motion.button>
+
+              <div style={{ position: "relative" }}>
+                <motion.button
+                  onClick={() => setQuickMenuOpen((v) => !v)}
+                  title="Quick shortcuts"
+                  whileHover={{ y: -2 }} whileTap={{ scale: 1.15 }}
+                  animate={{ rotate: quickMenuOpen ? 180 : 0 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 22 }}
+                  style={{
+                    border: `1px solid ${dashTheme.text}`, background: quickMenuOpen ? C.dark : dashTheme.bg,
+                    color: quickMenuOpen ? "#fff" : dashTheme.text, borderRadius: "50%", width: 26, height: 26,
+                    display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0,
+                  }}
+                >
+                  <ChevronDown size={15} />
+                </motion.button>
+
+                <AnimatePresence>
+                  {quickMenuOpen && (
+                    <>
+                      {/* click-outside catcher */}
+                      <div onClick={() => setQuickMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 55 }} />
+                      <motion.div
+                        initial={{ opacity: 0, x: 18, scale: 0.9 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        exit={{ opacity: 0, x: 18, scale: 0.9 }}
+                        transition={{ type: "spring", stiffness: 380, damping: 26 }}
+                        style={{
+                          position: "absolute", top: "calc(100% + 10px)", right: 0, zIndex: 60,
+                          display: "flex", alignItems: "center", gap: 7, padding: "7px 10px",
+                          background: "#fff", border: `1px solid ${C.dark}22`, borderRadius: 999,
+                          boxShadow: "0 10px 28px rgba(37,36,34,0.18)",
+                        }}
+                      >
+                        {QUICK_MENU_ITEMS.map((item, i) => (
+                          <motion.button
+                            key={item.id}
+                            onClick={() => { item.onClick(); setQuickMenuOpen(false); }}
+                            title={item.label}
+                            initial={{ opacity: 0, scale: 0.5, y: -8 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.5, y: -8 }}
+                            transition={{ delay: i * 0.045, type: "spring", stiffness: 440, damping: 20 }}
+                            whileHover={{ y: -3, scale: 1.1 }} whileTap={{ scale: 0.9 }}
+                            style={{
+                              width: 32, height: 32, borderRadius: "50%", border: "none",
+                              background: item.bg, color: "#fff",
+                              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                            }}
+                          >
+                            {item.icon}
+                          </motion.button>
+                        ))}
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
 

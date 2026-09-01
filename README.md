@@ -1,6 +1,35 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Drag-and-drop image upload (this update)
+## Header quick-shortcuts flyout (this update)
+
+A new small **round arrow button** now sits at the very right end of the
+header, right after the streak badge / goal rings / sign-out icon:
+
+- Tap it and a compact horizontal pill pops out (spring entrance, staggered
+  icon pop-in, arrow rotates 180°) with one round avatar-style icon each for
+  **memor, Focus Mode, Layout, Analytics, Setting** — the same five
+  destinations as the always-visible nav pills earlier in the header.
+- This is purely an **extra** quick-access shortcut — the original memor /
+  Focus Mode / Layout / Analytics / Setting buttons stay exactly where they
+  were and work exactly as before. Nothing was hidden or removed.
+- Tapping any icon in the flyout does the same action as its full button
+  (opens Memories, toggles Focus Mode, switches to Layout/Analytics tab, or
+  opens Settings) and auto-closes the flyout; tapping the arrow again, or
+  anywhere outside the flyout, also closes it.
+
+Built with `framer-motion` (`AnimatePresence` + spring `motion.div`/
+`motion.button`, matching the stagger pattern already used by the Analytics
+Summary widget and Layout editor) and `lucide-react` icons already imported
+in this file — no new npm installs required. `scroll-reveal-libraries`
+(AOS) and `lightweight-3d-effects` (Vanta/Vanilla-Tilt) are built for
+scroll-driven marketing-page reveals and hover-tilt decoration rather than
+a small popover toggle, and `lottie-animations` needs a JSON animation
+asset that doesn't exist for this UI; framer-motion's spring physics —
+already the animation library for every other in-app control here — covers
+the arrow-rotate + stagger-pop-in look with zero new dependencies and stays
+visually consistent with the rest of the dashboard.
+
+## Drag-and-drop image upload (earlier update)
 
 Every image-attach spot in the app now also accepts **drag-and-drop**,
 not just tap-to-browse:
