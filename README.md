@@ -1,6 +1,38 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Analytics tab — per-element custom colors (this update)
+## Money Management — per-element custom colors (this update)
+
+Same idea as the Analytics element colors below, now for **Money
+Management**. **Setting → 🎨 Theme → Money Management** is a new section
+with two cards:
+
+1. **Background/text (top card)** — same background color, text color,
+   text size, bold and font controls every other scope (Dashboard,
+   Analytics, Focus Mode) already has. Setting a **background color**
+   here recolors the whole Money Management panel, header bar, and the
+   Spend by category / Earn vs spend / Recent activity cards (they're
+   transparent over the panel background, so they follow it automatically).
+2. **Element colors (second card)** — one independent custom-color
+   swatch for every distinctly-colored piece of the screen:
+
+- Header title ("Money Management")
+- Section headings ("🏷️ Spend by category", "📈 Earn vs spend", "🕒 Recent
+  activity")
+- "Total Earned" / "Total Spent" / "Net (life)" / "Entries logged"
+  summary cards (each independent)
+- "Earn vs spend" chart — Earned bars, Spent bars, and the Net trend
+  line, each its own swatch
+- Recent activity — the earn-entry icon/amount color and the spend
+  amount color
+
+As before, every field defaults to the built-in look until you pick a
+color, one **Reset** restores them all, and it's stored in
+`state.theme.moneyColors`, saved to Firestore per-user like the rest of
+`state.theme`. Category colors in the donut chart / activity icons (e.g.
+🍔 Food, 🚗 Transport) are left untouched since those already carry their
+own per-category meaning — this only covers the screen's own accents.
+
+## Analytics tab — per-element custom colors (earlier update)
 
 **Setting → 🎨 Theme → Analytics** now has a second card, **Element
 colors**, below the existing background/text/size/font/bold controls.

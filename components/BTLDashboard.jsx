@@ -141,6 +141,30 @@ function tintHex(hex, amount) {
   return `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
 }
 
+/* ---- Money Management tab — per-element custom colors (this update) ----
+   Same idea as the Analytics element colors above, applied to the
+   Money Management screen: every distinctly-colored stat card, chart
+   series and activity-row accent gets its own override. */
+const MONEY_ELEMENT_COLOR_FIELDS = [
+  { key: "header", label: "Header title (\"Money Management\")", defaultHex: "#252422" },
+  { key: "sectionHeader", label: "Section headings (Spend by category / Earn vs spend / Recent activity)", defaultHex: "#252422" },
+  { key: "totalEarned", label: "\"Total Earned\" card", defaultHex: "#4a7c59" },
+  { key: "totalSpent", label: "\"Total Spent\" card", defaultHex: "#c0392b" },
+  { key: "net", label: "\"Net (life)\" card (positive)", defaultHex: "#fca311" },
+  { key: "entries", label: "\"Entries logged\" card", defaultHex: "#3d5a80" },
+  { key: "earnChart", label: "Earn vs spend — Earned bars", defaultHex: "#4a7c59" },
+  { key: "spendChart", label: "Earn vs spend — Spent bars", defaultHex: "#e07a5f" },
+  { key: "netLine", label: "Earn vs spend — Net trend line", defaultHex: "#fca311" },
+  { key: "activityEarn", label: "Recent activity — earn rows", defaultHex: "#4a7c59" },
+  { key: "activitySpend", label: "Recent activity — spend amounts", defaultHex: "#c0392b" },
+];
+function normalizeMoneyColors(t) {
+  const src = t && typeof t === "object" ? t : {};
+  const out = {};
+  MONEY_ELEMENT_COLOR_FIELDS.forEach((f) => { out[f.key] = typeof src[f.key] === "string" ? src[f.key] : ""; });
+  return out;
+}
+
 const DEFAULT_TEXT_STYLE = { scale: 1, color: "", font: "", bold: false };
 /* Widgets whose free-text content can be individually styled — pick one
    in the Text Style panel (click its name in the reorder list) and only
@@ -270,10 +294,12 @@ function normalizeTheme(t) {
   return {
     dashboard: normalizeScopeTheme(src.dashboard),
     analytics: normalizeScopeTheme(src.analytics),
+    money: normalizeScopeTheme(src.money),
     focusMode: normalizeScopeTheme(src.focusMode),
     widgets: normalizeWidgetThemes(src.widgets),
     analyticsSummary: normalizeAnalyticsSummaryTheme(src.analyticsSummary),
     analyticsColors: normalizeAnalyticsColors(src.analyticsColors),
+    moneyColors: normalizeMoneyColors(src.moneyColors),
   };
 }
 function defaultTheme() { return normalizeTheme({}); }
@@ -877,7 +903,7 @@ function MoodBtn({ active, onClick, children, title }) {
 }
 
 /* ---------------- SETTINGS PANEL CONTENT (rendered inside the glass modal) ---------------- */
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsColorChange, onAnalyticsColorReset }) {
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset }) {
   const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
@@ -948,6 +974,8 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             onAnalyticsSummaryReset={onAnalyticsSummaryReset}
             onAnalyticsColorChange={onAnalyticsColorChange}
             onAnalyticsColorReset={onAnalyticsColorReset}
+            onMoneyColorChange={onMoneyColorChange}
+            onMoneyColorReset={onMoneyColorReset}
           />
         ) : (
           <>
@@ -1600,6 +1628,9 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
   const [resetDone, setResetDone] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_MONEY_FILTERS);
+  const mt = normalizeScopeTheme(state.theme?.money);
+  const mtFontFamily = mt.font ? fontStackFor(mt.font) : undefined;
+  const mc = normalizeMoneyColors(state.theme?.moneyColors);
   const filterActive = isMoneyFilterActive(filters);
   const activeFilterCount = (filters.types.length !== 2 ? 1 : 0) + (filters.categories.length > 0 ? 1 : 0) + (filters.dateRange !== "all" ? 1 : 0);
 
@@ -1663,13 +1694,17 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
   const displayCount = filterActive ? filteredEntries.length : entries.length;
 
   return (
-    <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, background: C.bg, borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 6 }}>
+    <div style={{
+      border: `1px solid ${C.text}`, borderRadius: 10, background: mt.bg || "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative",
+      color: mt.text || undefined, fontFamily: mtFontFamily, fontWeight: mt.bold ? 600 : undefined,
+      zoom: mt.scale !== 1 ? mt.scale : undefined,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, background: mt.bg || C.bg, borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 6 }}>
         <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
           <ArrowLeft size={15} color={C.dark} />
         </motion.div>
-        <Wallet size={14} color={C.dark} />
-        <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Money Management</span>
+        <Wallet size={14} color={mc.header || C.dark} />
+        <span style={{ fontSize: 13, fontWeight: 800, color: mc.header || C.dark }}>Money Management</span>
         <div style={{ flex: 1 }} />
         <motion.button
           onClick={() => setFilterOpen(true)}
@@ -1747,23 +1782,23 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
 
         {/* summary strip */}
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-          <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: "linear-gradient(135deg, #4a7c5918, transparent)", border: "1px solid #4a7c5940" }}>
-            <div style={{ fontSize: 9, color: "#6b8f77", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><ArrowUpCircle size={11} /> {filterActive ? "Earned (filtered)" : "Total Earned"}</div>
-            <div style={{ fontSize: 17, fontWeight: 900, color: "#4a7c59" }}>₹{displaySummary.earn.toFixed(0)}</div>
+          <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: `linear-gradient(135deg, ${mc.totalEarned || "#4a7c59"}18, transparent)`, border: `1px solid ${mc.totalEarned || "#4a7c59"}40` }}>
+            <div style={{ fontSize: 9, color: mc.totalEarned || "#6b8f77", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><ArrowUpCircle size={11} /> {filterActive ? "Earned (filtered)" : "Total Earned"}</div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: mc.totalEarned || "#4a7c59" }}>₹{displaySummary.earn.toFixed(0)}</div>
           </div>
-          <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: "linear-gradient(135deg, #c0392b18, transparent)", border: "1px solid #c0392b40" }}>
-            <div style={{ fontSize: 9, color: "#c0776b", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><ArrowDownCircle size={11} /> {filterActive ? "Spent (filtered)" : "Total Spent"}</div>
-            <div style={{ fontSize: 17, fontWeight: 900, color: "#c0392b" }}>₹{displaySummary.spend.toFixed(0)}</div>
+          <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: `linear-gradient(135deg, ${mc.totalSpent || "#c0392b"}18, transparent)`, border: `1px solid ${mc.totalSpent || "#c0392b"}40` }}>
+            <div style={{ fontSize: 9, color: mc.totalSpent || "#c0776b", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><ArrowDownCircle size={11} /> {filterActive ? "Spent (filtered)" : "Total Spent"}</div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: mc.totalSpent || "#c0392b" }}>₹{displaySummary.spend.toFixed(0)}</div>
           </div>
-          <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: `linear-gradient(135deg, ${displaySummary.net >= 0 ? C.accent : "#c0392b"}18, transparent)`, border: `1px solid ${displaySummary.net >= 0 ? C.accent : "#c0392b"}40` }}>
+          <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: `linear-gradient(135deg, ${displaySummary.net >= 0 ? (mc.net || C.accent) : "#c0392b"}18, transparent)`, border: `1px solid ${displaySummary.net >= 0 ? (mc.net || C.accent) : "#c0392b"}40` }}>
             <div style={{ fontSize: 9, color: "#a39c86", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><PiggyBank size={11} /> {filterActive ? "Net (filtered)" : "Net (life)"}</div>
-            <div style={{ fontSize: 17, fontWeight: 900, color: displaySummary.net >= 0 ? C.accent : "#c0392b" }}>
+            <div style={{ fontSize: 17, fontWeight: 900, color: displaySummary.net >= 0 ? (mc.net || C.accent) : "#c0392b" }}>
               {displaySummary.net >= 0 ? "+" : "−"}₹{Math.abs(displaySummary.net).toFixed(0)}
             </div>
           </div>
-          <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: "linear-gradient(135deg, #98c1d918, transparent)", border: "1px solid #98c1d940" }}>
+          <div style={{ flex: 1, minWidth: 110, borderRadius: 10, padding: "10px 12px", background: `linear-gradient(135deg, ${mc.entries || "#98c1d9"}18, transparent)`, border: `1px solid ${mc.entries || "#98c1d9"}40` }}>
             <div style={{ fontSize: 9, color: "#7a9db0", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}><Receipt size={11} /> Entries logged</div>
-            <div style={{ fontSize: 17, fontWeight: 900, color: C.blue }}>{displayCount}</div>
+            <div style={{ fontSize: 17, fontWeight: 900, color: mc.entries || C.blue }}>{displayCount}</div>
           </div>
         </div>
 
@@ -1771,7 +1806,7 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
           {/* category donut */}
           <div style={{ flex: 1, minWidth: 240, border: "1px solid #ece7d8", borderRadius: 12, padding: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 6 }}>🏷️ Spend by category</div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: mc.sectionHeader || C.dark, marginBottom: 6 }}>🏷️ Spend by category</div>
             {categoryTotals.length === 0 ? (
               <div style={{ fontSize: 10, color: "#a39c86", padding: "20px 0", textAlign: "center" }}>No spending logged yet — pick a category next time you add an expense.</div>
             ) : (
@@ -1803,7 +1838,7 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
           {/* trend chart */}
           <div style={{ flex: 1.4, minWidth: 260, border: "1px solid #ece7d8", borderRadius: 12, padding: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>📈 Earn vs spend</div>
+              <div style={{ fontSize: 11, fontWeight: 800, color: mc.sectionHeader || C.dark }}>📈 Earn vs spend</div>
               <div style={{ display: "flex", gap: 4 }}>
                 {[7, 14, 30].map((r) => (
                   <div key={r} onClick={() => setRange(r)} style={{
@@ -1818,16 +1853,16 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
                 <ComposedChart data={moneyData} margin={{ top: 4, right: 10, bottom: 0, left: -18 }}>
                   <defs>
                     <linearGradient id="earnGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#4a7c59" stopOpacity={0.95} />
-                      <stop offset="100%" stopColor="#4a7c59" stopOpacity={0.55} />
+                      <stop offset="0%" stopColor={mc.earnChart || "#4a7c59"} stopOpacity={0.95} />
+                      <stop offset="100%" stopColor={mc.earnChart || "#4a7c59"} stopOpacity={0.55} />
                     </linearGradient>
                     <linearGradient id="spendGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#e07a5f" stopOpacity={0.95} />
-                      <stop offset="100%" stopColor="#e07a5f" stopOpacity={0.55} />
+                      <stop offset="0%" stopColor={mc.spendChart || "#e07a5f"} stopOpacity={0.95} />
+                      <stop offset="100%" stopColor={mc.spendChart || "#e07a5f"} stopOpacity={0.55} />
                     </linearGradient>
                     <linearGradient id="netGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={C.accent} stopOpacity={0.35} />
-                      <stop offset="100%" stopColor={C.accent} stopOpacity={0} />
+                      <stop offset="0%" stopColor={mc.netLine || C.accent} stopOpacity={0.35} />
+                      <stop offset="100%" stopColor={mc.netLine || C.accent} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid stroke="#f0ece0" vertical={false} />
@@ -1838,7 +1873,7 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
                     labelStyle={{ fontSize: 10, fontWeight: 700 }} contentStyle={{ fontSize: 10, borderRadius: 8, border: "1px solid #ece7d8" }}
                   />
                   <Legend wrapperStyle={{ fontSize: 9 }} formatter={(v) => v === "earn" ? "Earned" : v === "spend" ? "Spent" : "Net trend"} />
-                  <Area type="monotone" dataKey="net" stroke={C.accent} strokeWidth={2} fill="url(#netGrad)" dot={false} />
+                  <Area type="monotone" dataKey="net" stroke={mc.netLine || C.accent} strokeWidth={2} fill="url(#netGrad)" dot={false} />
                   <Bar dataKey="earn" fill="url(#earnGrad)" radius={[4, 4, 0, 0]} barSize={range > 14 ? 4 : 9} />
                   <Bar dataKey="spend" fill="url(#spendGrad)" radius={[4, 4, 0, 0]} barSize={range > 14 ? 4 : 9} />
                 </ComposedChart>
@@ -1849,7 +1884,7 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
 
         {/* recent activity widget */}
         <div style={{ border: "1px solid #ece7d8", borderRadius: 12, padding: 12, maxHeight: filterActive ? 420 : undefined, display: "flex", flexDirection: "column" }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, marginBottom: 8, flexShrink: 0 }}>{filterActive ? `🔎 Filtered results (${displayEntries.length})` : "🕒 Recent activity"}</div>
+          <div style={{ fontSize: 11, fontWeight: 800, color: mc.sectionHeader || C.dark, marginBottom: 8, flexShrink: 0 }}>{filterActive ? `🔎 Filtered results (${displayEntries.length})` : "🕒 Recent activity"}</div>
           {displayEntries.length === 0 ? (
             <div style={{ fontSize: 10, color: "#a39c86", padding: "10px 0", textAlign: "center" }}>
               {filterActive ? "No entries match these filters — try widening the date range or categories." : "Nothing logged yet — use Add on the dashboard to record your first entry."}
@@ -1868,7 +1903,7 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
                     {e.image ? (
                       <img src={e.image} alt="" style={{ width: 28, height: 28, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
                     ) : isEarn ? (
-                      <div style={{ width: 28, height: 28, borderRadius: 7, background: "#4a7c5918", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ArrowUpCircle size={14} color="#4a7c59" /></div>
+                      <div style={{ width: 28, height: 28, borderRadius: 7, background: `${mc.activityEarn || "#4a7c59"}18`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><ArrowUpCircle size={14} color={mc.activityEarn || "#4a7c59"} /></div>
                     ) : (
                       <div style={{ width: 28, height: 28, borderRadius: 7, background: `${cat.color}22`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 13 }}>{cat.emoji}</div>
                     )}
@@ -1878,7 +1913,7 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
                       </div>
                       <div style={{ fontSize: 8.5, color: "#a39c86" }}>{e.date}</div>
                     </div>
-                    <div style={{ fontSize: 11, fontWeight: 900, color: isEarn ? "#4a7c59" : "#c0392b", flexShrink: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 900, color: isEarn ? (mc.activityEarn || "#4a7c59") : (mc.activitySpend || "#c0392b"), flexShrink: 0 }}>
                       {isEarn ? "+" : "−"}₹{(e.amount || 0).toFixed(0)}
                     </div>
                   </motion.div>
@@ -3759,6 +3794,52 @@ function AnalyticsColorsEditor({ value, onChange, onReset }) {
   );
 }
 
+/* Same pattern as AnalyticsColorsEditor, for the Money Management tab. */
+function MoneyColorsEditor({ value, onChange, onReset }) {
+  const v = normalizeMoneyColors(value);
+  const isDefault = MONEY_ELEMENT_COLOR_FIELDS.every((f) => !v[f.key]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+      transition={{ type: "spring", stiffness: 320, damping: 28 }}
+      style={{ border: "1px solid #ece7d8", borderRadius: 10, background: "rgba(255,255,255,0.7)", overflow: "hidden" }}
+    >
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6, padding: "8px 10px",
+        borderBottom: "1px solid #ece7d8", background: "rgba(255,252,242,0.6)",
+      }}>
+        <Palette size={12} style={{ color: C.dark }} />
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>Element colors</span>
+        <div style={{ flex: 1 }} />
+        {!isDefault && (
+          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={onReset} title="Reset element colors" style={{
+            border: "1px solid #ddd6c4", background: "#fff", color: "#8a8579", borderRadius: 999,
+            padding: "2px 8px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
+          }}><RefreshCw size={10} /> Reset</motion.button>
+        )}
+      </div>
+      <div style={{ padding: "10px 10px 12px" }}>
+        <div style={{ fontSize: 9, color: "#8a8579", marginBottom: 10, lineHeight: 1.4 }}>
+          Pick a custom color for any card, chart series or activity accent inside Money Management —
+          each one below is independent of the others.
+        </div>
+        {MONEY_ELEMENT_COLOR_FIELDS.map((f) => (
+          <ColorSwatchRow
+            key={f.key}
+            icon={<Baseline size={10} />}
+            label={f.label}
+            options={TEXT_COLOR_OPTIONS}
+            value={v[f.key]}
+            onChange={(hex) => onChange(f.key, hex)}
+            defaultSwatchHex={f.defaultHex}
+          />
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
 /* Per-widget background color + Small/Medium/Large size preset list. */
 function WidgetsThemeEditor({ widgetThemes, layoutSizes, onWidgetChange, onWidgetReset, onWidgetSize }) {
   return (
@@ -3960,7 +4041,7 @@ function AnalyticsSummaryThemeEditor({ state, metrics, onChange, onReset }) {
 }
 
 /* Top-level Theme tab shown inside Settings — five sub-sections. */
-function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsColorChange, onAnalyticsColorReset }) {
+function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset }) {
   const [section, setSection] = useState("dashboard");
   const t = normalizeTheme(theme);
   const SECTIONS = [
@@ -3968,6 +4049,7 @@ function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, on
     { key: "analytics", label: "Analytics", icon: <BarChart3 size={10} /> },
     { key: "widgets", label: "Widgets", icon: <Palette size={10} /> },
     { key: "analyticsSummary", label: "Analytics Summary", icon: <PiggyBank size={10} /> },
+    { key: "money", label: "Money Management", icon: <Wallet size={10} /> },
     { key: "focusMode", label: "Focus Mode", icon: <Target size={10} /> },
   ];
   return (
@@ -4020,6 +4102,20 @@ function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, on
             key="analyticsSummary" state={state} metrics={t.analyticsSummary.metrics}
             onChange={onAnalyticsSummaryChange} onReset={onAnalyticsSummaryReset}
           />
+        )}
+        {section === "money" && (
+          <div key="money" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <ScopeThemeEditor
+              title="Money Management" icon={<Wallet size={12} style={{ color: C.dark }} />}
+              value={t.money} onChange={(p) => onScopeChange("money", p)} onReset={() => onScopeReset("money")}
+              includeTextControls={true}
+            />
+            <MoneyColorsEditor
+              value={t.moneyColors}
+              onChange={(key, hex) => onMoneyColorChange(key, hex)}
+              onReset={onMoneyColorReset}
+            />
+          </div>
         )}
         {section === "focusMode" && (
           <ScopeThemeEditor
@@ -4717,6 +4813,18 @@ function BTLDashboardInner() {
     s.theme = theme;
     return s;
   });
+  const setMoneyColor = (key, hex) => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.moneyColors = { ...theme.moneyColors, [key]: hex };
+    s.theme = theme;
+    return s;
+  });
+  const resetMoneyColors = () => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.moneyColors = normalizeMoneyColors({});
+    s.theme = theme;
+    return s;
+  });
 
   const theme = normalizeTheme(state.theme);
   const dashTheme = { bg: theme.dashboard.bg || C.bg, text: theme.dashboard.text || C.text };
@@ -4907,6 +5015,7 @@ function BTLDashboardInner() {
               onWidgetSizePreset={setWidgetSizePreset}
               onAnalyticsSummaryChange={setAnalyticsSummaryMetrics} onAnalyticsSummaryReset={resetAnalyticsSummaryMetrics}
               onAnalyticsColorChange={setAnalyticsColor} onAnalyticsColorReset={resetAnalyticsColors}
+              onMoneyColorChange={setMoneyColor} onMoneyColorReset={resetMoneyColors}
             />
           </motion.div>
         )}
