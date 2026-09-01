@@ -2048,6 +2048,7 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
   const [note, setNote] = useState("");
   const [image, setImage] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [catError, setCatError] = useState(false);
   const fileRef = useRef(null);
 
   const handleFile = (e) => {
@@ -2061,9 +2062,14 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
     e.target.value = "";
   };
 
-  const canConfirm = !busy && (isEarn || !!category);
+  // Spend requires a category, but the button now stays clickable even
+  // without one — clicking it shows a clear "pick a category first" error
+  // (with a shake) instead of doing nothing, which was the actual bug:
+  // users would tap Done, see no feedback, and assume Add was broken.
+  const canConfirm = !busy;
   const handleConfirm = () => {
-    if (!canConfirm) return;
+    if (busy) return;
+    if (!isEarn && !category) { setCatError(true); return; }
     onConfirm({ image: image || null, category: isEarn ? null : category, note: note.trim() });
   };
 
@@ -2159,11 +2165,20 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
           photoDropzone
         ) : (
           <div>
-            <div style={{ fontSize: 10, fontWeight: 800, color: C.dark, marginBottom: 8 }}>Pick a category</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <span style={{ fontSize: 10, fontWeight: 800, color: catError ? "#c0392b" : C.dark }}>
+                Pick a category {!category && <span style={{ color: "#c0392b" }}>*</span>}
+              </span>
+            </div>
             <motion.div
-              initial="hidden" animate="show"
+              initial="hidden" animate={catError ? { x: [0, -6, 6, -4, 4, 0] } : "show"}
               variants={{ hidden: {}, show: { transition: { staggerChildren: 0.03 } } }}
-              style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 12 }}
+              transition={catError ? { duration: 0.4 } : undefined}
+              style={{
+                display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: catError ? 6 : 12,
+                padding: 4, borderRadius: 12,
+                border: catError ? "1.5px solid #c0392b" : "1.5px solid transparent",
+              }}
             >
               {SPEND_CATEGORIES.map((c) => {
                 const active = category === c.key;
@@ -2172,7 +2187,7 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
                     key={c.key}
                     variants={{ hidden: { opacity: 0, y: 8, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1 } }}
                     whileHover={{ y: -2 }} whileTap={{ scale: 0.94 }}
-                    onClick={() => setCategory(c.key)}
+                    onClick={() => { setCategory(c.key); setCatError(false); }}
                     style={{
                       display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
                       padding: "9px 4px", borderRadius: 10, cursor: "pointer",
@@ -2186,6 +2201,11 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
                 );
               })}
             </motion.div>
+            {catError && (
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: "#c0392b", marginBottom: 10 }}>
+                ⚠️ Ek category select karein, tabhi entry add hogi.
+              </div>
+            )}
             <div style={{ marginBottom: 12 }}>{photoDropzone}</div>
           </div>
         )}
@@ -2197,14 +2217,14 @@ function MoneyEntryModal({ mode, amount, onClose, onConfirm }) {
         />
 
         <motion.button
-          disabled={!canConfirm}
+          disabled={busy}
           onClick={handleConfirm}
-          whileHover={canConfirm ? { y: -2 } : undefined}
-          whileTap={canConfirm ? { scale: 0.96 } : undefined}
+          whileHover={!busy ? { y: -2 } : undefined}
+          whileTap={!busy ? { scale: 0.96 } : undefined}
           style={{
             width: "100%", border: "none", borderRadius: 10, padding: "10px 0",
-            background: canConfirm ? accent : "#ddd6c4", color: "#fff", fontSize: 12, fontWeight: 900,
-            cursor: canConfirm ? "pointer" : "not-allowed",
+            background: busy ? "#ddd6c4" : accent, color: "#fff", fontSize: 12, fontWeight: 900,
+            cursor: busy ? "not-allowed" : "pointer",
           }}
         >
           {isEarn ? "Add Earning" : "Done"}

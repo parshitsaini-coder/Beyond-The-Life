@@ -1,5 +1,24 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## Money Management — Spend "Done" button bug fix (this update)
+
+Fixed a real bug: in the **Spend Money** popup, tapping **Done** without
+first picking a category did nothing — the button was silently disabled
+with no explanation, so it looked like money simply wouldn't add. Now:
+
+- **Done** stays clickable at all times.
+- Tapping it without a category shows a clear red warning — **"⚠️ Ek
+  category select karein, tabhi entry add hogi."** — with a shake
+  animation and a red outline around the category grid, so it's obvious
+  what's missing.
+- Picking a category clears the warning immediately, and **Done** commits
+  the entry exactly as before.
+
+**Earn Money** was already working correctly (Add → popup → "Add
+Earning") and is unchanged. No new npm installs required — same
+`framer-motion` shake/animation primitives already used elsewhere in this
+modal.
+
 ## Money Management — per-element custom colors (this update)
 
 Same idea as the Analytics element colors below, now for **Money
