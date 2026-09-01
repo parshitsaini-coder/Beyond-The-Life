@@ -1,6 +1,40 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Analytics Summary — customizable metrics, incl. money totals (this update)
+## Calendar widget (this update)
+
+A new **Calendar** widget — add it like any other dashboard widget via
+**Layout → Customize Layout** (drag to reorder, resize, hide/show), and
+give it a background color from **Setting → 🎨 Theme → Widgets**, same as
+every other tile.
+
+- **One real month at a time** — Sun–Sat grid, correctly aligned to the
+  weekday the 1st falls on, no placeholder/fake days.
+- **Finished days get a check mark.** Any date already at 100% in
+  `state.completionHistory` (the same data the Heatmap/Life Score already
+  use) shows an animated green checkmark badge; a day that's partially
+  done gets a soft amber fill so progress is visible at a glance.
+- **Tiny prev/next controls sit right under the grid** — two small round
+  chevron buttons plus a "Today" shortcut, so switching months doesn't
+  take up widget space.
+- **Smooth animation throughout**: switching months slides the whole grid
+  in the direction you navigated (spring physics, not a snap-cut); each
+  day cell pops in with a staggered spring entrance; the checkmark badge
+  scales in and its tick is drawn stroke-by-stroke via an animated SVG
+  path — all `framer-motion`, the same library used everywhere else in
+  this dashboard, so it stays visually and technically consistent with
+  the rest of the app. No new npm installs required.
+
+*(Note: `animated-component-libraries` / `animejs` / `canvas-design` /
+`ckmdesign-system` were considered per the workspace's animation/design
+skills, but they're either CDN-script component kits meant for
+marketing-site decoration, a general-purpose animation engine that would
+duplicate what `framer-motion` already does here, or design-system/canvas
+tooling for static art and slide decks — none are a better fit than
+extending the same `framer-motion` primitives (spring layout transitions,
+`AnimatePresence`, animated SVG `pathLength`) already powering every
+other widget's motion in this codebase.)*
+
+## Analytics Summary — customizable metrics, incl. money totals (earlier update)
 
 The **Analytics Summary** dashboard widget (the ring-chart card with Daily
 / Extry / Overall / Day Streak) is no longer a fixed set — it's now fully

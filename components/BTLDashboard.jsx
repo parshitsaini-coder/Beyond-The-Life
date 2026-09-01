@@ -54,6 +54,7 @@ const WIDGETS = [
   { id: "extryGoals", label: "Extry Goals" },
   { id: "earnMoney", label: "Earn Money / Notes" },
   { id: "analyticsSummary", label: "Analytics Summary" },
+  { id: "calendar", label: "Calendar" },
 ];
 const GRID_COLS = 6;          // grid columns widget widths snap to
 const MIN_WIDGET_H = 120;     // px — minimum free-form height
@@ -246,7 +247,7 @@ const DEFAULT_LAYOUT = {
   order: WIDGETS.map((w) => w.id),
   sizes: {
     bigGoals: { w: 3, h: 172 }, lifeRules: { w: 3, h: 172 }, dailyGoals: { w: 3, h: 215 }, extryGoals: { w: 3, h: 215 },
-    earnMoney: { w: 3, h: 240 }, analyticsSummary: { w: 6, h: 260 },
+    earnMoney: { w: 3, h: 240 }, analyticsSummary: { w: 6, h: 260 }, calendar: { w: 3, h: 300 },
   },
   pinned: { analyticsSummary: false },
   hidden: {},
@@ -2632,6 +2633,151 @@ function MoneyFilterModal({ entries, filters, onApply, onClose }) {
   );
 }
 
+/* ---------------- CALENDAR WIDGET ----------------
+   A real single-month calendar, drop-in as any other dashboard widget
+   (draggable/resizable/hideable from the Layout tab, colorable from
+   Theme → Widgets like the rest). Every day already logged as 100%
+   complete in `state.completionHistory` gets an animated green
+   checkmark badge; a partially-done day gets a soft amber fill.
+   Month navigation is a pair of small chevrons + a "Today" link
+   directly under the grid, with a spring slide transition between
+   months (direction-aware) and a staggered pop-in for each day cell —
+   all via framer-motion, already the project's animation library. */
+const CALENDAR_WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
+function pad2(n) { return String(n).padStart(2, "0"); }
+function localDateToISO(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function buildCalendarCells(year, month) {
+  const startWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells = Array(startWeekday).fill(null).concat(Array.from({ length: daysInMonth }, (_, i) => i + 1));
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+function CalendarDayCell({ day, iso, pct, isToday, index }) {
+  const done = typeof pct === "number" && pct >= 100;
+  const partial = typeof pct === "number" && pct > 0 && pct < 100;
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.5 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay: Math.min(index * 0.012, 0.3), type: "spring", stiffness: 420, damping: 24 }}
+      whileHover={{ scale: 1.14, zIndex: 1 }}
+      style={{
+        position: "relative", aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center",
+        borderRadius: 7, fontSize: 9.5, fontWeight: 800,
+        background: done ? C.accent : partial ? "#fff3d6" : "transparent",
+        color: done ? "#fff" : C.text,
+        boxShadow: isToday ? `inset 0 0 0 1.5px ${C.dark}` : "none",
+      }}
+    >
+      {day}
+      {done && (
+        <motion.div
+          initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: "spring", stiffness: 520, damping: 18, delay: Math.min(index * 0.012, 0.3) + 0.12 }}
+          style={{
+            position: "absolute", bottom: -3, right: -3, width: 11, height: 11, borderRadius: "50%",
+            background: "#2e7d32", display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 0 0 1.5px #fff",
+          }}
+        >
+          <svg viewBox="0 0 20 20" width={7} height={7}>
+            <motion.path
+              d="M4 10.5 L8 14.5 L16 5.5" fill="none" stroke="#fff" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"
+              initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ duration: 0.28, delay: Math.min(index * 0.012, 0.3) + 0.22 }}
+            />
+          </svg>
+        </motion.div>
+      )}
+    </motion.div>
+  );
+}
+function CalendarWidget({ completionHistory, cardBg }) {
+  const today = useMemo(() => new Date(), []);
+  const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
+  const [dir, setDir] = useState(1);
+
+  const goMonth = (delta) => {
+    setDir(delta);
+    setCursor((c) => {
+      let m = c.month + delta, y = c.year;
+      if (m < 0) { m = 11; y -= 1; }
+      if (m > 11) { m = 0; y += 1; }
+      return { year: y, month: m };
+    });
+  };
+  const goToday = () => {
+    setDir((today.getFullYear() > cursor.year || (today.getFullYear() === cursor.year && today.getMonth() > cursor.month)) ? 1 : -1);
+    setCursor({ year: today.getFullYear(), month: today.getMonth() });
+  };
+
+  const cells = useMemo(() => buildCalendarCells(cursor.year, cursor.month), [cursor]);
+  const monthLabel = useMemo(() => new Date(cursor.year, cursor.month, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }), [cursor]);
+  const todayISO = localDateToISO(today);
+  const isCurrentMonth = cursor.year === today.getFullYear() && cursor.month === today.getMonth();
+  const hist = completionHistory || {};
+
+  return (
+    <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 10, background: cardBg || "#fff", width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark, display: "flex", alignItems: "center", gap: 5 }}><CalendarDays size={13} /> Calendar</span>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={monthLabel}
+            initial={{ opacity: 0, x: dir >= 0 ? 8 : -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: dir >= 0 ? -8 : 8 }}
+            transition={{ duration: 0.18 }}
+            style={{ fontSize: 9.5, fontWeight: 800, color: "#8a8579" }}
+          >{monthLabel}</motion.span>
+        </AnimatePresence>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, fontSize: 8, fontWeight: 800, color: "#b3ac99", textAlign: "center" }}>
+        {CALENDAR_WEEKDAYS.map((d, i) => <div key={i}>{d}</div>)}
+      </div>
+
+      <div style={{ flex: 1, position: "relative", overflow: "hidden", minHeight: 0 }}>
+        <AnimatePresence mode="wait" initial={false} custom={dir}>
+          <motion.div
+            key={`${cursor.year}-${cursor.month}`}
+            custom={dir}
+            initial={{ opacity: 0, x: dir >= 0 ? 26 : -26 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: dir >= 0 ? -26 : 26 }}
+            transition={{ type: "spring", stiffness: 360, damping: 34 }}
+            style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, position: "absolute", inset: 0, alignContent: "start" }}
+          >
+            {cells.map((day, i) => {
+              if (!day) return <div key={`blank-${i}`} />;
+              const iso = localDateToISO(new Date(cursor.year, cursor.month, day));
+              return (
+                <CalendarDayCell key={iso} day={day} iso={iso} pct={hist[iso]} isToday={iso === todayISO} index={i} />
+              );
+            })}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* tiny prev/next month controls + Today shortcut, right under the grid */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, flexShrink: 0 }}>
+        <motion.button
+          whileHover={{ scale: 1.18 }} whileTap={{ scale: 0.85 }} onClick={() => goMonth(-1)} title="Previous month"
+          style={{ border: "1px solid #ddd6c4", background: "#fff", borderRadius: "50%", width: 15, height: 15, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}
+        ><ChevronLeft size={8} color={C.dark} /></motion.button>
+        <motion.button
+          whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }} onClick={goToday} title="Jump to current month" disabled={isCurrentMonth}
+          style={{ border: "none", background: "none", cursor: isCurrentMonth ? "default" : "pointer", padding: "0 2px", fontSize: 7.5, fontWeight: 800, color: isCurrentMonth ? "#d8d3c2" : "#8a8579" }}
+        >Today</motion.button>
+        <motion.button
+          whileHover={{ scale: 1.18 }} whileTap={{ scale: 0.85 }} onClick={() => goMonth(1)} title="Next month"
+          style={{ border: "1px solid #ddd6c4", background: "#fff", borderRadius: "50%", width: 15, height: 15, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}
+        ><ChevronRight size={8} color={C.dark} /></motion.button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- ANALYTICS SUMMARY (pinnable, customizable widget) ----------------
    Renders whichever metrics the user picked in Settings → Theme →
    Analytics Summary, in their chosen order — goal-completion rings,
@@ -4429,6 +4575,7 @@ function BTLDashboardInner() {
     extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} cardBg={theme.widgets.extryGoals?.bg} />,
     earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} cardBg={theme.widgets.earnMoney?.bg} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} metrics={theme.analyticsSummary.metrics} />,
+    calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} />,
   };
 
   return (
