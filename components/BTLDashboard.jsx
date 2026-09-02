@@ -511,6 +511,39 @@ function Oval({ children, style, onClick, ...rest }) {
   );
 }
 
+/* Icon-only header action button — used for Focus Mode / Setting / Share
+   Journey. Circular, no visible label (title attr gives the name on
+   hover instead), with a soft looping glow ring pulsing behind the icon
+   so these read as "alive" buttons rather than flat static icons. */
+function GlowIconButton({ icon: Icon, label, active, color, onClick, filled }) {
+  const bg = active || filled ? color : "#fff";
+  const fg = active || filled ? "#fff" : color;
+  return (
+    <motion.button
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      whileHover={{ y: -3, scale: 1.08 }}
+      whileTap={{ scale: 0.88 }}
+      transition={{ type: "spring", stiffness: 420, damping: 20 }}
+      style={{
+        position: "relative", width: 34, height: 34, borderRadius: "50%",
+        border: `1.5px solid ${color}`, background: bg, color: fg,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer", flexShrink: 0, padding: 0,
+      }}
+    >
+      <motion.span
+        aria-hidden
+        animate={{ boxShadow: [`0 0 0px 0px ${color}00`, `0 0 9px 2px ${color}66`, `0 0 0px 0px ${color}00`] }}
+        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+        style={{ position: "absolute", inset: -3, borderRadius: "50%", pointerEvents: "none" }}
+      />
+      <Icon size={15} />
+    </motion.button>
+  );
+}
+
 /* Status-aware save indicator: "Saving..." -> "Saved ✓" pulse, replacing
    a generic spinner so the user always knows their data's state. */
 function SaveStatus({ status }) {
@@ -1698,6 +1731,36 @@ function Heatmap({ completionHistory, accentColor }) {
 
 function moodToNum(m) { return m === "happy" ? 1 : m === "neutral" ? 0.5 : m === "sad" ? 0 : null; }
 
+// Extracted so both AnalyticsTab (Life Score badge) and the main header's
+// new "Share Journey" icon can compute the same score without duplicating
+// the formula. `colorOverride` lets AnalyticsTab keep applying the user's
+// custom theme color on top of the computed default.
+function computeLifeScore(state, colorOverride) {
+  const hist = state.completionHistory || {};
+  const mood = state.moodLog || {};
+  let compSum = 0, compN = 0, moodSum = 0, moodN = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    if (hist[iso] !== undefined) { compSum += hist[iso]; compN++; }
+    const mv = moodToNum(mood[iso]);
+    if (mv !== null) { moodSum += mv; moodN++; }
+  }
+  const compAvg = compN ? compSum / compN : 0;          // 0-100
+  const moodAvg = moodN ? (moodSum / moodN) * 100 : 50;  // 0-100, default neutral
+  const streakScore = Math.min((state.streak || 0) / 30, 1) * 100; // caps at 30-day streak
+
+  const score = Math.round(compAvg * 0.5 + streakScore * 0.3 + moodAvg * 0.2);
+  let label, emoji, color;
+  if (score >= 85) { label = "Unstoppable"; emoji = "🔥"; color = "#e07a5f"; }
+  else if (score >= 70) { label = "Solid Momentum"; emoji = "💪"; color = C.accent; }
+  else if (score >= 50) { label = "Building Up"; emoji = "🌱"; color = "#4a7c59"; }
+  else if (score >= 30) { label = "Finding Your Rhythm"; emoji = "🧭"; color = C.blue; }
+  else { label = "Fresh Start"; emoji = "🌙"; color = "#8a8579"; }
+  return { score, label, emoji, color: colorOverride || color };
+}
+
+
 /* ---------------- ANALYTICS TAB — "Deep Analytics" pro widgets (this update) ----------------
    8 extra data-driven trackers rendered below the existing Money nav
    card: category & priority completion, best/toughest weekday, streak
@@ -2044,29 +2107,10 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
     return { best, worst, avg };
   }, [state.completionHistory]);
 
-  const lifeScore = useMemo(() => {    const hist = state.completionHistory || {};
-    const mood = state.moodLog || {};
-    let compSum = 0, compN = 0, moodSum = 0, moodN = 0;
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(); d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
-      if (hist[iso] !== undefined) { compSum += hist[iso]; compN++; }
-      const mv = moodToNum(mood[iso]);
-      if (mv !== null) { moodSum += mv; moodN++; }
-    }
-    const compAvg = compN ? compSum / compN : 0;          // 0-100
-    const moodAvg = moodN ? (moodSum / moodN) * 100 : 50;  // 0-100, default neutral
-    const streakScore = Math.min((state.streak || 0) / 30, 1) * 100; // caps at 30-day streak
-
-    const score = Math.round(compAvg * 0.5 + streakScore * 0.3 + moodAvg * 0.2);
-    let label, emoji, color;
-    if (score >= 85) { label = "Unstoppable"; emoji = "🔥"; color = "#e07a5f"; }
-    else if (score >= 70) { label = "Solid Momentum"; emoji = "💪"; color = C.accent; }
-    else if (score >= 50) { label = "Building Up"; emoji = "🌱"; color = "#4a7c59"; }
-    else if (score >= 30) { label = "Finding Your Rhythm"; emoji = "🧭"; color = C.blue; }
-    else { label = "Fresh Start"; emoji = "🌙"; color = "#8a8579"; }
-    return { score, label, emoji, color: ac.lifeScoreRing || color };
-  }, [state.completionHistory, state.moodLog, state.streak, ac.lifeScoreRing]);
+  const lifeScore = useMemo(
+    () => computeLifeScore(state, ac.lifeScoreRing),
+    [state.completionHistory, state.moodLog, state.streak, ac.lifeScoreRing]
+  );
 
   const smartInsights = useMemo(() => {
     const cards = [];
@@ -6797,6 +6841,7 @@ function BTLDashboardInner() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [moneyModal, setMoneyModal] = useState(null); // { mode: "earn"|"spend", amount } | null
   const [focusMode, setFocusMode] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const [saveStatus, setSaveStatus] = useState("idle"); // "idle" | "saving" | "saved"
   const fileRef = useRef(null);
   const loaded = useRef(false);
@@ -6840,6 +6885,7 @@ function BTLDashboardInner() {
   const dailyPct = state.dailyGoals.length ? (state.dailyGoals.filter((g) => g.done).length / state.dailyGoals.length) * 100 : 0;
   const extryPct = state.extryGoals.length ? (state.extryGoals.filter((g) => g.done).length / state.extryGoals.length) * 100 : 0;
   const overallPct = (dailyPct + extryPct) / 2;
+  const headerLifeScore = computeLifeScore(state);
 
   const MILESTONES = [3, 7, 14, 21, 30, 50, 75, 100];
   function isMilestone(n) { return MILESTONES.includes(n) || (n > 100 && n % 50 === 0); }
@@ -7201,20 +7247,11 @@ function BTLDashboardInner() {
             </div>
             <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={11} style={{ marginRight: 4 }} />memor</Oval>
             <Oval className="btl-oval-btn" onClick={() => setTab("lifeStory")} style={{ cursor: "pointer", background: "#b083f0", borderColor: "#b083f0", color: "#fff" }}><Pencil size={11} style={{ marginRight: 4 }} />life story</Oval>
-            <motion.button
-              onClick={() => setFocusMode((v) => !v)} title="Hide everything except today's incomplete goals"
-              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
-              style={{
-                border: `1px solid ${focusMode ? C.accent : dashTheme.text}`, background: focusMode ? C.accent : dashTheme.bg, color: focusMode ? "#fff" : dashTheme.text,
-                borderRadius: 999, padding: "4px 14px", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-              }}><Target size={14} /> Focus Mode</motion.button>
-            <motion.button
-              onClick={() => setSettingsOpen(true)}
-              whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
-              style={{
-                border: `1px solid ${dashTheme.text}`, background: dashTheme.bg, color: dashTheme.text, borderRadius: 999, padding: "4px 14px",
-                display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 14, fontWeight: 800,
-              }}><Settings size={14} /> Setting</motion.button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <GlowIconButton icon={Target} label="Focus Mode" active={focusMode} color={C.accent} onClick={() => setFocusMode((v) => !v)} />
+              <GlowIconButton icon={Sparkles} label="Share Journey" color="#b083f0" onClick={() => setShowShare(true)} />
+              <GlowIconButton icon={Settings} label="Setting" color={dashTheme.text} onClick={() => setSettingsOpen(true)} />
+            </div>
 
 
             <div style={{ flex: 1 }} />
@@ -7298,6 +7335,17 @@ function BTLDashboardInner() {
       {/* ---------- MEMORIES MODAL (Glassmorphism 2.0 / Liquid Glass — full journal, tabbed) ---------- */}
       <AnimatePresence>
         {memOpen && <MemoriesModal state={state} onAddMemory={addMemory} onClose={() => setMemOpen(false)} />}
+      </AnimatePresence>
+
+      {/* ---------- SHARE JOURNEY MODAL (header icon — same modal Analytics uses) ---------- */}
+      <AnimatePresence>
+        {showShare && (
+          <ShareJourneyModal
+            state={state} lifeScore={headerLifeScore}
+            userName={fbUser?.displayName || state.lifeStory?.profile?.name || ""}
+            onClose={() => setShowShare(false)}
+          />
+        )}
       </AnimatePresence>
 
       {/* ---------- MONEY ADD POPUP (Earn: optional photo · Spend: required category → Done) ---------- */}

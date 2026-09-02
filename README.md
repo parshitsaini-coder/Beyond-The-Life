@@ -1,6 +1,25 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Header — Total Earn/Spend pills stacked, amounts bold + highlighted (this update)
+## Header — Focus Mode / Setting are now icon buttons + new Share Journey icon (this update)
+
+- **Focus Mode** and **Setting** in the header no longer show as text
+  pills — they're now small **circular icon-only buttons** (name shows
+  as a native tooltip on hover, not as visible text), each with a
+  soft **pulsing glow ring** looping behind the icon so they read as
+  "alive" rather than flat static buttons. Lift + scale on hover,
+  spring squash on tap — built with `framer-motion`, no new npm
+  installs.
+- **New "📤 Share Journey" icon** added right next to them — tapping it
+  opens the same Share Your Journey card (Life Score, Earn/Spend,
+  Today's Goals, Today's Notes) that was previously only reachable from
+  the Analytics tab, so you can generate + download it straight from
+  the main dashboard header now too.
+- Internally, the Life Score formula used by that card was pulled out
+  into a shared `computeLifeScore()` helper so both the Analytics tab
+  and this new header button compute the exact same score — no
+  duplicated logic, no drift between the two.
+
+## Header — Total Earn/Spend pills stacked, amounts bold + highlighted (earlier update)
 
 The **"Total Earn Money life"** and **"Total Spend Money life"** pills in
 the top header used to sit inline in the same crowded row as
