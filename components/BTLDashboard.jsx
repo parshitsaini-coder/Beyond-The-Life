@@ -2125,6 +2125,402 @@ function isMoneyFilterActive(filters) {
   return filters.types.length !== 2 || filters.categories.length > 0 || filters.dateRange !== "all";
 }
 
+/* ---------------- DEEP MONEY INSIGHTS — 12 new pro-level widgets (this update) ----------------
+   Everything below is derived purely from state.moneyEntries / state.moneyHistory /
+   totalEarnLife / totalSpendLife — no schema change, nothing fabricated. Built with
+   framer-motion + recharts (already project dependencies) for spring/stagger motion,
+   animated counters and a hand-rolled mouse-tilt "3D" hero card. Deliberately not
+   pulling in three.js / GSAP / anime.js / Lottie / A-Frame as brand-new npm installs
+   for a finance widget grid — say the word if you'd like one of those added for a
+   specific effect and I'll wire it in. */
+function daysAgoISO(n) {
+  const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10);
+}
+
+/* Animated count-up used across the widgets below for a "ticking" dashboard feel
+   instead of numbers just snapping into place on mount / filter change. */
+function CountUp({ value, decimals = 0, duration = 0.9 }) {
+  const [display, setDisplay] = useState(value);
+  const prevRef = useRef(value);
+  useEffect(() => {
+    const from = prevRef.current, to = value;
+    let raf; const start = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / (duration * 1000));
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(from + (to - from) * eased);
+      if (t < 1) raf = requestAnimationFrame(tick); else prevRef.current = to;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value, duration]);
+  return <>{display.toFixed(decimals)}</>;
+}
+
+function SavingsGauge({ rate }) {
+  const pct = Math.max(0, Math.min(100, rate));
+  const r = 46, circumference = Math.PI * r;
+  const offset = circumference * (1 - pct / 100);
+  const color = rate >= 50 ? "#4a7c59" : rate >= 20 ? C.accent : rate >= 0 ? "#e07a5f" : "#c0392b";
+  return (
+    <div style={{ position: "relative", width: 120, height: 66, margin: "0 auto" }}>
+      <svg width="120" height="66" viewBox="0 0 120 66">
+        <path d="M 14 58 A 46 46 0 0 1 106 58" fill="none" stroke="#f0ece0" strokeWidth="10" strokeLinecap="round" />
+        <motion.path
+          d="M 14 58 A 46 46 0 0 1 106 58" fill="none" stroke={color} strokeWidth="10" strokeLinecap="round"
+          strokeDasharray={circumference}
+          initial={{ strokeDashoffset: circumference }} animate={{ strokeDashoffset: offset }}
+          transition={{ duration: 1, ease: "easeOut" }}
+        />
+      </svg>
+      <div style={{ position: "absolute", bottom: -2, left: 0, right: 0, textAlign: "center", fontSize: 19, fontWeight: 900, color }}>
+        {rate >= 0 ? rate.toFixed(0) : 0}%
+      </div>
+    </div>
+  );
+}
+
+function HealthScoreRing({ score, grade }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <RadialMini pct={Math.max(0, Math.min(100, score))} color={grade.color} size={64} />
+      <div>
+        <div style={{ fontSize: 18, fontWeight: 900, color: grade.color }}>{score}<span style={{ fontSize: 10, color: "#a39c86", fontWeight: 700 }}>/100</span></div>
+        <div style={{ fontSize: 9.5, fontWeight: 800, color: grade.color }}>{grade.label}</div>
+      </div>
+    </div>
+  );
+}
+
+function MonthDeltaStat({ label, cur, delta, color, good }) {
+  const up = delta >= 0;
+  const positiveIsGoodColor = good ? "#4a7c59" : "#c0392b";
+  const negativeIsGoodColor = good ? "#c0392b" : "#4a7c59";
+  return (
+    <div style={{ flex: 1, minWidth: 90 }}>
+      <div style={{ fontSize: 9, color: "#a39c86", fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 900, color }}>₹<CountUp value={cur} /></div>
+      <div style={{ fontSize: 9, fontWeight: 800, color: up ? positiveIsGoodColor : negativeIsGoodColor, display: "flex", alignItems: "center", gap: 2 }}>
+        {up ? "▲" : "▼"} {Math.abs(delta)}% vs last month
+      </div>
+    </div>
+  );
+}
+
+function LeaderboardList({ title, rows, isEarn }) {
+  const medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"];
+  return (
+    <div style={{ flex: 1, minWidth: 180 }}>
+      <div style={{ fontSize: 9.5, fontWeight: 800, color: "#a39c86", marginBottom: 6 }}>{title}</div>
+      {rows.length === 0 ? <EmptyNote text="Nothing logged yet." /> : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {rows.map((e, i) => {
+            const cat = !isEarn ? spendCatInfo(e.category) : null;
+            return (
+              <motion.div key={e.id || i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
+                style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10 }}>
+                <span>{medals[i]}</span>
+                <span style={{ flex: 1, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {isEarn ? (e.note || "Earning") : `${cat.emoji} ${cat.label}`}
+                </span>
+                <span style={{ fontWeight: 900, color: isEarn ? "#4a7c59" : "#c0392b" }}>₹{(e.amount || 0).toFixed(0)}</span>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeepMoneyWidgets({ state, mc, entries, onOpenPhoto }) {
+  const hist = state.moneyHistory || {};
+  const totalEarn = state.totalEarnLife || 0;
+  const totalSpend = state.totalSpendLife || 0;
+  const netLife = totalEarn - totalSpend;
+
+  const categoryTotals = useMemo(() => {
+    const map = {};
+    entries.filter((e) => e.type === "spend").forEach((e) => {
+      const key = e.category || "other";
+      map[key] = (map[key] || 0) + (e.amount || 0);
+    });
+    return SPEND_CATEGORIES.map((c) => ({ ...c, total: map[c.key] || 0 })).filter((c) => c.total > 0).sort((a, b) => b.total - a.total);
+  }, [entries]);
+  const maxCatTotal = categoryTotals[0]?.total || 1;
+
+  const savingsRate = totalEarn > 0 ? Math.max(-100, Math.min(100, (netLife / totalEarn) * 100)) : 0;
+
+  const { moneyStreak, bestMoneyStreak, last90 } = useMemo(() => {
+    const days = [];
+    for (let i = 89; i >= 0; i--) {
+      const iso = daysAgoISO(i);
+      const rec = hist[iso] || { earn: 0, spend: 0 };
+      days.push({ iso, net: (rec.earn || 0) - (rec.spend || 0) });
+    }
+    let best = 0, run = 0;
+    days.forEach((d) => { if (d.net >= 0) { run += 1; best = Math.max(best, run); } else { run = 0; } });
+    let cur = 0;
+    for (let i = days.length - 1; i >= 0; i--) { if (days[i].net >= 0) cur += 1; else break; }
+    return { moneyStreak: cur, bestMoneyStreak: best, last90: days };
+  }, [hist]);
+
+  const diversityPct = Math.round((categoryTotals.length / SPEND_CATEGORIES.length) * 100);
+  const savingsNorm = Math.max(0, Math.min(100, savingsRate));
+  const streakNorm = Math.min(100, (moneyStreak / 30) * 100);
+  const healthScore = Math.round(savingsNorm * 0.5 + streakNorm * 0.3 + diversityPct * 0.2);
+  const healthGrade = healthScore >= 80 ? { label: "Excellent", color: "#4a7c59" }
+    : healthScore >= 60 ? { label: "Good", color: "#6b8f77" }
+    : healthScore >= 40 ? { label: "Fair", color: C.accent }
+    : { label: "Needs attention", color: "#c0392b" };
+
+  const monthCompare = useMemo(() => {
+    const now = new Date();
+    const curKey = now.toISOString().slice(0, 7);
+    const prevD = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevKey = prevD.toISOString().slice(0, 7);
+    const sum = (key) => entries.filter((e) => e.date && e.date.startsWith(key)).reduce((acc, e) => {
+      if (e.type === "earn") acc.earn += e.amount || 0; else acc.spend += e.amount || 0; return acc;
+    }, { earn: 0, spend: 0 });
+    const cur = sum(curKey), prev = sum(prevKey);
+    const pct = (a, b) => (b === 0 ? (a > 0 ? 100 : 0) : Math.round(((a - b) / b) * 100));
+    return { cur, prev, earnDelta: pct(cur.earn, prev.earn), spendDelta: pct(cur.spend, prev.spend), netDelta: pct(cur.earn - cur.spend, prev.earn - prev.spend) };
+  }, [entries]);
+
+  const burn = useMemo(() => {
+    let total = 0;
+    for (let i = 0; i < 30; i++) total += hist[daysAgoISO(i)]?.spend || 0;
+    const avg = total / 30;
+    return { avg, projected: avg * 30 };
+  }, [hist]);
+
+  const weekdayPattern = useMemo(() => {
+    const sums = Array(7).fill(0), counts = Array(7).fill(0);
+    last90.forEach((d) => {
+      const dow = new Date(d.iso + "T00:00:00").getDay();
+      const rec = hist[d.iso] || { spend: 0 };
+      sums[dow] += rec.spend || 0; counts[dow] += 1;
+    });
+    return WEEKDAY_NAMES.map((label, i) => ({ label, avg: counts[i] ? sums[i] / counts[i] : 0 }));
+  }, [hist, last90]);
+  const maxWeekday = Math.max(...weekdayPattern.map((w) => w.avg), 1);
+  const bestWeekday = weekdayPattern.reduce((a, b) => (b.avg < a.avg ? b : a));
+  const worstWeekday = weekdayPattern.reduce((a, b) => (b.avg > a.avg ? b : a));
+
+  const categorySparklines = useMemo(() => {
+    return categoryTotals.slice(0, 6).map((c) => {
+      const days = [];
+      for (let i = 13; i >= 0; i--) {
+        const iso = daysAgoISO(i);
+        const dayTotal = entries.filter((e) => e.type === "spend" && e.category === c.key && e.date === iso).reduce((s, e) => s + (e.amount || 0), 0);
+        days.push({ day: iso, v: dayTotal });
+      }
+      return { ...c, days };
+    });
+  }, [categoryTotals, entries]);
+
+  const topEarns = useMemo(() => [...entries].filter((e) => e.type === "earn").sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, 5), [entries]);
+  const topSpends = useMemo(() => [...entries].filter((e) => e.type === "spend").sort((a, b) => (b.amount || 0) - (a.amount || 0)).slice(0, 5), [entries]);
+  const photoEntries = useMemo(() => entries.filter((e) => e.image).slice(0, 12), [entries]);
+
+  const calendarDays = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear(), month = now.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDow = new Date(year, month, 1).getDay();
+    const cells = [];
+    for (let i = 0; i < firstDow; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const rec = hist[iso];
+      cells.push({ day: d, iso, net: rec ? (rec.earn || 0) - (rec.spend || 0) : null });
+    }
+    return cells;
+  }, [hist]);
+
+  const [tilt, setTilt] = useState({ rx: 0, ry: 0 });
+  const handleTiltMove = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    setTilt({ rx: py * -8, ry: px * 10 });
+  };
+  const resetTilt = () => setTilt({ rx: 0, ry: 0 });
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "22px 0 12px" }}>
+        <div style={{ height: 1, flex: 1, background: "linear-gradient(90deg, transparent, #ece7d8)" }} />
+        <span style={{ fontSize: 11, fontWeight: 900, color: mc.sectionHeader || C.dark }}>🔬 Deep Money Insights</span>
+        <div style={{ height: 1, flex: 1, background: "linear-gradient(90deg, #ece7d8, transparent)" }} />
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+
+        <motion.div
+          onMouseMove={handleTiltMove} onMouseLeave={resetTilt}
+          initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0, rotateX: tilt.rx, rotateY: tilt.ry }}
+          transition={{ type: "spring", stiffness: 220, damping: 20 }}
+          style={{
+            flex: "1 1 100%", borderRadius: 12, padding: 16, position: "relative", overflow: "hidden",
+            background: `linear-gradient(135deg, ${C.dark}, #34322d)`, color: "#fff", perspective: 800, transformStyle: "preserve-3d",
+            boxShadow: "0 14px 30px rgba(37,36,34,0.3)", boxSizing: "border-box",
+          }}
+        >
+          <div style={{ position: "absolute", inset: 0, background: `radial-gradient(circle at ${50 + tilt.ry * 2}% ${50 + tilt.rx * 2}%, rgba(252,163,17,0.22), transparent 60%)`, pointerEvents: "none" }} />
+          <div style={{ position: "relative", display: "flex", alignItems: "center", flexWrap: "wrap", gap: 24 }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, opacity: 0.75, display: "flex", alignItems: "center", gap: 5 }}><Sparkles size={12} /> Net worth (lifetime)</div>
+              <div style={{ fontSize: 28, fontWeight: 900, marginTop: 4, color: netLife >= 0 ? "#8fd19e" : "#ef9a8d" }}>
+                {netLife >= 0 ? "+" : "−"}₹<CountUp value={Math.abs(netLife)} />
+              </div>
+            </div>
+            <div><div style={{ fontSize: 9, opacity: 0.6 }}>Earned</div><div style={{ fontSize: 14, fontWeight: 800, color: "#8fd19e" }}>₹<CountUp value={totalEarn} /></div></div>
+            <div><div style={{ fontSize: 9, opacity: 0.6 }}>Spent</div><div style={{ fontSize: 14, fontWeight: 800, color: "#ef9a8d" }}>₹<CountUp value={totalSpend} /></div></div>
+            <div><div style={{ fontSize: 9, opacity: 0.6 }}>Entries logged</div><div style={{ fontSize: 14, fontWeight: 800 }}><CountUp value={entries.length} /></div></div>
+          </div>
+        </motion.div>
+
+        <ProCard title="Savings rate" icon={TrendingUp} color="#4a7c59" index={0}>
+          <SavingsGauge rate={savingsRate} />
+          <div style={{ fontSize: 9, color: "#a39c86", textAlign: "center", marginTop: 2 }}>
+            {savingsRate >= 0 ? `You keep ${savingsRate.toFixed(0)}% of what you earn` : "Spending more than you earn"}
+          </div>
+        </ProCard>
+
+        <ProCard title="Money Health Score" icon={Award} color={C.accent} index={1}>
+          <HealthScoreRing score={healthScore} grade={healthGrade} />
+        </ProCard>
+
+        <ProCard title="Positive-day streak" icon={Flame} color="#e07a5f" index={2}>
+          <div style={{ display: "flex", gap: 14, alignItems: "center", justifyContent: "space-around" }}>
+            <div style={{ textAlign: "center" }}>
+              <motion.div initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 16 }} style={{ fontSize: 22, fontWeight: 900, color: C.accent }}>{moneyStreak}</motion.div>
+              <div style={{ fontSize: 9, color: "#b3ac99" }}>Current</div>
+            </div>
+            <div style={{ width: 1, height: 30, background: "#ece7d8" }} />
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 22, fontWeight: 900, color: C.dark }}>{bestMoneyStreak}</div>
+              <div style={{ fontSize: 9, color: "#b3ac99" }}>Best ever</div>
+            </div>
+          </div>
+          {moneyStreak > 0 && moneyStreak >= bestMoneyStreak && (
+            <div style={{ marginTop: 8, fontSize: 9.5, fontWeight: 800, color: "#4a7c59", textAlign: "center" }}>🏆 All-time best run!</div>
+          )}
+        </ProCard>
+
+        <ProCard title="This month vs last month" icon={CalendarDays} color={C.blue} index={3} wide>
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+            <MonthDeltaStat label="Earned" cur={monthCompare.cur.earn} delta={monthCompare.earnDelta} color="#4a7c59" good />
+            <MonthDeltaStat label="Spent" cur={monthCompare.cur.spend} delta={monthCompare.spendDelta} color="#c0392b" good={false} />
+            <MonthDeltaStat label="Net" cur={monthCompare.cur.earn - monthCompare.cur.spend} delta={monthCompare.netDelta} color={C.dark} good />
+          </div>
+        </ProCard>
+
+        <ProCard title="Daily burn rate" icon={TrendingDown} color="#c0392b" index={4}>
+          <div style={{ fontSize: 19, fontWeight: 900, color: "#c0392b" }}>₹<CountUp value={burn.avg} /></div>
+          <div style={{ fontSize: 9, color: "#a39c86" }}>avg/day, last 30 days</div>
+          <div style={{ marginTop: 8, fontSize: 9.5, color: C.dark }}>Projected this month: <b>₹{burn.projected.toFixed(0)}</b></div>
+        </ProCard>
+
+        <ProCard title="Category race" icon={Tag} color="#b083f0" index={5} wide>
+          {categoryTotals.length === 0 ? <EmptyNote text="No spend categories logged yet." /> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {categoryTotals.map((c, i) => (
+                <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 10, width: 100, flexShrink: 0, color: C.text }}>{c.emoji} {c.label}</span>
+                  <div style={{ flex: 1, height: 10, borderRadius: 6, background: "#f0ece0", overflow: "hidden" }}>
+                    <motion.div initial={{ width: 0 }} animate={{ width: `${(c.total / maxCatTotal) * 100}%` }} transition={{ duration: 0.9, delay: i * 0.06, ease: "easeOut" }} style={{ height: "100%", borderRadius: 6, background: c.color }} />
+                  </div>
+                  <span style={{ fontSize: 9.5, fontWeight: 800, width: 56, textAlign: "right", color: C.dark }}>₹{c.total.toFixed(0)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </ProCard>
+
+        <ProCard title="Spending by weekday" icon={CalendarDays} color="#6b8f9c" index={6} wide>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 90 }}>
+            {weekdayPattern.map((w) => (
+              <div key={w.label} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <motion.div
+                  initial={{ height: 0 }} animate={{ height: `${Math.max(4, (w.avg / maxWeekday) * 70)}px` }} transition={{ duration: 0.7, ease: "easeOut" }}
+                  style={{ width: "70%", borderRadius: 6, background: w.label === worstWeekday.label ? "#e07a5f" : w.label === bestWeekday.label ? "#4a7c59" : C.blue }}
+                />
+                <span style={{ fontSize: 8.5, color: "#a39c86" }}>{w.label}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 8.5, color: "#a39c86", marginTop: 6 }}>
+            <span style={{ color: "#4a7c59", fontWeight: 800 }}>{bestWeekday.label}</span> is easiest on your wallet · <span style={{ color: "#e07a5f", fontWeight: 800 }}>{worstWeekday.label}</span> costs the most
+          </div>
+        </ProCard>
+
+        <ProCard title="Category trends (14D)" icon={TrendingUp} color="#f4d35e" index={7} wide>
+          {categorySparklines.length === 0 ? <EmptyNote text="No categories to trend yet." /> : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px,1fr))", gap: 10 }}>
+              {categorySparklines.map((c) => (
+                <div key={c.key} style={{ border: "1px solid #f0ece0", borderRadius: 8, padding: "6px 8px" }}>
+                  <div style={{ fontSize: 9.5, fontWeight: 800, color: C.dark, marginBottom: 2 }}>{c.emoji} {c.label}</div>
+                  <div style={{ height: 34 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={c.days}>
+                        <Line type="monotone" dataKey="v" stroke={c.color} strokeWidth={2} dot={false} isAnimationActive animationDuration={800} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </ProCard>
+
+        <ProCard title="Biggest entries" icon={Award} color="#e8998d" index={8} wide>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <LeaderboardList title="Top earnings" rows={topEarns} isEarn />
+            <LeaderboardList title="Top spends" rows={topSpends} isEarn={false} />
+          </div>
+        </ProCard>
+
+        <ProCard title="Money photo memories" icon={Camera} color="#98c1d9" index={9} wide>
+          {photoEntries.length === 0 ? <EmptyNote text="Attach a photo to an earn/spend entry to see it here." /> : (
+            <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }} className="btl-scroll">
+              {photoEntries.map((e, i) => (
+                <motion.img
+                  key={e.id || i} src={e.image} alt=""
+                  initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.03 }}
+                  whileHover={{ scale: 1.08, y: -3 }} whileTap={{ scale: 0.95 }}
+                  onClick={() => onOpenPhoto(e.image)}
+                  style={{ width: 56, height: 56, borderRadius: 9, objectFit: "cover", flexShrink: 0, cursor: "pointer", border: "1px solid #ece7d8" }}
+                />
+              ))}
+            </div>
+          )}
+        </ProCard>
+
+        <ProCard title="This month's net-day grid" icon={CalendarDays} color="#4a7c59" index={10} wide>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, maxWidth: 260 }}>
+            {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => <div key={d + i} style={{ fontSize: 8, color: "#a39c86", textAlign: "center" }}>{d}</div>)}
+            {calendarDays.map((c, i) => c === null ? <div key={"e" + i} /> : (
+              <motion.div
+                key={c.iso}
+                initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.008 }}
+                title={c.net === null ? `${c.iso} — no activity` : `${c.iso}: ${c.net >= 0 ? "+" : "−"}₹${Math.abs(c.net).toFixed(0)}`}
+                style={{
+                  aspectRatio: "1", borderRadius: 5, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700,
+                  background: c.net === null ? "#f5f2e8" : c.net > 0 ? tintHex("#4a7c59", 0.25) : c.net < 0 ? tintHex("#c0392b", 0.25) : "#f0ece0",
+                  color: c.net === null ? "#c9c4b3" : "#fff",
+                }}
+              >{c.day}</motion.div>
+            ))}
+          </div>
+        </ProCard>
+
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- MONEY MANAGEMENT (dedicated tab — reached via the nav card in Analytics) ----------------
    Category breakdown (donut + ranked list), an earn-vs-spend trend chart
    with a 7/14/30-day range toggle, and a scrollable recent-activity feed
@@ -2136,6 +2532,7 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
   const [resetDone, setResetDone] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_MONEY_FILTERS);
+  const [deepLightbox, setDeepLightbox] = useState(null);
   const mt = normalizeScopeTheme(state.theme?.money);
   const mtFontFamily = mt.font ? fontStackFor(mt.font) : undefined;
   const mc = normalizeMoneyColors(state.theme?.moneyColors);
@@ -2430,8 +2827,11 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
             </div>
           )}
         </div>
+
+        <DeepMoneyWidgets state={state} mc={mc} entries={entries} onOpenPhoto={setDeepLightbox} />
       </div>
 
+      <AnimatePresence>{deepLightbox && <MemPhotoLightbox src={deepLightbox} onClose={() => setDeepLightbox(null)} />}</AnimatePresence>
       <AnimatePresence>{summaryOpen && <MoneySummaryModal state={state} onClose={() => setSummaryOpen(false)} />}</AnimatePresence>
       <AnimatePresence>{resetOpen && <MoneyResetModal onClose={() => setResetOpen(false)} onConfirm={handleResetConfirm} />}</AnimatePresence>
       <AnimatePresence>
