@@ -1,6 +1,35 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🎉 New feature — Friend Celebration (invite, VS dashboard, live chat, friend's Memories) (this update)
+## 🎨 New feature — 6 one-click "Panel Theme" presets in Setting → Theme (this update)
+
+A new **Panel Theme** row now sits at the very top of **Setting → 🎨
+Theme**, above the existing Dashboard / Analytics / Widgets / Money /
+Focus Mode / Friend Celebration tabs.
+
+- **6 ready-made color patterns** — Ocean, Sunset, Forest, Berry,
+  Midnight, Charcoal — each shown as a round two-tone swatch button.
+  Tapping one **instantly recolors the whole panel in one go**:
+  Dashboard, Analytics, Money Management, Focus Mode, Friend
+  Celebration (background + text color for all five) *and* every
+  widget's background — all applied together, not one section at a
+  time.
+- The active preset gets a checkmark + highlighted ring so it's clear
+  which one is currently applied, plus a **Reset** button next to the
+  row that clears it back to the app's original look everywhere at
+  once.
+- This sits *on top of* the existing per-section Theme editors — they're
+  untouched and still work exactly as before, so after picking a preset
+  you can still open, say, "Money Management" and fine-tune just that
+  one section's background/text/font further, or tweak a single
+  widget's color in the Widgets tab.
+- Stored as `state.theme.panelPreset` (which preset, if any, is active)
+  alongside the existing per-scope `bg`/`text` values it writes into —
+  saved to Firestore per-user like the rest of `state.theme`, so it
+  persists across devices/sessions same as everything else in Settings.
+- No new npm installs — reuses the same `framer-motion` swatch-button
+  pattern already used throughout the Theme panel.
+
+## 🎉 New feature — Friend Celebration (invite, VS dashboard, live chat, friend's Memories) (earlier update)
 
 A new **red 👥 "Friend Celebration" icon** sits in the header, next to
 Setting. Clicking it opens a **full-screen panel** — not a small modal —

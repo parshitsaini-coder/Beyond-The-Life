@@ -226,6 +226,21 @@ const WIDGET_SIZE_PRESETS = {
   md: { w: 3, h: 215 },
   lg: { w: 6, h: 320 },
 };
+/* ---- One-click Panel Theme presets (this update) ----
+   6 ready-made color patterns. Clicking one applies its bg + text pair
+   across every scoped surface (Dashboard, Analytics, Money Management,
+   Focus Mode, Friend Celebration) AND every widget's background, all in
+   a single update — a fast alternative to tuning each scope by hand in
+   the sections below (which still work exactly as before, and clicking
+   any of their swatches afterward just fine-tunes on top of the preset). */
+const PANEL_THEME_PRESETS = [
+  { id: "ocean", label: "Ocean", bg: "#eef2f9", text: "#1b2a4a", widgetBg: "#eef6fb", swatch: "linear-gradient(135deg, #eef2f9 50%, #6a93b8 50%)" },
+  { id: "sunset", label: "Sunset", bg: "#fff3e6", text: "#7a2e0e", widgetBg: "#fff7ec", swatch: "linear-gradient(135deg, #fff3e6 50%, #fca311 50%)" },
+  { id: "forest", label: "Forest", bg: "#eef6f0", text: "#1f3d2b", widgetBg: "#eef6f0", swatch: "linear-gradient(135deg, #eef6f0 50%, #4c9a6a 50%)" },
+  { id: "berry", label: "Berry", bg: "#fdeef0", text: "#5c1a2b", widgetBg: "#fdeef0", swatch: "linear-gradient(135deg, #fdeef0 50%, #d0577f 50%)" },
+  { id: "midnight", label: "Midnight", bg: "#0f172a", text: "#e7ecf5", widgetBg: "#1b2436", swatch: "linear-gradient(135deg, #0f172a 50%, #3a4a6b 50%)" },
+  { id: "charcoal", label: "Charcoal", bg: "#252422", text: "#f2ede0", widgetBg: "#33312d", swatch: "linear-gradient(135deg, #252422 50%, #6b675c 50%)" },
+];
 export function normalizeScopeTheme(t) {
   const src = t && typeof t === "object" ? t : {};
   const scale = Math.min(THEME_SCALE_MAX, Math.max(THEME_SCALE_MIN, Number(src.scale) || 1));
@@ -304,6 +319,7 @@ function normalizeTheme(t) {
     analyticsSummary: normalizeAnalyticsSummaryTheme(src.analyticsSummary),
     analyticsColors: normalizeAnalyticsColors(src.analyticsColors),
     moneyColors: normalizeMoneyColors(src.moneyColors),
+    panelPreset: typeof src.panelPreset === "string" ? src.panelPreset : "",
   };
 }
 function defaultTheme() { return normalizeTheme({}); }
@@ -1156,7 +1172,7 @@ function MoodBtn({ active, onClick, children, title }) {
 }
 
 /* ---------------- SETTINGS PANEL CONTENT (rendered inside the glass modal) ---------------- */
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset }) {
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset }) {
   const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
@@ -1245,6 +1261,8 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             onAnalyticsColorReset={onAnalyticsColorReset}
             onMoneyColorChange={onMoneyColorChange}
             onMoneyColorReset={onMoneyColorReset}
+            onApplyPreset={onApplyPanelPreset}
+            onResetPreset={onResetPanelPreset}
           />
         ) : (
           <>
@@ -5369,8 +5387,65 @@ function AnalyticsSummaryThemeEditor({ state, metrics, onChange, onReset }) {
   );
 }
 
+/* One-click "Panel Theme" row — 6 preset swatches that recolor the whole
+   app (every scope + every widget) in a single tap. Sits above the
+   per-section tabs so it reads as the fast option, with the detailed
+   editors below still available for fine-tuning afterward. */
+function PanelPresetRow({ activePreset, onApply, onReset }) {
+  return (
+    <div style={{
+      border: "1px solid #ece7d8", borderRadius: 10, background: "rgba(255,255,255,0.7)",
+      padding: "10px 10px 12px", marginBottom: 14,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 9 }}>
+        <Sparkles size={12} style={{ color: C.dark }} />
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>Panel Theme</span>
+        <div style={{ flex: 1 }} />
+        {!!activePreset && (
+          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={onReset} title="Reset panel theme" style={{
+            border: "1px solid #ddd6c4", background: "#fff", color: "#8a8579", borderRadius: 999,
+            padding: "2px 8px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
+          }}><RefreshCw size={10} /> Reset</motion.button>
+        )}
+      </div>
+      <div style={{ fontSize: 9, color: "#8a8579", marginBottom: 10, lineHeight: 1.4 }}>
+        One tap recolors the whole panel — Dashboard, Analytics, Money, Focus Mode,
+        Friend Celebration &amp; every widget together. Fine-tune any of them
+        individually below afterward if you like.
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {PANEL_THEME_PRESETS.map((p) => {
+          const active = activePreset === p.id;
+          return (
+            <motion.button
+              key={p.id}
+              whileHover={{ y: -2, scale: 1.06 }} whileTap={{ scale: 0.92 }}
+              onClick={() => onApply(p.id)}
+              title={p.label}
+              style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                background: "none", border: "none", cursor: "pointer", padding: 0,
+              }}
+            >
+              <span style={{
+                width: 34, height: 34, borderRadius: "50%", background: p.swatch,
+                border: active ? `2px solid ${C.dark}` : "1px solid #ddd6c4",
+                boxShadow: active ? "0 0 0 3px rgba(37,36,34,0.14)" : "0 1px 3px rgba(0,0,0,0.1)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}>
+                {active && <CheckCircle2 size={14} style={{ color: "#fff", filter: "drop-shadow(0 0 2px rgba(0,0,0,0.5))" }} />}
+              </span>
+              <span style={{ fontSize: 8, fontWeight: 700, color: active ? C.dark : "#8a8579" }}>{p.label}</span>
+            </motion.button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* Top-level Theme tab shown inside Settings — five sub-sections. */
-function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset }) {
+function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPreset, onResetPreset }) {
   const [section, setSection] = useState("dashboard");
   const t = normalizeTheme(theme);
   const SECTIONS = [
@@ -5384,6 +5459,7 @@ function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, on
   ];
   return (
     <div>
+      <PanelPresetRow activePreset={t.panelPreset} onApply={onApplyPreset} onReset={onResetPreset} />
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
         {SECTIONS.map((s) => (
           <motion.button
@@ -7194,6 +7270,32 @@ function BTLDashboardInner() {
     s.theme = theme;
     return s;
   });
+  /* One-click Panel Theme preset — applies bg+text to every scope and
+     every widget's background in a single Firestore write. */
+  const applyPanelPreset = (presetId) => update((s) => {
+    const preset = PANEL_THEME_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return s;
+    const theme = normalizeTheme(s.theme);
+    ["dashboard", "analytics", "money", "focusMode", "friendCelebration"].forEach((scope) => {
+      theme[scope] = normalizeScopeTheme({ ...theme[scope], bg: preset.bg, text: preset.text });
+    });
+    const widgets = {};
+    WIDGETS.forEach((w) => { widgets[w.id] = { bg: preset.widgetBg }; });
+    theme.widgets = normalizeWidgetThemes(widgets);
+    theme.panelPreset = preset.id;
+    s.theme = theme;
+    return s;
+  });
+  const resetPanelPreset = () => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    ["dashboard", "analytics", "money", "focusMode", "friendCelebration"].forEach((scope) => {
+      theme[scope] = normalizeScopeTheme({});
+    });
+    theme.widgets = normalizeWidgetThemes({});
+    theme.panelPreset = "";
+    s.theme = theme;
+    return s;
+  });
 
   const theme = normalizeTheme(state.theme);
   const dashTheme = { bg: theme.dashboard.bg || C.bg, text: theme.dashboard.text || C.text };
@@ -7436,6 +7538,7 @@ function BTLDashboardInner() {
               onAnalyticsSummaryChange={setAnalyticsSummaryMetrics} onAnalyticsSummaryReset={resetAnalyticsSummaryMetrics}
               onAnalyticsColorChange={setAnalyticsColor} onAnalyticsColorReset={resetAnalyticsColors}
               onMoneyColorChange={setMoneyColor} onMoneyColorReset={resetMoneyColors}
+              onApplyPanelPreset={applyPanelPreset} onResetPanelPreset={resetPanelPreset}
             />
           </motion.div>
         )}
