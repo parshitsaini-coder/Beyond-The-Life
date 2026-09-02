@@ -1,6 +1,29 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Header — Focus Mode / Setting are now icon buttons + new Share Journey icon (this update)
+## Header — brand title, streak badge, goal rings & avatar now animated (this update)
+
+More header polish, same "alive not static" treatment as the icon
+buttons:
+
+- **"Byound The Life" brand pill** — a slow breathing scale loop plus a
+  soft pulsing glow ring behind it, so the header's anchor point draws
+  a little attention without being distracting.
+- **Day Streak badge (the "001" circle)** — now has a looping orange
+  glow pulse (streak/fire themed) and scales up slightly on hover.
+- **Goal rings (Daily/Extry/Overall)** — the progress arc now animates
+  in with a spring (instead of a flat CSS transition) whenever the
+  percentage changes, the whole ring lifts + scales a touch on hover,
+  and any ring that hits **100%** gets its own looping colored glow as
+  a small celebration.
+- **Profile avatar** — same soft pulsing glow ring + hover lift/scale
+  as the other header buttons, so it matches the rest of the row.
+- All built with `framer-motion` (`animate`/`whileHover` loops and
+  spring transitions) — no new npm installs, no layout changes to
+  anything these components are used in elsewhere (RingStat is shared
+  by Analytics/Money summaries too, so those pick up the same
+  animated-fill + 100%-glow behavior for free).
+
+## Header — Focus Mode / Setting are now icon buttons + new Share Journey icon (earlier update)
 
 - **Focus Mode** and **Setting** in the header no longer show as text
   pills — they're now small **circular icon-only buttons** (name shows

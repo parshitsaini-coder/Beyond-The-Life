@@ -587,24 +587,38 @@ function SaveStatus({ status }) {
 function RingStat({ pct, size = 54, label, sub, color = C.accent }) {
   const r = (size - 8) / 2;
   const circ = 2 * Math.PI * r;
-  const offset = circ - (Math.min(100, Math.max(0, pct)) / 100) * circ;
+  const clamped = Math.min(100, Math.max(0, pct));
+  const offset = circ - (clamped / 100) * circ;
+  const isFull = clamped >= 100;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+    <motion.div
+      whileHover={{ y: -2, scale: 1.07 }}
+      transition={{ type: "spring", stiffness: 380, damping: 20 }}
+      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, cursor: "default" }}
+    >
+      <motion.svg
+        width={size} height={size} style={{ transform: "rotate(-90deg)" }}
+        animate={isFull
+          ? { filter: [`drop-shadow(0 0 0px ${color}00)`, `drop-shadow(0 0 6px ${color}aa)`, `drop-shadow(0 0 0px ${color}00)`] }
+          : undefined}
+        transition={isFull ? { duration: 1.8, repeat: Infinity, ease: "easeInOut" } : undefined}
+      >
         <circle cx={size / 2} cy={size / 2} r={r} stroke="#e9e4d3" strokeWidth={5} fill="none" />
-        <circle
+        <motion.circle
           cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={5} fill="none"
-          strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
-          style={{ transition: "stroke-dashoffset 420ms cubic-bezier(.4,1.6,.4,1)" }}
+          strokeDasharray={circ} strokeLinecap="round"
+          initial={false}
+          animate={{ strokeDashoffset: offset }}
+          transition={{ type: "spring", stiffness: 90, damping: 18 }}
         />
         <text x={size / 2} y={size / 2} transform={`rotate(90 ${size / 2} ${size / 2})`}
           textAnchor="middle" dominantBaseline="middle" fontSize={11} fontWeight={800} fill={C.dark}>
           {Math.round(pct)}%
         </text>
-      </svg>
+      </motion.svg>
       <div style={{ fontSize: 9, fontWeight: 700, color: C.dark, textAlign: "center", lineHeight: 1.1 }}>{label}</div>
       {sub && <div style={{ fontSize: 8, color: "#8a8579" }}>{sub}</div>}
-    </div>
+    </motion.div>
   );
 }
 
@@ -700,13 +714,20 @@ function ProfileButton({ user, open, onToggle }) {
   return (
     <motion.button
       onClick={onToggle} title={user ? (user.displayName || "Profile") : "Sign in"}
-      whileHover={{ y: -2 }} whileTap={{ scale: 0.93 }}
+      whileHover={{ y: -2, scale: 1.06 }} whileTap={{ scale: 0.93 }}
       transition={{ type: "spring", stiffness: 420, damping: 22 }}
       style={{
+        position: "relative",
         border: `2px solid ${open ? C.accent : "transparent"}`, borderRadius: "50%", padding: 0,
         background: "transparent", cursor: "pointer", lineHeight: 0, display: "flex",
       }}
     >
+      <motion.span
+        aria-hidden
+        animate={{ boxShadow: [`0 0 0px 0px ${C.blue}00`, `0 0 8px 2px ${C.blue}60`, `0 0 0px 0px ${C.blue}00`] }}
+        transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
+        style={{ position: "absolute", inset: -3, borderRadius: "50%", pointerEvents: "none" }}
+      />
       {user ? <ProfileAvatar user={user} size={30} /> : (
         <div style={{
           width: 30, height: 30, borderRadius: "50%", background: "#e9e4d3", color: C.dark,
@@ -7229,7 +7250,19 @@ function BTLDashboardInner() {
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {/* ---------- HEADER ---------- */}
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8, flexShrink: 0 }}>
-            <Oval style={{ background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 16, fontWeight: 900 }}>Byound The Life</Oval>
+            <motion.div
+              animate={{ scale: [1, 1.025, 1] }}
+              transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
+              style={{ position: "relative", display: "inline-flex" }}
+            >
+              <motion.span
+                aria-hidden
+                animate={{ boxShadow: [`0 0 0px 0px ${C.dark}00`, `0 0 16px 3px ${C.dark}50`, `0 0 0px 0px ${C.dark}00`] }}
+                transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
+                style={{ position: "absolute", inset: -3, borderRadius: 999, pointerEvents: "none" }}
+              />
+              <Oval style={{ background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 16, fontWeight: 900, position: "relative" }}>Byound The Life</Oval>
+            </motion.div>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Goals</Oval>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed", justifyContent: "flex-start" }}>
@@ -7259,10 +7292,15 @@ function BTLDashboardInner() {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <SaveStatus status={saveStatus} />
               <div style={{ textAlign: "center" }}>
-                <div style={{
-                  width: 30, height: 30, borderRadius: "50%", background: C.dark, color: "#fff",
-                  display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800,
-                }}>{String(state.streak).padStart(3, "0")}</div>
+                <motion.div
+                  animate={{ boxShadow: [`0 0 0px 0px ${C.accent}00`, `0 0 10px 2px ${C.accent}80`, `0 0 0px 0px ${C.accent}00`] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                  whileHover={{ scale: 1.1 }}
+                  title="Day Streak"
+                  style={{
+                    width: 30, height: 30, borderRadius: "50%", background: C.dark, color: "#fff",
+                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800,
+                  }}>{String(state.streak).padStart(3, "0")}</motion.div>
               </div>
               <RingStat pct={dailyPct} label="Daily Goal" sub="Staytus" color={C.accent} />
               <RingStat pct={extryPct} label="Extry Goal" sub="Staytus" color={C.blue} />
