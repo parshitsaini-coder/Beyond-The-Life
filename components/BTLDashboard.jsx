@@ -17,6 +17,7 @@ import { useAuth, signOutUser, signInWithGoogle } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
 import { ensurePublicProfile, useIncomingFriendRequestCount } from "@/lib/friendsStorage";
 import FriendCelebration from "@/components/FriendCelebration";
+import BTLLoadingScreen from "@/components/BTLLoadingScreen";
 
 /* ============================================================
    BEYOND THE LIFE (BTL)  —  personal life-goals dashboard
@@ -7310,7 +7311,7 @@ function BTLDashboardInner() {
   const update = useCallback((fn) => setState((s) => fn({ ...s })), []);
 
   if (!state) {
-    return <div style={{ padding: 40, textAlign: "center", fontFamily: "sans-serif", color: C.text }}>Loading BTL…</div>;
+    return <BTLLoadingScreen label="Loading BTL" bg={C.bg} dark={C.dark} accent={C.accent} />;
   }
 
   const dailyPct = state.dailyGoals.length ? (state.dailyGoals.filter((g) => g.done).length / state.dailyGoals.length) * 100 : 0;
