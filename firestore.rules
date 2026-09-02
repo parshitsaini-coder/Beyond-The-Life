@@ -39,8 +39,14 @@ service cloud.firestore {
 
     // One doc per accepted friendship, id = sorted "uidA_uidB". Either
     // side can create it (on accept) or delete it (to unfriend).
+    // NOTE: "resource == null ||" handles the case where the friendship
+    // doesn't exist yet — the app checks this before ever creating one
+    // (to see "are we already friends?"). Without it, reading a missing
+    // doc errors on resource.data and Firestore denies the read outright,
+    // which broke every very-first friend request.
     match /friendships/{friendshipId} {
-      allow read, delete: if request.auth != null && request.auth.uid in resource.data.uids;
+      allow read, delete: if request.auth != null &&
+        (resource == null || request.auth.uid in resource.data.uids);
       allow create: if request.auth != null && request.auth.uid in request.resource.data.uids;
     }
 

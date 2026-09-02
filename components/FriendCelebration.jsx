@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, createContext, useContext } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, UserPlus, MessageCircle, Send, Check, ArrowLeft, Handshake, Zap,
@@ -11,7 +11,22 @@ import {
   acceptFriendRequest, declineFriendRequest, cancelFriendRequest, listenFriendships,
   listenFriendState, listenChatMessages, sendChatMessage,
 } from "@/lib/friendsStorage";
-import { MemoriesModal } from "@/components/BTLDashboard";
+import { MemoriesModal, normalizeScopeTheme, fontStackFor } from "@/components/BTLDashboard";
+
+/* ---- Friend Celebration theme (Settings -> Theme -> Friend Celebration) ----
+   Same {bg,text,font,bold,scale} shape as the app's other theme scopes
+   (see normalizeScopeTheme in BTLDashboard.jsx). Provided via context so
+   every nested view (hub, VS intro, VS split-screen, chat) can pick up
+   the chosen colors/size/font without threading props through each one. */
+const FRIEND_THEME_DEFAULT = {
+  bg: "linear-gradient(145deg,#1b1a17,#252422)",
+  text: "#fff",
+  fontFamily: undefined,
+  bold: false,
+  scale: 1,
+};
+const FriendThemeCtx = createContext(FRIEND_THEME_DEFAULT);
+function useFriendTheme() { return useContext(FriendThemeCtx); }
 
 /* ============================================================
    FRIEND CELEBRATION
@@ -94,6 +109,7 @@ function computeStatsFromState(state) {
 /* ---------------- VS intro animation (fullscreen) ---------------- */
 
 function VSIntro({ leftPhoto, leftName, rightPhoto, rightName, onDone }) {
+  const ft = useFriendTheme();
   useEffect(() => {
     const t = setTimeout(onDone, 1500);
     return () => clearTimeout(t);
@@ -122,7 +138,7 @@ function VSIntro({ leftPhoto, leftName, rightPhoto, rightName, onDone }) {
       <motion.div
         initial={{ scale: 0, opacity: 0 }} animate={{ scale: [0, 1.4, 1], opacity: [0, 1, 1] }}
         transition={{ delay: 0.72, duration: 0.5, times: [0, 0.6, 1] }}
-        style={{ position: "absolute", zIndex: 2, fontSize: 44, fontWeight: 900, color: "#fff", fontStyle: "italic", letterSpacing: 2, textShadow: "0 0 30px rgba(255,255,255,0.85), 0 4px 20px rgba(0,0,0,0.5)" }}
+        style={{ position: "absolute", zIndex: 2, fontSize: Math.round(44 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, fontStyle: "italic", letterSpacing: 2, textShadow: "0 0 30px rgba(255,255,255,0.85), 0 4px 20px rgba(0,0,0,0.5)" }}
       >VS</motion.div>
       <motion.div
         initial={{ scale: 0, opacity: 0.9 }} animate={{ scale: 3.2, opacity: 0 }}
@@ -130,7 +146,7 @@ function VSIntro({ leftPhoto, leftName, rightPhoto, rightName, onDone }) {
         style={{ position: "absolute", width: 56, height: 56, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.95), transparent 70%)", zIndex: 1 }}
       />
 
-      <div style={{ position: "absolute", bottom: 46, fontSize: 12, fontWeight: 800, color: "rgba(255,255,255,0.8)", letterSpacing: 1 }}>
+      <div style={{ position: "absolute", bottom: 46, fontSize: Math.round(12 * ft.scale), fontWeight: ft.bold ? 900 : 800, color: ft.text, opacity: 0.8, letterSpacing: 1 }}>
         🎉 Friend Celebration
       </div>
     </motion.div>
@@ -148,6 +164,7 @@ const STATUS_MSG = {
 };
 
 function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, onClose }) {
+  const ft = useFriendTheme();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState(null);
   const [sending, setSending] = useState(false);
@@ -218,8 +235,8 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
         <Avatar name={user?.displayName || user?.email} photoURL={user?.photoURL} size={46} />
         <div>
-          <div style={{ fontSize: 17, fontWeight: 900, color: "#fff" }}>{user?.displayName || user?.email || "You"}</div>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", fontWeight: 700 }}>🎉 Friend Celebration</div>
+          <div style={{ fontSize: Math.round(17 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text }}>{user?.displayName || user?.email || "You"}</div>
+          <div style={{ fontSize: Math.round(11 * ft.scale), color: ft.text, opacity: 0.6, fontWeight: ft.bold ? 800 : 700 }}>🎉 Friend Celebration</div>
         </div>
         <div style={{ flex: 1 }} />
         <motion.button whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose}
@@ -269,7 +286,7 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
                 <motion.div key={req.id} layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }}
                   style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.08)", borderRadius: 12, padding: "9px 12px" }}>
                   <Avatar name={req.fromName} photoURL={req.fromPhoto} size={34} />
-                  <div style={{ fontSize: 12, fontWeight: 800, color: "#fff", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{req.fromName}</div>
+                  <div style={{ fontSize: Math.round(12 * ft.scale), fontWeight: ft.bold ? 900 : 800, color: ft.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{req.fromName}</div>
                   <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} disabled={busyId === req.id}
                     onClick={withBusy(req.id, () => acceptFriendRequest(req))}
                     style={{ background: "#4a7c59", border: "none", borderRadius: "50%", width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer" }}>
@@ -334,7 +351,7 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
                     style={{ display: "flex", flexDirection: "column", gap: 4, background: "rgba(255,255,255,0.06)", borderRadius: 12, padding: "9px 12px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <Avatar name={u.name} photoURL={u.photoURL} size={32} />
-                      <div style={{ fontSize: 12, fontWeight: 800, color: "#fff", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
+                      <div style={{ fontSize: Math.round(12 * ft.scale), fontWeight: ft.bold ? 900 : 800, color: ft.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
                       <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} disabled={busyId === u.uid}
                         onClick={() => sendToDiscoverUser(u)}
                         style={{ border: "none", background: C.accent, color: "#fff", borderRadius: 999, padding: "5px 12px", fontWeight: 800, fontSize: 10.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, flexShrink: 0, opacity: busyId === u.uid ? 0.7 : 1 }}>
@@ -362,7 +379,7 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
               <motion.div key={f.id} whileHover={{ y: -4, scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={() => onSelectFriend(f)}
                 style={{ cursor: "pointer", background: "rgba(255,255,255,0.08)", borderRadius: 14, padding: "14px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, border: "1px solid rgba(255,255,255,0.12)" }}>
                 <Avatar name={f.name} photoURL={f.photoURL} size={48} />
-                <div style={{ fontSize: 11, fontWeight: 800, color: "#fff", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", width: "100%" }}>{f.name}</div>
+                <div style={{ fontSize: Math.round(11 * ft.scale), fontWeight: ft.bold ? 900 : 800, color: ft.text, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", width: "100%" }}>{f.name}</div>
                 <div style={{ fontSize: 8.5, fontWeight: 700, color: C.accent, display: "flex", alignItems: "center", gap: 3 }}><Handshake size={10} /> Open</div>
               </motion.div>
             ))}
@@ -376,16 +393,17 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
 /* ---------------- VS split-screen dashboard ---------------- */
 
 function GoalMiniList({ title, items }) {
+  const ft = useFriendTheme();
   const done = items.filter((g) => g.done).length;
   return (
     <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flex: 1, minHeight: 70, overflowY: "auto" }} className="btl-scroll">
-      <div style={{ fontSize: 9.5, fontWeight: 900, color: "rgba(255,255,255,0.6)", marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
+      <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: 0.6, marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
         <span>{title}</span><span>{done}/{items.length}</span>
       </div>
-      {items.length === 0 && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)" }}>No goals yet.</div>}
+      {items.length === 0 && <div style={{ fontSize: Math.round(10 * ft.scale), color: ft.text, opacity: 0.3 }}>No goals yet.</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {items.map((g) => (
-          <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, color: g.done ? "rgba(255,255,255,0.4)" : "#fff", textDecoration: g.done ? "line-through" : "none" }}>
+          <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: Math.round(10.5 * ft.scale), fontWeight: ft.bold ? 700 : 400, color: g.done ? ft.text : ft.text, opacity: g.done ? 0.4 : 1, textDecoration: g.done ? "line-through" : "none" }}>
             {g.done ? <CheckCircle2 size={12} color="#7bd389" /> : <Circle size={12} color="rgba(255,255,255,0.35)" />}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.text || "Goal"}</span>
           </div>
@@ -396,6 +414,7 @@ function GoalMiniList({ title, items }) {
 }
 
 function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dailyGoals, extryGoals, loading, onOpenMemory }) {
+  const ft = useFriendTheme();
   const accent = side === "me" ? C.accent : "#e63946";
   return (
     <motion.div
@@ -406,7 +425,7 @@ function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dail
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Avatar name={name} photoURL={photoURL} size={54} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 900, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+          <div style={{ fontSize: Math.round(14 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
           {side === "friend" && (
             <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }} onClick={onOpenMemory}
               style={{ marginTop: 4, border: "none", background: C.blue, color: C.dark, borderRadius: 999, padding: "3px 10px", fontSize: 9.5, fontWeight: 800, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -418,12 +437,12 @@ function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dail
 
       <div style={{ display: "flex", gap: 8 }}>
         <div style={{ flex: 1, background: "rgba(74,124,89,0.18)", borderRadius: 10, padding: "7px 10px" }}>
-          <div style={{ fontSize: 8.5, fontWeight: 700, color: "rgba(255,255,255,0.6)" }}>Total Earn</div>
-          <div style={{ fontSize: 13, fontWeight: 900, color: "#7bd389" }}>₹{Math.round(totalEarn)}</div>
+          <div style={{ fontSize: Math.round(8.5 * ft.scale), fontWeight: ft.bold ? 800 : 700, color: ft.text, opacity: 0.6 }}>Total Earn</div>
+          <div style={{ fontSize: Math.round(13 * ft.scale), fontWeight: 900, color: "#7bd389" }}>₹{Math.round(totalEarn)}</div>
         </div>
         <div style={{ flex: 1, background: "rgba(230,57,70,0.18)", borderRadius: 10, padding: "7px 10px" }}>
-          <div style={{ fontSize: 8.5, fontWeight: 700, color: "rgba(255,255,255,0.6)" }}>Total Spend</div>
-          <div style={{ fontSize: 13, fontWeight: 900, color: "#f4a261" }}>₹{Math.round(totalSpend)}</div>
+          <div style={{ fontSize: Math.round(8.5 * ft.scale), fontWeight: ft.bold ? 800 : 700, color: ft.text, opacity: 0.6 }}>Total Spend</div>
+          <div style={{ fontSize: Math.round(13 * ft.scale), fontWeight: 900, color: "#f4a261" }}>₹{Math.round(totalSpend)}</div>
         </div>
       </div>
 
@@ -447,6 +466,7 @@ function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dail
 }
 
 function FriendVSView({ user, myState, myStats, friend, friendState, onBack, onOpenChat, onOpenMemory }) {
+  const ft = useFriendTheme();
   const friendStats = useMemo(() => computeStatsFromState(friendState), [friendState]);
 
   return (
@@ -460,7 +480,7 @@ function FriendVSView({ user, myState, myStats, friend, friendState, onBack, onO
           style={{ background: "rgba(255,255,255,0.12)", border: "none", borderRadius: 999, padding: "7px 14px", color: "#fff", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
           <ArrowLeft size={14} /> Back
         </motion.button>
-        <div style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 900, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minWidth: 0 }}>
+        <div style={{ flex: 1, textAlign: "center", fontSize: Math.round(14 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minWidth: 0 }}>
           <Zap size={14} color={C.accent} />
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {(user?.displayName || "You").split(" ")[0]} <span style={{ color: "#e63946", fontStyle: "italic" }}>VS</span> {(friend?.name || "Friend").split(" ")[0]}
@@ -503,6 +523,7 @@ function FriendVSView({ user, myState, myStats, friend, friendState, onBack, onO
 /* ---------------- glass chat popup ---------------- */
 
 function FriendChatModal({ user, friend, fsId, onClose }) {
+  const ft = useFriendTheme();
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -546,7 +567,7 @@ function FriendChatModal({ user, friend, fsId, onClose }) {
       >
         <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
           <Avatar name={friend?.name} photoURL={friend?.photoURL} size={34} />
-          <div style={{ fontSize: 13, fontWeight: 900, color: "#fff", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{friend?.name}</div>
+          <div style={{ fontSize: Math.round(13 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{friend?.name}</div>
           <motion.button whileHover={{ rotate: 90, scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={onClose}
             style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: "50%", width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer" }}>
             <X size={14} />
@@ -590,7 +611,7 @@ function FriendChatModal({ user, friend, fsId, onClose }) {
 
 /* ---------------- root ---------------- */
 
-export default function FriendCelebration({ user, myState, myStats, onClose }) {
+export default function FriendCelebration({ user, myState, myStats, onClose, theme }) {
   const [phase, setPhase] = useState("intro"); // intro | hub | vsIntro | vs
   const phaseRef = useRef(phase);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
@@ -642,10 +663,20 @@ export default function FriendCelebration({ user, myState, myStats, onClose }) {
 
   const fsId = user && activeFriend ? friendshipId(user.uid, activeFriend.otherUid) : null;
 
+  const ft = normalizeScopeTheme(theme);
+  const friendTheme = {
+    bg: ft.bg || FRIEND_THEME_DEFAULT.bg,
+    text: ft.text || FRIEND_THEME_DEFAULT.text,
+    fontFamily: ft.font ? fontStackFor(ft.font) : undefined,
+    bold: ft.bold,
+    scale: ft.scale || 1,
+  };
+
   return (
+    <FriendThemeCtx.Provider value={friendTheme}>
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}
-      style={{ position: "absolute", inset: 0, zIndex: 95, background: "linear-gradient(145deg,#1b1a17,#252422)", overflow: "hidden" }}
+      style={{ position: "absolute", inset: 0, zIndex: 95, background: friendTheme.bg, overflow: "hidden", fontFamily: friendTheme.fontFamily }}
     >
       <style>{`
         @keyframes btlFriendSpin { to { transform: rotate(360deg); } }
@@ -682,5 +713,6 @@ export default function FriendCelebration({ user, myState, myStats, onClose }) {
         )}
       </AnimatePresence>
     </motion.div>
+    </FriendThemeCtx.Provider>
   );
 }

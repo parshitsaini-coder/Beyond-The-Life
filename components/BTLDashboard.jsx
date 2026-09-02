@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
-import { motion, AnimatePresence, Reorder, animate } from "framer-motion";
+import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
 import { useAuth, signOutUser, signInWithGoogle } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
 import { ensurePublicProfile, useIncomingFriendRequestCount } from "@/lib/friendsStorage";
@@ -95,7 +95,7 @@ const FONT_OPTIONS = [
   { id: "playfair", label: "Playfair", stack: "'Playfair Display', Georgia, serif", preview: "Aa" },
   { id: "mono", label: "Mono", stack: "'JetBrains Mono', 'Courier New', monospace", preview: "Aa" },
 ];
-const fontStackFor = (id) => (FONT_OPTIONS.find((f) => f.id === id) || FONT_OPTIONS[0]).stack;
+export const fontStackFor = (id) => (FONT_OPTIONS.find((f) => f.id === id) || FONT_OPTIONS[0]).stack;
 const TEXT_COLOR_OPTIONS = [
   { id: "", label: "Default", swatch: C.text },
   { id: "#252422", label: "Charcoal", swatch: "#252422" },
@@ -226,7 +226,7 @@ const WIDGET_SIZE_PRESETS = {
   md: { w: 3, h: 215 },
   lg: { w: 6, h: 320 },
 };
-function normalizeScopeTheme(t) {
+export function normalizeScopeTheme(t) {
   const src = t && typeof t === "object" ? t : {};
   const scale = Math.min(THEME_SCALE_MAX, Math.max(THEME_SCALE_MIN, Number(src.scale) || 1));
   return {
@@ -299,6 +299,7 @@ function normalizeTheme(t) {
     analytics: normalizeScopeTheme(src.analytics),
     money: normalizeScopeTheme(src.money),
     focusMode: normalizeScopeTheme(src.focusMode),
+    friendCelebration: normalizeScopeTheme(src.friendCelebration),
     widgets: normalizeWidgetThemes(src.widgets),
     analyticsSummary: normalizeAnalyticsSummaryTheme(src.analyticsSummary),
     analyticsColors: normalizeAnalyticsColors(src.analyticsColors),
@@ -1180,9 +1181,17 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
     setEditing(null); setEditVal("");
   };
 
+  const dragControls = useDragControls();
+
   return (
     <motion.div
       onClick={(e) => e.stopPropagation()}
+      drag
+      dragControls={dragControls}
+      dragListener={false}
+      dragMomentum={false}
+      dragElastic={0}
+      dragConstraints={{ left: -2000, right: 2000, top: -2000, bottom: 2000 }}
       initial={{ opacity: 0, scale: 0.94, y: 16 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.94, y: 10 }}
@@ -1193,12 +1202,20 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
         border: "1px solid rgba(255,255,255,0.6)", borderRadius: 14,
         boxShadow: "0 12px 36px rgba(37,36,34,0.18)",
         display: "flex", flexDirection: "column", overflow: "hidden",
+        pointerEvents: "auto",
       }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", flexWrap: "wrap",
         borderBottom: "1px solid rgba(64,61,57,0.15)", background: "rgba(255,252,242,0.5)",
       }}>
-        <span style={{ fontSize: 12, fontWeight: 800, color: C.dark }}>Setting</span>
+        <span
+          onPointerDown={(e) => dragControls.start(e)}
+          title="Drag to move"
+          style={{ display: "flex", alignItems: "center", gap: 6, cursor: "grab", touchAction: "none", flexShrink: 0 }}
+        >
+          <GripVertical size={14} color="#a39c86" />
+          <span style={{ fontSize: 12, fontWeight: 800, color: C.dark }}>Setting</span>
+        </span>
         <Oval onClick={() => setMode("goal")} style={{ cursor: "pointer", background: mode === "goal" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "goal" ? "#fff" : C.text }}>Add Goles</Oval>
         <Oval onClick={() => setMode("extry")} style={{ cursor: "pointer", background: mode === "extry" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "extry" ? "#fff" : C.text }}>Add extry</Oval>
         <Oval onClick={() => setMode("bigGoals")} style={{ cursor: "pointer", background: mode === "bigGoals" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "bigGoals" ? "#fff" : C.text }}>Add Big Goal</Oval>
@@ -5353,6 +5370,7 @@ function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, on
     { key: "analyticsSummary", label: "Analytics Summary", icon: <PiggyBank size={10} /> },
     { key: "money", label: "Money Management", icon: <Wallet size={10} /> },
     { key: "focusMode", label: "Focus Mode", icon: <Target size={10} /> },
+    { key: "friendCelebration", label: "Friend Celebration", icon: <Users size={10} /> },
   ];
   return (
     <div>
@@ -5423,6 +5441,13 @@ function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, on
           <ScopeThemeEditor
             key="focusMode" title="Focus Mode" icon={<Target size={12} style={{ color: C.dark }} />}
             value={t.focusMode} onChange={(p) => onScopeChange("focusMode", p)} onReset={() => onScopeReset("focusMode")}
+            includeTextControls={true}
+          />
+        )}
+        {section === "friendCelebration" && (
+          <ScopeThemeEditor
+            key="friendCelebration" title="Friend Celebration" icon={<Users size={12} style={{ color: C.dark }} />}
+            value={t.friendCelebration} onChange={(p) => onScopeChange("friendCelebration", p)} onReset={() => onScopeReset("friendCelebration")}
             includeTextControls={true}
           />
         )}
@@ -7375,10 +7400,10 @@ function BTLDashboardInner() {
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
             style={{
-              position: "absolute", inset: 0, background: "rgba(37,36,34,0.28)", zIndex: 65,
+              position: "absolute", inset: 0, zIndex: 65,
               display: "flex", alignItems: "center", justifyContent: "center",
-              backdropFilter: "blur(3px)", WebkitBackdropFilter: "blur(3px)",
-            }} onClick={() => setSettingsOpen(false)}>
+              pointerEvents: "none",
+            }}>
             <SettingsTab
               state={state} addItem={settingsAdd} removeItem={settingsRemove} editItem={settingsEdit} onClose={() => setSettingsOpen(false)}
               onThemeScopeChange={setThemeScope} onThemeScopeReset={resetThemeScope}
@@ -7406,6 +7431,7 @@ function BTLDashboardInner() {
             myState={state}
             myStats={{ dailyPct, extryPct, overallPct, streak: state.streak, lifeScore: headerLifeScore }}
             onClose={() => setFriendOpen(false)}
+            theme={theme.friendCelebration}
           />
         )}
       </AnimatePresence>
