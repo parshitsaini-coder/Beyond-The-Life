@@ -777,6 +777,7 @@ function QuickNavFab({ tab, setTab, focusMode, setFocusMode, setMemOpen, setSett
 
   const items = [
     { key: "memor", label: "memor", icon: BookOpen, bg: C.blue, fg: C.dark, onClick: () => { setMemOpen(true); setOpen(false); } },
+    { key: "lifeStory", label: "Life Story", icon: Pencil, bg: "#b083f0", fg: "#fff", onClick: () => { setTab("lifeStory"); setOpen(false); } },
     { key: "focus", label: "Focus Mode", icon: Target, bg: focusMode ? C.accent : "#fff", fg: focusMode ? "#fff" : C.dark, ring: !focusMode, onClick: () => { setFocusMode((v) => !v); setOpen(false); } },
     { key: "layout", label: "Layout", icon: LayoutGrid, bg: C.dark, fg: "#fff", onClick: () => { setTab("layout"); setOpen(false); } },
     { key: "analytics", label: "Analytics", icon: BarChart3, bg: C.dark, fg: "#fff", onClick: () => { setTab("analytics"); setOpen(false); } },
@@ -2121,6 +2122,24 @@ function filterMoneyEntries(entries, filters) {
     return moneyDateInRange(e.date, filters);
   });
 }
+/* Bug fix: Daily Goals / Extry Goals were staying ticked from the previous
+   day because `done` lived directly on the goal object with nothing to
+   clear it. This runs on load and once a minute after that; the moment the
+   calendar date differs from `state.lastActiveDay` it unchecks every goal
+   in both lists for the fresh day. completionHistory / dailyLogs for past
+   days are untouched since those are separate snapshots taken on toggle. */
+function rolloverDailyGoals(s) {
+  if (!s) return s;
+  const today = todayISO();
+  if (s.lastActiveDay === today) return s;
+  return {
+    ...s,
+    lastActiveDay: today,
+    dailyGoals: (s.dailyGoals || []).map((g) => (g.done ? { ...g, done: false } : g)),
+    extryGoals: (s.extryGoals || []).map((g) => (g.done ? { ...g, done: false } : g)),
+  };
+}
+
 function isMoneyFilterActive(filters) {
   return filters.types.length !== 2 || filters.categories.length > 0 || filters.dateRange !== "all";
 }
@@ -5557,6 +5576,427 @@ function MemoriesModal({ state, onAddMemory, onClose }) {
   );
 }
 
+/* ================================================================
+   LIFE STORY — full-screen daily journal tab (this update)
+   Data lives at state.lifeStory = { profile: {name,image}|null, entries: { "YYYY-MM-DD": { text, images:[dataUrl,...] } } }
+   Built with framer-motion (already a project dependency) for every
+   animation/glass effect here — no new npm installs for GSAP / Locomotive
+   Scroll / Lottie / three.js etc. Say the word if you want one of those
+   wired in for a specific effect elsewhere.
+   ================================================================ */
+
+/* 90 emoji so the "@" picker always clears the "80+" ask with room to spare. */
+const LIFE_STORY_EMOJIS = [
+  "😀","😁","😂","🤣","😊","😍","🥰","😘","😎","🤩",
+  "🥳","😇","🙂","😉","😌","😴","🤔","😅","😭","😢",
+  "😡","😱","🥺","😤","🤯","😬","🙄","😏","😴","🤗",
+  "👍","👎","👏","🙏","💪","🤝","🙌","👋","✌️","🤞",
+  "❤️","🧡","💛","💚","💙","💜","🖤","🤍","💔","💯",
+  "🔥","✨","⭐","🌟","💫","🎉","🎊","🎈","🏆","🥇",
+  "☀️","🌤️","⛅","🌧️","⛈️","🌈","🌙","🌊","🌸","🌻",
+  "☕","🍵","🍕","🍔","🍎","🍫","🥗","🍰","🎂","🍿",
+  "📚","✍️","💼","💻","📱","🎧","🎵","🎬","📷","🚗",
+  "✈️","🏠","🏋️","🧘","🚶","🏃","🛌","💤","🎯","🚀",
+];
+
+/* Computes where a textarea's caret sits in pixels, relative to the
+   textarea's own top-left corner — used to anchor the "@" mention
+   popover right next to the cursor instead of a fixed spot. Standard
+   mirror-div technique: clone the textarea's text-affecting styles onto
+   an invisible div, drop a marker span at the caret, measure it. */
+function getCaretCoordinates(el) {
+  const div = document.createElement("div");
+  const style = window.getComputedStyle(el);
+  const props = [
+    "boxSizing", "width", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+    "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
+    "fontFamily", "fontSize", "fontWeight", "fontStyle", "letterSpacing", "lineHeight",
+    "textTransform", "wordSpacing", "textIndent",
+  ];
+  props.forEach((p) => { div.style[p] = style[p]; });
+  div.style.position = "absolute";
+  div.style.visibility = "hidden";
+  div.style.whiteSpace = "pre-wrap";
+  div.style.wordWrap = "break-word";
+  div.style.width = el.clientWidth + "px";
+  div.style.top = "0px";
+  div.style.left = "-9999px";
+  document.body.appendChild(div);
+  const caretPos = el.selectionStart || 0;
+  div.textContent = el.value.substring(0, caretPos);
+  const span = document.createElement("span");
+  span.textContent = el.value.substring(caretPos) || ".";
+  div.appendChild(span);
+  const top = span.offsetTop - el.scrollTop;
+  const left = span.offsetLeft - el.scrollLeft;
+  document.body.removeChild(div);
+  return { top, left };
+}
+
+/* Glass "@" popover: emoji grid + add-photo shortcut, positioned right
+   next to the caret. Framer-motion spring in/out for that "glassic" feel. */
+function LifeStoryMentionPopover({ pos, onPickEmoji, onAddPhoto, onClose }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9, y: 6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 6 }}
+      transition={{ type: "spring", stiffness: 420, damping: 28 }}
+      style={{
+        position: "absolute", top: pos.top, left: Math.min(pos.left, 300), zIndex: 60, width: 250,
+        background: "rgba(255,255,255,0.72)", backdropFilter: "blur(20px) saturate(180%)", WebkitBackdropFilter: "blur(20px) saturate(180%)",
+        border: "1px solid rgba(255,255,255,0.8)", borderRadius: 14, boxShadow: "0 16px 40px rgba(37,36,34,0.28)", padding: 10,
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <motion.button
+        whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }} onClick={onAddPhoto}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 8, border: "1px solid #ece7d8", background: "rgba(255,255,255,0.7)",
+          borderRadius: 10, padding: "7px 10px", fontSize: 11, fontWeight: 800, color: C.dark, cursor: "pointer", marginBottom: 8,
+        }}
+      ><Camera size={13} /> Add photo to today</motion.button>
+      <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4 }}>EMOJI</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 2, maxHeight: 150, overflowY: "auto" }}>
+        {LIFE_STORY_EMOJIS.map((em, i) => (
+          <motion.span
+            key={i} whileHover={{ scale: 1.3 }} whileTap={{ scale: 0.9 }}
+            onClick={() => onPickEmoji(em)}
+            style={{ fontSize: 16, textAlign: "center", cursor: "pointer", borderRadius: 6, lineHeight: "26px" }}
+          >{em}</motion.span>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+/* Full-screen photo viewer for a story image — back button top-right,
+   delete on the image itself, same dark-blur recipe as MemPhotoLightbox. */
+function LifeStoryLightbox({ src, onClose, onDelete }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{ position: "fixed", inset: 0, background: "rgba(20,19,17,0.86)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 300, damping: 26 }}
+        onClick={(e) => e.stopPropagation()} style={{ position: "relative", maxWidth: "86%", maxHeight: "82%" }}
+      >
+        <img src={src} alt="story" style={{ maxWidth: "100%", maxHeight: "82vh", borderRadius: 14, boxShadow: "0 24px 60px rgba(0,0,0,0.5)", display: "block" }} />
+        <motion.button
+          whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.9 }}
+          onClick={() => { onDelete(); onClose(); }}
+          title="Delete this photo"
+          style={{ position: "absolute", bottom: 10, left: 10, background: "rgba(192,57,43,0.85)", border: "none", borderRadius: 8, padding: 8, color: "#fff", cursor: "pointer", display: "flex" }}
+        ><Trash2 size={15} /></motion.button>
+      </motion.div>
+      <motion.div
+        whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose}
+        style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,0.15)", borderRadius: 8, padding: 8, color: "#fff", cursor: "pointer", display: "flex" }}
+      ><X size={16} /></motion.div>
+    </motion.div>
+  );
+}
+
+/* First-time-use popup: name + avatar upload, glassmorphism entrance. */
+function LifeStoryProfileSetup({ onSave }) {
+  const [name, setName] = useState("");
+  const [image, setImage] = useState("");
+  const fileRef = useRef(null);
+  const pickImage = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    resizeImageDataUrl(file, 360, 0.8).then(setImage).catch(() => alert("Couldn't read that image, try another one."));
+    e.target.value = "";
+  };
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{ position: "absolute", inset: 0, zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(20,19,17,0.45)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", borderRadius: 10 }}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.85, y: 24 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 12 }}
+        transition={{ type: "spring", stiffness: 260, damping: 24 }}
+        style={{
+          width: 320, background: "rgba(255,255,255,0.75)", backdropFilter: "blur(24px) saturate(190%)", WebkitBackdropFilter: "blur(24px) saturate(190%)",
+          border: "1px solid rgba(255,255,255,0.85)", borderRadius: 20, boxShadow: "0 30px 70px rgba(37,36,34,0.35)", padding: 24, textAlign: "center",
+        }}
+      >
+        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.1, type: "spring", stiffness: 300 }} style={{ fontSize: 30, marginBottom: 4 }}>📖</motion.div>
+        <div style={{ fontSize: 16, fontWeight: 900, color: C.dark }}>Start your Life Story</div>
+        <div style={{ fontSize: 10.5, color: "#8a8579", marginTop: 3, marginBottom: 16 }}>A little profile before your first entry — you can change this later.</div>
+
+        <motion.div
+          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => fileRef.current?.click()}
+          style={{
+            width: 84, height: 84, borderRadius: "50%", margin: "0 auto 14px", cursor: "pointer", position: "relative",
+            background: image ? `url(${image}) center/cover` : "rgba(255,255,255,0.6)",
+            border: `2px dashed ${image ? "transparent" : C.text}`, display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          {!image && <User size={26} color="#a39c86" />}
+          <div style={{ position: "absolute", bottom: -2, right: -2, background: C.dark, borderRadius: "50%", padding: 6, display: "flex", boxShadow: "0 3px 8px rgba(0,0,0,0.3)" }}>
+            <Camera size={12} color="#fff" />
+          </div>
+        </motion.div>
+        <input ref={fileRef} type="file" accept="image/*" onChange={pickImage} style={{ display: "none" }} />
+
+        <input
+          value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name"
+          style={{ width: "100%", boxSizing: "border-box", fontSize: 13, padding: "10px 12px", borderRadius: 10, border: "1px solid #ddd6c4", background: "rgba(255,255,255,0.8)", outline: "none", marginBottom: 14, textAlign: "center", fontWeight: 700, color: C.dark }}
+        />
+
+        <motion.button
+          whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }}
+          disabled={!name.trim()}
+          onClick={() => onSave({ name: name.trim(), image })}
+          style={{
+            width: "100%", border: "none", borderRadius: 12, padding: "11px 0", fontSize: 13, fontWeight: 900,
+            background: name.trim() ? C.dark : "#cfc9b8", color: "#fff", cursor: name.trim() ? "pointer" : "not-allowed",
+          }}
+        >Start Writing →</motion.button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function formatStoryDate(iso) {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString(undefined, { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+}
+
+/* One day's block in the feed: date pill + card. Only the entry for
+   `isToday` is editable — everything before it is a settled, read-only
+   page of the journal. */
+function LifeStoryDayBlock({ iso, entry, isToday, onChangeText, onAddImage, onRemoveImage, blockRef }) {
+  const [mention, setMention] = useState(null); // { top, left } | null
+  const fileRef = useRef(null);
+  const taRef = useRef(null);
+  const [lightbox, setLightbox] = useState(null); // index into images
+  const images = entry?.images || [];
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+    onChangeText(val);
+    if (val[e.target.selectionStart - 1] === "@") {
+      const coords = getCaretCoordinates(e.target);
+      setMention({ top: coords.top + 22, left: coords.left });
+    } else if (mention) {
+      setMention(null);
+    }
+  };
+  const removeTrailingAt = (val) => {
+    const ta = taRef.current;
+    if (!ta) return val;
+    const pos = ta.selectionStart;
+    if (val[pos - 1] === "@") return val.slice(0, pos - 1) + val.slice(pos);
+    return val;
+  };
+  const pickEmoji = (em) => {
+    const cleaned = removeTrailingAt(entry?.text || "");
+    onChangeText(cleaned + em + " ");
+    setMention(null);
+    taRef.current?.focus();
+  };
+  const openAddPhoto = () => { setMention(null); fileRef.current?.click(); };
+  const onFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    onChangeText(removeTrailingAt(entry?.text || ""));
+    onAddImage(file);
+  };
+
+  return (
+    <div ref={blockRef} style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+        <span style={{
+          display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 800, color: isToday ? "#fff" : C.dark,
+          background: isToday ? C.accent : "rgba(255,255,255,0.75)", border: `1px solid ${isToday ? C.accent : "#ece7d8"}`,
+          borderRadius: 999, padding: "5px 14px", boxShadow: isToday ? "0 4px 14px rgba(252,163,17,0.35)" : "none",
+        }}>
+          <CalendarDays size={11} /> {formatStoryDate(iso)} {isToday && "· Today"}
+        </span>
+      </div>
+
+      <div style={{
+        position: "relative", background: "rgba(255,255,255,0.6)", border: "1px solid #ece7d8", borderRadius: 16, padding: 14,
+      }}>
+        {isToday ? (
+          <textarea
+            ref={taRef}
+            value={entry?.text || ""}
+            onChange={handleChange}
+            placeholder="Write today's story... type @ for emoji & photos"
+            rows={4}
+            style={{ width: "100%", boxSizing: "border-box", border: "none", background: "transparent", outline: "none", resize: "vertical", fontSize: 13, lineHeight: 1.6, color: C.text, fontFamily: "inherit" }}
+          />
+        ) : (
+          <div style={{ fontSize: 13, lineHeight: 1.6, color: C.text, whiteSpace: "pre-wrap" }}>
+            {entry?.text || <span style={{ color: "#c9c4b3", fontStyle: "italic" }}>No story written this day.</span>}
+          </div>
+        )}
+
+        <AnimatePresence>
+          {mention && (
+            <LifeStoryMentionPopover pos={mention} onPickEmoji={pickEmoji} onAddPhoto={openAddPhoto} onClose={() => setMention(null)} />
+          )}
+        </AnimatePresence>
+        <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
+
+        {images.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+            {images.map((src, i) => (
+              <motion.div key={i} whileHover="hover" initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
+                style={{ position: "relative", width: 78, height: 78, borderRadius: 10, overflow: "hidden", cursor: "pointer" }}
+                onClick={() => setLightbox(i)}
+              >
+                <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                <motion.div
+                  variants={{ hover: { opacity: 1 }, initial: { opacity: 0 } }} initial="initial"
+                  style={{ position: "absolute", inset: 0, background: "rgba(20,19,17,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}
+                >
+                  <motion.div variants={{ hover: { scale: 1 }, initial: { scale: 0.6 } }} style={{ background: "rgba(255,255,255,0.9)", borderRadius: "50%", padding: 7, display: "flex" }}>
+                    <Camera size={13} color={C.dark} />
+                  </motion.div>
+                </motion.div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        {isToday && (
+          <motion.button
+            whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
+            onClick={() => fileRef.current?.click()}
+            style={{ marginTop: 10, border: "1px dashed #ddd6c4", background: "transparent", borderRadius: 8, padding: "5px 10px", fontSize: 10, fontWeight: 800, color: "#a39c86", cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}
+          ><Camera size={12} /> Add photo</motion.button>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {lightbox !== null && (
+          <LifeStoryLightbox src={images[lightbox]} onClose={() => setLightbox(null)} onDelete={() => onRemoveImage(lightbox)} />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function LifeStoryTab({ state, update, onClose }) {
+  const story = state.lifeStory || { profile: null, entries: {} };
+  const entries = story.entries || {};
+  const today = todayISO();
+  const [jumpOpen, setJumpOpen] = useState(false);
+  const feedRef = useRef(null);
+  const blockRefs = useRef({});
+
+  const dates = useMemo(() => {
+    const keys = new Set(Object.keys(entries));
+    keys.add(today);
+    return [...keys].sort(); // ascending — oldest at top, today at bottom
+  }, [entries, today]);
+
+  useEffect(() => {
+    // land on today's entry when the tab opens, like a chat scrolled to latest
+    requestAnimationFrame(() => { feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight }); });
+  }, []);
+
+  const setProfile = (profile) => update((s) => ({ ...s, lifeStory: { profile, entries: s.lifeStory?.entries || {} } }));
+  const setEntryText = (iso) => (text) => update((s) => ({
+    ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...(s.lifeStory?.entries?.[iso] || {}), text } } },
+  }));
+  const addImage = (iso) => (file) => {
+    if (!file.type?.startsWith("image/")) { alert("Please pick an image file."); return; }
+    resizeImageDataUrl(file, 640, 0.75).then((dataUrl) => {
+      update((s) => {
+        const cur = s.lifeStory?.entries?.[iso] || {};
+        const images = [...(cur.images || []), dataUrl].slice(-20);
+        return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images } } } };
+      });
+    }).catch(() => alert("Couldn't read that image, try another one."));
+  };
+  const removeImage = (iso) => (idx) => update((s) => {
+    const cur = s.lifeStory?.entries?.[iso] || {};
+    const images = (cur.images || []).filter((_, i) => i !== idx);
+    return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images } } } };
+  });
+
+  const jumpTo = (iso) => {
+    setJumpOpen(false);
+    blockRefs.current[iso]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  return (
+    <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 6 }}>
+        <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
+          <ArrowLeft size={15} color={C.dark} />
+        </motion.div>
+        <Pencil size={14} color={C.dark} />
+        <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Life Story</span>
+
+        <div style={{ flex: 1 }} />
+
+        <div style={{ position: "relative" }}>
+          <motion.button
+            whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }} onClick={() => setJumpOpen((v) => !v)}
+            style={{ border: `1px solid ${C.text}`, borderRadius: 999, padding: "5px 11px", background: "#fff", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: C.dark }}
+          ><Filter size={12} /> filters</motion.button>
+          <AnimatePresence>
+            {jumpOpen && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: -6 }}
+                transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                style={{
+                  position: "absolute", top: "115%", right: 0, width: 190, maxHeight: 240, overflowY: "auto", zIndex: 50,
+                  background: "rgba(255,255,255,0.85)", backdropFilter: "blur(20px) saturate(180%)", WebkitBackdropFilter: "blur(20px) saturate(180%)",
+                  border: "1px solid rgba(255,255,255,0.85)", borderRadius: 12, boxShadow: "0 16px 40px rgba(37,36,34,0.25)", padding: 6,
+                }}
+              >
+                <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", padding: "4px 6px" }}>JUMP TO DATE</div>
+                {[...dates].reverse().map((iso) => (
+                  <div key={iso} onClick={() => jumpTo(iso)}
+                    style={{ fontSize: 10.5, fontWeight: 700, color: C.dark, padding: "6px 8px", borderRadius: 8, cursor: "pointer" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.05)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >{iso === today ? "Today" : formatStoryDate(iso)}</div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {story.profile && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 26, height: 26, borderRadius: "50%", background: story.profile.image ? `url(${story.profile.image}) center/cover` : C.dark, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 800 }}>
+              {!story.profile.image && story.profile.name?.[0]?.toUpperCase()}
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>{story.profile.name}</span>
+          </div>
+        )}
+        <motion.div whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: C.dark }}>
+          <X size={16} />
+        </motion.div>
+      </div>
+
+      <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: 16, background: "linear-gradient(180deg, #fbf9f2, #f5f2e8)" }}>
+        <div style={{ maxWidth: 620, margin: "0 auto" }}>
+          {dates.map((iso) => (
+            <LifeStoryDayBlock
+              key={iso} iso={iso} entry={entries[iso]} isToday={iso === today}
+              onChangeText={setEntryText(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
+              blockRef={(el) => { blockRefs.current[iso] = el; }}
+            />
+          ))}
+        </div>
+      </div>
+
+      <AnimatePresence>{!story.profile && <LifeStoryProfileSetup onSave={setProfile} />}</AnimatePresence>
+    </div>
+  );
+}
+
 function BTLDashboardInner() {
   const { user: fbUser } = useAuth();
   const [state, setState] = useState(null);
@@ -5575,8 +6015,21 @@ function BTLDashboardInner() {
 
   useEffect(() => {
     if (!fbUser) return;
-    loadState(fbUser).then((s) => { setState(s); loaded.current = true; });
+    loadState(fbUser).then((s) => { setState(rolloverDailyGoals(s)); loaded.current = true; });
   }, [fbUser]);
+
+  // Bug fix: goals ticked "kal" (yesterday) were staying ticked forever —
+  // Daily/Extry Goals are meant to be filled fresh every day. This checks
+  // once per minute (cheap, no-op most of the time) whether the calendar
+  // date has rolled over since the state was last touched, and if so
+  // unchecks every Daily/Extry goal for the new day without touching
+  // streak, completionHistory, or anything already logged for past days.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setState((s) => (s ? rolloverDailyGoals(s) : s));
+    }, 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!state || !loaded.current || !fbUser) return;
@@ -5931,6 +6384,10 @@ function BTLDashboardInner() {
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <MoneyManagementTab state={state} onClose={() => setTab("analytics")} onResetData={resetMoneyData} />
         </div>
+      ) : tab === "lifeStory" ? (
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <LifeStoryTab state={state} update={update} onClose={() => setTab("dashboard")} />
+        </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {/* ---------- HEADER ---------- */}
@@ -5940,6 +6397,7 @@ function BTLDashboardInner() {
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Total Earn Money life :- ₹{state.totalEarnLife.toFixed(0)}</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed", borderColor: "#c0392b", color: "#c0392b" }}>Total Spend Money life :- ₹{(state.totalSpendLife || 0).toFixed(0)}</Oval>
             <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={11} style={{ marginRight: 4 }} />memor</Oval>
+            <Oval className="btl-oval-btn" onClick={() => setTab("lifeStory")} style={{ cursor: "pointer", background: "#b083f0", borderColor: "#b083f0", color: "#fff" }}><Pencil size={11} style={{ marginRight: 4 }} />life story</Oval>
             <motion.button
               onClick={() => setFocusMode((v) => !v)} title="Hide everything except today's incomplete goals"
               whileHover={{ y: -2 }} whileTap={{ scale: 1.07 }} transition={{ type: "spring", stiffness: 420, damping: 22 }}
