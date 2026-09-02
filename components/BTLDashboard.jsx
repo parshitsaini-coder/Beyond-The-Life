@@ -965,7 +965,7 @@ function TextList({ title, items, textStyle, cardBg }) {
           </div>
         )}
         {items.map((t, i) => (
-          <div key={i} style={{
+          <div key={i} className="btl-goal-row" style={{
             display: "flex", alignItems: "center",
             padding: "8px 10px", borderBottom: i < items.length - 1 ? "1px solid #f0ece0" : "none",
             fontSize: itemFontSize, fontWeight: itemWeight, color: itemColor, fontFamily: itemFontFamily,
@@ -1032,7 +1032,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
           const isOpen = openId === g.id;
           const subDone = (g.subtasks || []).filter((s) => s.done).length;
           return (
-            <div key={g.id} style={{ borderBottom: "1px solid #f0ece0", borderLeft: `3px solid ${cat.color}` }}>
+            <div key={g.id} className="btl-goal-row" style={{ borderBottom: "1px solid #f0ece0", borderLeft: `3px solid ${cat.color}` }}>
               <div style={{
                 display: "flex", alignItems: "center", gap: 6, padding: "6px 4px 6px 6px",
                 textDecoration: g.done ? "line-through" : "none", color: g.done ? "#a39c86" : C.text,
@@ -4065,7 +4065,8 @@ function CalendarDayCell({ day, iso, pct, isToday, isPast, index, fontSize, font
       initial={{ opacity: 0, scale: 0.5 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay: Math.min(index * 0.012, 0.3), type: "spring", stiffness: 420, damping: 24 }}
-      whileHover={{ scale: 1.14, zIndex: 1 }}
+      whileHover={{ scale: 1.14, zIndex: 1, boxShadow: `0 0 0 1.5px ${C.dark}, 0 4px 12px rgba(252,163,17,0.45)` }}
+      whileTap={{ scale: 0.94 }}
       style={{
         position: "relative", aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center",
         borderRadius: 7, fontSize, fontWeight, fontFamily,
@@ -4422,12 +4423,21 @@ function ResizableWidgetTile({ id, index, size, editable, gridRef, onResize, onD
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
   };
 
+  const handleCardMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty("--mx", `${e.clientX - rect.left}px`);
+    e.currentTarget.style.setProperty("--my", `${e.clientY - rect.top}px`);
+  };
+
   return (
     <motion.div
       layout
       data-widget-id={id}
+      className="btl-widget-card"
+      onMouseMove={handleCardMouseMove}
       initial={{ opacity: 0, y: 14, scaleY: 0.94 }}
       animate={{ opacity: 1, y: 0, scaleY: 1 }}
+      whileHover={interacting ? undefined : { scale: 1.012, boxShadow: "0 16px 34px rgba(37,36,34,0.18)", transition: { duration: 0.18, ease: [0.22, 1, 0.36, 1] } }}
       transition={interacting ? { duration: 0 } : { duration: 0.4, delay: Math.min(index, 6) * 0.05, ease: [0.22, 1, 0.36, 1] }}
       style={{
         gridColumn: `span ${effective.w}`, gridRow: `span ${rowSpanForHeight(effective.h)}`, height: effective.h,
@@ -7225,6 +7235,20 @@ function BTLDashboardInner() {
         .life-story-editable:empty:before { content: attr(data-placeholder); color: #c9c4b3; font-style: italic; }
         .life-story-editable [data-story-chip] { transition: transform 120ms ease; }
         .life-story-editable [data-story-chip]:hover { transform: scale(1.25); }
+        /* ---- widget-card cursor spotlight — a soft glow that follows the
+           mouse across each dashboard card (Life Goals, Calendar, Daily/
+           Extry Goals, etc), on top of the lift + shadow from whileHover. */
+        .btl-widget-card { position: relative; }
+        .btl-widget-card::before {
+          content: ""; position: absolute; inset: 0; border-radius: 8px; z-index: 6; pointer-events: none;
+          background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%), rgba(252,163,17,0.16), transparent 68%);
+          opacity: 0; transition: opacity 260ms ease;
+        }
+        .btl-widget-card:hover::before { opacity: 1; }
+        /* ---- goal / list row hover — used by Life Big Goals, Life Rules,
+           Daily Goals and Extry Goals rows for a subtle "alive" nudge. */
+        .btl-goal-row { transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease; }
+        .btl-goal-row:hover { background: rgba(252,163,17,0.09); transform: translateX(3px); }
         @keyframes btlShineLeft {
           0% { transform: translateX(-100%); opacity: 0; }
           15% { opacity: 1; }
