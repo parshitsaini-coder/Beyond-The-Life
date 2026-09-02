@@ -1,27 +1,28 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Life Story — hide/restore with a Genie effect (this update)
+## Life Story — hide today's entry with a macOS "genie" effect (this update)
 
-A small round button now sits right next to the "Life Story" title in the
-header — click it to **hide** the whole story body (the date badge +
-every day's card), and click again to **bring it back**, both times with
-an Apple-style **macOS Dock "Genie" minimize** animation:
+A small **hide / show** toggle now sits right next to the "Life Story"
+title in the header. Tap it and today's writing box gets sucked away
+into that button with a macOS-dock-style **genie** minimize animation
+— tap again and it unfurls back out from the same spot.
 
-- **Hiding**: the content stretches slightly, skews, and squeezes down —
-  shrinking and warping as it gets sucked toward the button, just like a
-  window folding into the Dock — then fades out.
-- **Restoring**: the reverse — it unfurls back out from that same button
-  position up to full size.
-- The target point is **measured live** from the button's real on-screen
-  position (`getBoundingClientRect`) every time you hide it, so the
-  squeeze always aims exactly at the button, not a guessed corner.
-- Icon on the button swaps between a "minimize" and "maximize" glyph so
-  it's always clear which action tapping it will do next.
-- Built entirely with `framer-motion`'s keyframe `animate`/`exit` arrays
-  (scale, skew, position, and border-radius all animated together on a
-  custom easing curve) — a lightweight CSS-transform approximation of the
-  real genie warp, not a full mesh-deform, so no canvas/WebGL and no new
-  npm installs required.
+- Only **today's** box is affected — past entries stay exactly as they are.
+- While hidden, a small dashed "Today's entry is hidden — tap to bring
+  it back" pill sits in its place, so it's obvious it's just tucked
+  away, not deleted.
+- Built with an SVG `feTurbulence` + `feDisplacementMap` ripple filter
+  (triggered via SMIL `beginElement()`) for the liquid "neck" warp,
+  layered under `framer-motion`'s imperative `animate()` (already a
+  project dependency) driving the bulge-then-pinch scale/translate
+  toward the button. No new npm installs required.
+- Note: the reference you linked (`alexwidua/genie`) is a Swift +
+  Metal shader built for native iOS/macOS apps — it can't run inside a
+  Next.js/React web page, so this recreates the same visual result
+  using web-native primitives instead of porting that code directly.
+- Nothing is saved to Firestore for this — it's a per-session UI
+  toggle, so today's box shows again by default next time you open
+  the app.
 
 ## Life Story — animated shimmer border (earlier update)
 

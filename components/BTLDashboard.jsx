@@ -4,14 +4,14 @@ import {
   Settings, X, Plus, Smile, Meh, Frown, Image as ImageIcon,
   LogOut, Trash2, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Flame, Target, BookOpen,
   Repeat, RotateCcw, BarChart3, TrendingUp, TrendingDown, Award, Tag, Pencil,
-  GripVertical, Pin, PinOff, LayoutGrid, RefreshCw, Maximize2, Minimize2, Move,
+  GripVertical, Pin, PinOff, LayoutGrid, RefreshCw, Maximize2, Move,
   CheckCircle2, Wallet, StickyNote, Camera, Sparkles, Download, ZoomIn, CalendarDays,
   ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft,
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
   Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
-import { motion, AnimatePresence, Reorder } from "framer-motion";
+import { motion, AnimatePresence, Reorder, animate } from "framer-motion";
 import { useAuth, signOutUser, signInWithGoogle } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
 
@@ -6227,6 +6227,146 @@ function LifeStoryThemeSettings({ theme, onChange, onClose }) {
   );
 }
 
+/* ---------------- GENIE HIDE/SHOW EFFECT ----------------
+   Hides/restores today's Life Story box with a macOS-dock-style
+   "genie" animation — the box gets sucked into (and re-emerges from)
+   the header's toggle button.
+
+   Note: alexwidua/genie is a Swift + Metal shader built for iOS/macOS
+   native apps, so it can't run inside a Next.js/React web page. This
+   recreates the same *look* using only web primitives already safe
+   for this stack:
+     - an SVG <feTurbulence> + <feDisplacementMap> filter (classic
+       "liquid ripple" trick), triggered via SMIL beginElement() so it
+       fires exactly when the animation starts, and
+     - framer-motion's imperative `animate()` (already a project
+       dependency — no new npm installs) driving the squeeze/scale/
+       translate toward the button, with a bulge-then-pinch curve so
+       it reads as an elastic "neck" instead of a flat scale-down.
+   Works in Chrome, Firefox and Safari. */
+function GenieFilterDefs() {
+  return (
+    <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
+      <defs>
+        <filter id="ls-genie-warp" x="-60%" y="-60%" width="220%" height="220%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.0001 0.01" numOctaves="1" seed="6" result="ls-genie-noise">
+            <animate id="ls-genie-turb-anim" attributeName="baseFrequency" begin="indefinite" fill="freeze" dur="0.62s" values="0.0001 0.01;0.0001 0.16;0.0001 0.02" />
+          </feTurbulence>
+          <feDisplacementMap in="SourceGraphic" in2="ls-genie-noise" scale="0" xChannelSelector="R" yChannelSelector="G">
+            <animate id="ls-genie-disp-anim" attributeName="scale" begin="indefinite" fill="freeze" dur="0.62s" values="0;70;0" />
+          </feDisplacementMap>
+        </filter>
+      </defs>
+    </svg>
+  );
+}
+
+function GenieHidable({ hidden, onHiddenChange, toggleRef, children, placeholderLabel }) {
+  const wrapRef = useRef(null);
+  const [phase, setPhase] = useState("idle"); // idle | animating
+  const prevHiddenRef = useRef(hidden);
+
+  const measureAndAnimate = (dir) => {
+    const el = wrapRef.current;
+    const btn = toggleRef.current;
+    if (!el || !btn) { if (dir === "hide") onHiddenChange(true); setPhase("idle"); return; }
+
+    const elRect = el.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+    // Anchor the shrink/grow point to wherever the button actually sits
+    // above the card, so the "neck" always points the right way.
+    const originXPct = Math.min(100, Math.max(0, ((btnRect.left + btnRect.width / 2) - elRect.left) / Math.max(1, elRect.width) * 100));
+    const dx = (btnRect.left + btnRect.width / 2) - (elRect.left + elRect.width / 2);
+    const dy = (btnRect.top + btnRect.height / 2) - elRect.top;
+
+    el.style.transformOrigin = `${originXPct}% 0%`;
+    el.style.filter = "url(#ls-genie-warp)";
+    try {
+      document.getElementById("ls-genie-turb-anim")?.beginElement();
+      document.getElementById("ls-genie-disp-anim")?.beginElement();
+    } catch (e) { /* SMIL restart can throw on rapid re-clicks in some engines; the transform animation still plays fine without it */ }
+
+    if (dir === "hide") {
+      animate(el, {
+        x: [0, dx * 0.45, dx],
+        y: [0, dy * 0.55, dy],
+        scaleX: [1, 1.18, 0.035],
+        scaleY: [1, 0.72, 0.05],
+        opacity: [1, 1, 0],
+      }, {
+        duration: 0.62, times: [0, 0.42, 1], ease: "easeInOut",
+        onComplete: () => {
+          el.style.filter = ""; el.style.transform = ""; el.style.opacity = "";
+          onHiddenChange(true);
+          setPhase("idle");
+        },
+      });
+    } else {
+      // Start pinned/collapsed at the button, then unfurl outward —
+      // the mirror image of the hide animation.
+      el.style.transform = `translate(${dx}px, ${dy}px) scale(0.035, 0.05)`;
+      el.style.opacity = "0";
+      requestAnimationFrame(() => {
+        animate(el, {
+          x: [dx, dx * 0.45, 0],
+          y: [dy, dy * 0.55, 0],
+          scaleX: [0.035, 1.18, 1],
+          scaleY: [0.05, 0.72, 1],
+          opacity: [0, 1, 1],
+        }, {
+          duration: 0.62, times: [0, 0.58, 1], ease: "easeOut",
+          onComplete: () => {
+            el.style.filter = ""; el.style.transform = ""; el.style.opacity = "";
+            setPhase("idle");
+          },
+        });
+      });
+    }
+  };
+
+  const handleToggleClick = () => {
+    if (phase === "animating") return;
+    setPhase("animating");
+    if (!hidden) measureAndAnimate("hide");
+    else onHiddenChange(false); // mounts the real box again; entrance plays in the effect below
+  };
+
+  useEffect(() => {
+    if (prevHiddenRef.current === true && hidden === false && phase === "animating") {
+      // Box just remounted for a "show" — wait a couple frames so layout
+      // is settled, then play the emerge animation from the button.
+      requestAnimationFrame(() => requestAnimationFrame(() => measureAndAnimate("show")));
+    }
+    prevHiddenRef.current = hidden;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hidden]);
+
+  // Exposes the toggle to the header button, which lives outside this
+  // component (and doubles as the genie's target point).
+  useEffect(() => {
+    if (toggleRef.current) toggleRef.current.__genieToggle = handleToggleClick;
+  });
+
+  if (hidden) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+        onClick={handleToggleClick}
+        whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer",
+          border: `1px dashed ${C.accent}`, borderRadius: 14, padding: "10px 14px", marginBottom: 20,
+          background: "rgba(252,163,17,0.08)", color: C.accent, fontSize: 11, fontWeight: 800,
+        }}
+      >
+        <Sparkles size={12} /> {placeholderLabel} — tap to bring it back
+      </motion.div>
+    );
+  }
+
+  return <div ref={wrapRef}>{children}</div>;
+}
+
 function LifeStoryTab({ state, update, onClose }) {
   const story = state.lifeStory || { profile: null, entries: {} };
   const entries = story.entries || {};
@@ -6234,40 +6374,10 @@ function LifeStoryTab({ state, update, onClose }) {
   const today = todayISO();
   const [jumpOpen, setJumpOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [todayHidden, setTodayHidden] = useState(false);
   const feedRef = useRef(null);
   const blockRefs = useRef({});
-
-  // Genie effect (macOS Dock-minimize style) for hiding/restoring the whole
-  // story body. minimizeBtnRef is the "dock icon" the content visually gets
-  // sucked into / unfurls back out of — target offset is measured live from
-  // its on-screen position so the effect always aims at the real button.
-  const [minimized, setMinimized] = useState(false);
-  const [genieTarget, setGenieTarget] = useState({ x: -160, y: -120 });
-  const minimizeBtnRef = useRef(null);
-  const genieBodyRef = useRef(null);
-
-  const computeGenieTarget = () => {
-    if (!minimizeBtnRef.current || !genieBodyRef.current) return;
-    const btn = minimizeBtnRef.current.getBoundingClientRect();
-    const body = genieBodyRef.current.getBoundingClientRect();
-    setGenieTarget({
-      x: (btn.left + btn.width / 2) - (body.left + body.width / 2),
-      y: (btn.top + btn.height / 2) - (body.top + body.height / 2),
-    });
-  };
-
-  const toggleMinimized = () => {
-    if (!minimized) computeGenieTarget(); // measure before it hides
-    setMinimized((v) => !v);
-    setJumpOpen(false);
-    setThemeOpen(false);
-  };
-
-  useEffect(() => {
-    if (!minimized) {
-      requestAnimationFrame(() => { feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight }); });
-    }
-  }, [minimized]);
+  const hideToggleRef = useRef(null);
 
   const dates = useMemo(() => {
     const keys = new Set(Object.keys(entries));
@@ -6323,16 +6433,16 @@ function LifeStoryTab({ state, update, onClose }) {
         <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Life Story</span>
 
         <motion.button
-          ref={minimizeBtnRef}
-          whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.9 }} onClick={toggleMinimized}
-          title={minimized ? "Restore Life Story" : "Hide Life Story"}
+          ref={hideToggleRef}
+          whileHover={{ y: -1 }} whileTap={{ scale: 0.9 }}
+          onClick={() => hideToggleRef.current?.__genieToggle?.()}
+          title={todayHidden ? "Show today's entry" : "Hide today's entry"}
           style={{
-            display: "flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%",
-            border: `1px solid ${minimized ? C.accent : "#ece7d8"}`, background: minimized ? C.accent : "#fff",
-            color: minimized ? "#fff" : C.dark, cursor: "pointer",
+            border: `1px solid ${todayHidden ? C.accent : C.text}`, borderRadius: 999, padding: "4px 9px", background: todayHidden ? "#fff7ea" : "#fff",
+            display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, fontWeight: 800, color: todayHidden ? C.accent : C.dark,
           }}
         >
-          {minimized ? <Maximize2 size={11} /> : <Minimize2 size={11} />}
+          {todayHidden ? <EyeOff size={11} /> : <Eye size={11} />} {todayHidden ? "show" : "hide"}
         </motion.button>
 
         <div style={{ flex: 1 }} />
@@ -6391,34 +6501,25 @@ function LifeStoryTab({ state, update, onClose }) {
         </motion.div>
       </div>
 
-      <AnimatePresence>
-        {!minimized && (
-          <motion.div
-            key="story-body" ref={genieBodyRef}
-            style={{ flex: 1, overflow: "hidden", transformOrigin: "top left" }}
-            initial={{ opacity: 0, scale: 0.05, x: genieTarget.x, y: genieTarget.y, skewX: 10, skewY: -6, borderRadius: 100 }}
-            animate={{ opacity: 1, scale: 1, x: 0, y: 0, skewX: 0, skewY: 0, borderRadius: 0 }}
-            exit={{
-              opacity: [1, 1, 0], scale: [1, 0.5, 0.04],
-              x: [0, genieTarget.x * 0.35, genieTarget.x], y: [0, genieTarget.y * 0.4, genieTarget.y],
-              skewX: [0, -12, 0], skewY: [0, 8, 0], borderRadius: [0, 60, 100],
-            }}
-            transition={{ duration: 0.55, ease: [0.65, 0, 0.35, 1], times: [0, 0.55, 1] }}
-          >
-            <div ref={feedRef} style={{ height: "100%", overflowY: "auto", padding: 16, background: theme.bgColor }}>
-              <div style={{ maxWidth: 620, margin: "0 auto" }}>
-                {dates.map((iso) => (
-                  <LifeStoryDayBlock
-                    key={iso} iso={iso} entry={entries[iso]} isToday={iso === today} theme={theme}
-                    onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
-                    blockRef={(el) => { blockRefs.current[iso] = el; }}
-                  />
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <GenieFilterDefs />
+      <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: 16, background: theme.bgColor }}>
+        <div style={{ maxWidth: 620, margin: "0 auto" }}>
+          {dates.map((iso) => {
+            const block = (
+              <LifeStoryDayBlock
+                key={iso} iso={iso} entry={entries[iso]} isToday={iso === today} theme={theme}
+                onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
+                blockRef={(el) => { blockRefs.current[iso] = el; }}
+              />
+            );
+            return iso === today ? (
+              <GenieHidable key="today-genie" hidden={todayHidden} onHiddenChange={setTodayHidden} toggleRef={hideToggleRef} placeholderLabel="Today's entry is hidden">
+                {block}
+              </GenieHidable>
+            ) : block;
+          })}
+        </div>
+      </div>
 
       <AnimatePresence>{!story.profile && <LifeStoryProfileSetup onSave={setProfile} />}</AnimatePresence>
     </div>
