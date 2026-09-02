@@ -9,7 +9,7 @@ import {
   ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft,
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
   Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn,
-  Users,
+  Users, Clock,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -363,7 +363,8 @@ const DEFAULT_LAYOUT = {
   order: WIDGETS.map((w) => w.id),
   sizes: {
     bigGoals: { w: 3, h: 172 }, lifeRules: { w: 3, h: 172 }, dailyGoals: { w: 3, h: 215 }, extryGoals: { w: 3, h: 215 },
-    timeTable: { w: 3, h: 320 }, earnMoney: { w: 3, h: 240 }, analyticsSummary: { w: 6, h: 260 }, calendar: { w: 3, h: 300 },
+    timeTable: { w: 3, h: 260 },
+    earnMoney: { w: 3, h: 240 }, analyticsSummary: { w: 6, h: 260 }, calendar: { w: 3, h: 300 },
   },
   pinned: { analyticsSummary: false },
   hidden: {},
@@ -466,55 +467,42 @@ function ensureGoalDefaults(g) {
     recurring: g.recurring !== undefined ? g.recurring : true,
     subtasks: g.subtasks || [],
     icon: g.icon || "",
-    // "HH:MM" 24h string (from <input type="time">) — only used by the
-    // Time Table widget, harmless/unused on every other goal list.
-    time: typeof g.time === "string" ? g.time : "",
   };
 }
-/* Sorted-by-time view for the Time Table widget — items with no time
-   set sink to the bottom so a half-filled schedule still reads clean. */
-function sortByTime(items) {
-  return [...(items || [])].sort((a, b) => {
-    if (!a.time && !b.time) return 0;
-    if (!a.time) return 1;
-    if (!b.time) return -1;
-    return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
-  });
-}
-function formatTime12(t) {
-  if (!t || typeof t !== "string" || !t.includes(":")) return "";
-  const [hStr, mStr] = t.split(":");
-  let h = parseInt(hStr, 10);
-  const ampm = h >= 12 ? "PM" : "AM";
-  h = h % 12; if (h === 0) h = 12;
-  return `${h}:${mStr} ${ampm}`;
-}
-function minutesSinceMidnight(t) {
-  if (!t || !t.includes(":")) return null;
-  const [h, m] = t.split(":").map((n) => parseInt(n, 10));
-  if (Number.isNaN(h) || Number.isNaN(m)) return null;
-  return h * 60 + m;
+
+/* ---------------- TIME TABLE: item shape ----------------
+   Simple time-of-day checklist rows: { time: "HH:MM" (24h, sorts and
+   compares as plain strings), text, done, icon }. Kept deliberately
+   lighter than GoalChecklist's item (no category/priority/subtasks) —
+   this widget's whole point is "what happens at what time", not goal
+   tracking. */
+function ensureTimeItemDefaults(t) {
+  return {
+    id: t.id,
+    time: typeof t.time === "string" && /^\d{2}:\d{2}$/.test(t.time) ? t.time : "09:00",
+    text: t.text || "",
+    done: !!t.done,
+    icon: t.icon || "",
+  };
 }
 
 function makeDefaultState() {
   const mk = (arr) => arr.map((t, i) => ensureGoalDefaults({ id: `${Date.now()}-${i}-${Math.random()}`, text: t, done: false }));
-  const mkTimeTable = (arr) => arr.map(([time, t], i) => ensureGoalDefaults({ id: `${Date.now()}-tt-${i}-${Math.random()}`, text: t, time, done: false }));
+  const mkTime = (arr) => arr.map((t, i) => ensureTimeItemDefaults({ id: `${Date.now()}-tt-${i}-${Math.random()}`, time: t.time, text: t.text, done: false }));
   return {
     user: null,
     bigGoals: ["Become financially free", "Build a strong, healthy body", "Travel to 20 countries"],
     lifeRules: ["Wake up at 5 AM", "No phone before 9 AM", "Read 20 pages every day"],
     dailyGoals: mk(["Workout", "Meditate 10 min", "Read", "Drink 3L water", "Plan tomorrow", "No junk food", "Sleep by 11 PM", "Gratitude note"]),
     extryGoals: mk(["Learn something new", "Message a friend", "Save ₹100", "Fix one small thing", "Say no to a distraction", "Tidy workspace", "Review budget", "Reply pending messages"]),
-    timeTable: mkTimeTable([
-      ["05:00", "Wake up & morning routine"],
-      ["05:30", "Workout / exercise"],
-      ["07:00", "Breakfast"],
-      ["08:00", "Study / focused work"],
-      ["13:00", "Lunch break"],
-      ["14:00", "Deep work block"],
-      ["19:00", "Dinner"],
-      ["20:30", "Revision / reading"],
-      ["23:00", "Sleep"],
+    timeTable: mkTime([
+      { time: "05:00", text: "Wake up" },
+      { time: "05:30", text: "Workout" },
+      { time: "07:00", text: "Breakfast" },
+      { time: "09:00", text: "Deep work" },
+      { time: "13:00", text: "Lunch" },
+      { time: "18:00", text: "Read 20 pages" },
+      { time: "22:30", text: "Sleep" },
     ]),
     notes: "",
     earnToday: "",
@@ -570,6 +558,7 @@ function resizeImageDataUrl(file, maxDim = 480, quality = 0.72) {
    had to change. */
 async function loadState(user) {
   const s = await loadStateFromFirestore(user, makeDefaultState, ensureGoalDefaults);
+  if (s) s.timeTable = (s.timeTable || []).map(ensureTimeItemDefaults);
   const withLayout = ensureLayoutDefaults(s);
   return { ...withLayout, theme: normalizeTheme(withLayout.theme) };
 }
@@ -1535,153 +1524,174 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
 }
 
 /* ---------------- TIME TABLE (this update) ----------------
-   A daily schedule widget — set a time + what to do, tick it off just
-   like Daily/Extry Goals. Rendered as a vertical timeline: each slot
-   sits on a connector dot, a live pulsing "NOW" marker highlights
-   whichever slot the current time has reached, and a thin progress
-   bar up top fills as slots get ticked. Reuses the exact same
-   toggle/add/remove state factories as GoalChecklist (listKey
-   "timeTable" — same goal shape, just with a `time` field), and
-   plugs into the existing widget grid / theme / resize / drag-reorder
-   system automatically since it's just another entry in WIDGETS.
-   Built entirely with framer-motion (already a dependency) — no new
-   npm installs. */
-function TimeTableWidget({ title, items, onToggle, onAdd, onRemove, accent, textStyle, cardBg }) {
+   A scheduled, time-of-day checklist — "05:00 Wake up", "07:00
+   Breakfast", etc — auto-sorted by time, with a live "NOW" pulse on
+   the next upcoming slot so it reads like a real daily timetable
+   instead of just another goal list. Shares the tick / strike-through
+   / celebration language of GoalChecklist for visual consistency, plus
+   its own small check-burst (hand-built with framer-motion — SVG ring
+   draw + radiating dots — so it needs no extra runtime asset). */
+function formatTime12(hhmm) {
+  if (typeof hhmm !== "string" || !hhmm.includes(":")) return hhmm || "";
+  const [hStr, mStr] = hhmm.split(":");
+  let h = parseInt(hStr, 10);
+  if (Number.isNaN(h)) return hhmm;
+  const m = (mStr || "00").padStart(2, "0");
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12; if (h === 0) h = 12;
+  return `${h}:${m} ${ampm}`;
+}
+
+function TimeCheckBurst() {
+  const dots = Array.from({ length: 6 });
+  return (
+    <motion.div
+      initial={{ opacity: 1 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{ position: "absolute", left: 3, top: "50%", width: 26, height: 26, marginTop: -13, pointerEvents: "none", zIndex: 2 }}
+    >
+      {dots.map((_, i) => {
+        const angle = (i / dots.length) * Math.PI * 2;
+        return (
+          <motion.span
+            key={i}
+            initial={{ opacity: 1, x: 12, y: 12, scale: 1 }}
+            animate={{ opacity: 0, x: 12 + Math.cos(angle) * 15, y: 12 + Math.sin(angle) * 15, scale: 0 }}
+            transition={{ duration: 0.55, ease: "easeOut" }}
+            style={{ position: "absolute", width: 4, height: 4, borderRadius: "50%", background: "#4a9d5f" }}
+          />
+        );
+      })}
+      <svg width="26" height="26" viewBox="0 0 26 26" style={{ position: "absolute", inset: 0 }}>
+        <motion.circle
+          cx="13" cy="13" r="11" fill="none" stroke="#4a9d5f" strokeWidth="2"
+          initial={{ pathLength: 0, opacity: 1 }} animate={{ pathLength: 1, opacity: [1, 1, 0] }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+        />
+        <motion.path
+          d="M7 13.5 L11 17.5 L19 8.5" fill="none" stroke="#4a9d5f" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+          initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: [0, 1, 1, 0] }}
+          transition={{ duration: 0.55, ease: "easeOut", times: [0, 0.25, 0.8, 1] }}
+        />
+      </svg>
+    </motion.div>
+  );
+}
+
+function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg }) {
   const ts = normalizeTextStyle(textStyle);
   const itemFontSize = Math.round(11 * ts.scale);
   const itemFontFamily = ts.font ? fontStackFor(ts.font) : undefined;
   const itemColorOverride = ts.color || undefined;
   const itemWeight = ts.bold ? 700 : undefined;
 
-  const [time, setTime] = useState("");
+  const [time, setTime] = useState("09:00");
   const [text, setText] = useState("");
   const [celebrateId, setCelebrateId] = useState(null);
-  const [nowMin, setNowMin] = useState(() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); });
+  const [nowStr, setNowStr] = useState(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  });
 
   useEffect(() => {
-    const iv = setInterval(() => { const d = new Date(); setNowMin(d.getHours() * 60 + d.getMinutes()); }, 30000);
-    return () => clearInterval(iv);
+    const t = setInterval(() => {
+      const d = new Date();
+      setNowStr(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
+    }, 30000);
+    return () => clearInterval(t);
   }, []);
 
-  const sorted = sortByTime(items);
-  const withTime = sorted.filter((g) => g.time);
-  // the slot whose time has most recently passed becomes the "current" one
-  let currentId = null;
-  for (let i = 0; i < withTime.length; i++) {
-    const m = minutesSinceMidnight(withTime[i].time);
-    if (m !== null && m <= nowMin) currentId = withTime[i].id;
-  }
-
-  const doneCount = items.filter((g) => g.done).length;
-  const pct = items.length ? (doneCount / items.length) * 100 : 0;
+  const sorted = [...(items || [])].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+  const upcoming = sorted.find((t) => !t.done && (t.time || "") >= nowStr);
+  const upcomingId = upcoming ? upcoming.id : null;
 
   const handleToggle = (id, wasDone) => {
     onToggle(id);
     if (!wasDone) {
       setCelebrateId(id);
-      setTimeout(() => setCelebrateId((c) => (c === id ? null : c)), 700);
+      setTimeout(() => setCelebrateId((c) => (c === id ? null : c)), 600);
     }
   };
 
   const submit = () => {
     if (!text.trim()) return;
-    onAdd(text.trim(), { time });
+    onAdd(time, text.trim());
     setText("");
   };
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
-      <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, flexShrink: 0 }}>{title}</Oval>
-
-      <div style={{ height: 4, borderRadius: 3, background: "rgba(0,0,0,0.08)", overflow: "hidden", marginBottom: 6, flexShrink: 0 }}>
-        <motion.div
-          animate={{ width: `${pct}%` }}
-          transition={{ type: "spring", stiffness: 200, damping: 30 }}
-          style={{ height: "100%", background: accent }}
-        />
-      </div>
-
+      <Oval style={{ display: "flex", gap: 4, margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, flexShrink: 0 }}>
+        <Clock size={12} /> Time Table
+      </Oval>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: cardBg || "#fff" }} className="btl-scroll">
         {sorted.length === 0 && (
-          <div style={{ padding: 10, fontSize: 12, color: autoMutedColor(cardBg), textAlign: "center" }}>
-            Nothing scheduled yet — add a time slot below.
+          <div style={{ padding: "16px 10px", fontSize: 10, color: "#a39c86", textAlign: "center" }}>
+            No time blocks yet — add your first one below.
           </div>
         )}
         <AnimatePresence initial={false}>
-          {sorted.map((g) => {
-            const isCurrent = g.id === currentId && !g.done;
-            const isCelebrating = celebrateId === g.id;
+          {sorted.map((t) => {
+            const isUpcoming = t.id === upcomingId;
+            const isOverdue = !t.done && !isUpcoming && (t.time || "") < nowStr;
+            const isCelebrating = celebrateId === t.id;
             return (
               <motion.div
-                key={g.id}
+                key={t.id}
                 layout
                 initial={{ opacity: 0, y: -10, height: 0 }}
                 animate={{ opacity: 1, y: 0, height: "auto" }}
                 exit={{ opacity: 0, x: 80, height: 0, transition: { duration: 0.22, ease: "easeIn" } }}
                 transition={{ type: "spring", stiffness: 480, damping: 32 }}
-                className="btl-goal-row"
                 style={{
-                  display: "flex", alignItems: "stretch",
-                  borderBottom: "1px solid #f0ece0", position: "relative", overflow: "hidden",
-                  background: isCurrent ? `${accent}14` : "transparent",
+                  borderBottom: "1px solid #f0ece0",
+                  borderLeft: `3px solid ${t.done ? "#c7dfc9" : isUpcoming ? accent : isOverdue ? "#e07a5f" : "#ddd6c4"}`,
+                  position: "relative", overflow: "hidden",
                 }}
               >
-                <AnimatePresence>
-                  {isCelebrating && (
-                    <motion.div key="flash" initial={{ opacity: 0.35 }} animate={{ opacity: 0 }} exit={{ opacity: 0 }}
-                      transition={{ duration: 0.7, ease: "easeOut" }}
-                      style={{ position: "absolute", inset: 0, background: accent, pointerEvents: "none" }} />
-                  )}
-                </AnimatePresence>
-
-                <div style={{ width: 56, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", padding: "7px 0 7px 4px" }}>
-                  <span style={{ fontSize: 9, fontWeight: 800, color: isCurrent ? accent : autoMutedColor(cardBg), whiteSpace: "nowrap" }}>
-                    {formatTime12(g.time) || "--:--"}
-                  </span>
-                  <motion.span
-                    animate={isCurrent ? { scale: [1, 1.35, 1] } : { scale: 1 }}
-                    transition={{ duration: 1.6, repeat: isCurrent ? Infinity : 0, ease: "easeOut" }}
-                    style={{
-                      marginTop: 4, width: 7, height: 7, borderRadius: "50%",
-                      background: g.done ? "#b9e6c9" : isCurrent ? accent : "#ddd6c4",
-                    }}
-                  />
-                </div>
-
-                <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6, padding: "7px 6px 7px 2px" }}>
+                <AnimatePresence>{isCelebrating && <TimeCheckBurst />}</AnimatePresence>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "6px 4px 6px 6px", position: "relative",
+                  color: t.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
+                }}>
                   <motion.input
-                    type="checkbox" checked={g.done} onChange={() => handleToggle(g.id, g.done)}
+                    type="checkbox" checked={t.done} onChange={() => handleToggle(t.id, t.done)}
                     className="btl-check" style={{ accentColor: accent, width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
                     whileTap={{ scale: 0.8 }}
                     animate={isCelebrating ? { scale: [1, 1.35, 1] } : { scale: 1 }}
                     transition={{ duration: 0.35, ease: "easeOut" }}
                   />
                   <motion.span
+                    animate={isUpcoming && !t.done ? { boxShadow: ["0 0 0 0 rgba(252,163,17,0.45)", "0 0 0 5px rgba(252,163,17,0)"] } : { boxShadow: "0 0 0 0 rgba(0,0,0,0)" }}
+                    transition={{ duration: 1.6, repeat: isUpcoming && !t.done ? Infinity : 0, ease: "easeOut" }}
+                    style={{
+                      fontSize: 9, fontWeight: 800, flexShrink: 0, borderRadius: 999, padding: "2px 6px", minWidth: 58, textAlign: "center",
+                      color: t.done ? "#a39c86" : isUpcoming ? "#fff" : "#8a8579",
+                      background: isUpcoming && !t.done ? accent : "rgba(0,0,0,0.05)",
+                    }}
+                  >{formatTime12(t.time)}</motion.span>
+                  <motion.span
                     style={{
                       flex: 1, fontSize: itemFontSize, cursor: "pointer", fontFamily: itemFontFamily,
-                      fontWeight: itemWeight || (isCurrent ? 800 : undefined),
-                      color: !g.done && itemColorOverride ? itemColorOverride : (g.done ? autoMutedColor(cardBg) : autoTextColor(cardBg)),
+                      fontWeight: itemWeight, color: !t.done && itemColorOverride ? itemColorOverride : undefined,
+                      display: "inline-block",
                     }}
                     animate={{
-                      textDecoration: g.done ? "line-through" : "none",
-                      opacity: g.done ? 0.6 : 1,
-                      scale: isCelebrating ? [1, 1.05, 1] : 1,
+                      textDecoration: t.done ? "line-through" : "none",
+                      opacity: t.done ? 0.65 : 1,
+                      scale: isCelebrating ? [1, 1.06, 1] : 1,
                     }}
                     transition={{ duration: 0.3 }}
-                    onClick={() => handleToggle(g.id, g.done)}
-                  >{g.text}</motion.span>
-                  {isCurrent && (
-                    <motion.span
-                      initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
-                      style={{ fontSize: 7, fontWeight: 900, color: "#fff", background: accent, borderRadius: 4, padding: "1px 4px", flexShrink: 0 }}
-                    >NOW</motion.span>
+                    onClick={() => handleToggle(t.id, t.done)}
+                  >{t.text}</motion.span>
+                  {isUpcoming && !t.done && (
+                    <span style={{ fontSize: 8, fontWeight: 900, color: accent, flexShrink: 0 }}>NOW</span>
                   )}
                   <motion.span
                     whileHover={{ scale: 1.2, rotate: -10, color: "#e07a5f" }}
                     whileTap={{ scale: 0.85 }}
                     style={{ display: "inline-flex", flexShrink: 0 }}
                   >
-                    <Trash2 size={11} style={{ color: "#d8d2bf", cursor: "pointer" }} onClick={() => onRemove(g.id)} />
+                    <Trash2 size={11} style={{ color: "#d8d2bf", cursor: "pointer" }} onClick={() => onRemove(t.id)} />
                   </motion.span>
                 </div>
               </motion.div>
@@ -1693,12 +1703,12 @@ function TimeTableWidget({ title, items, onToggle, onAdd, onRemove, accent, text
       <div style={{ marginTop: 6, flexShrink: 0, display: "flex", gap: 4 }}>
         <input
           type="time" value={time} onChange={(e) => setTime(e.target.value)}
-          style={{ width: 78, fontSize: 10, padding: "5px 4px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", flexShrink: 0 }}
+          style={{ fontSize: 10, padding: "5px 4px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", width: 84, flexShrink: 0 }}
         />
         <input
           value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-          placeholder="What's happening..."
+          placeholder="What to do at this time..."
           style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", minWidth: 0 }}
         />
         <motion.button
@@ -3020,7 +3030,6 @@ function rolloverDailyGoals(s) {
     lastActiveDay: today,
     dailyGoals: (s.dailyGoals || []).map((g) => (g.done ? { ...g, done: false } : g)),
     extryGoals: (s.extryGoals || []).map((g) => (g.done ? { ...g, done: false } : g)),
-    timeTable: (s.timeTable || []).map((g) => (g.done ? { ...g, done: false } : g)),
   };
 }
 
@@ -5217,7 +5226,7 @@ function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
 
         <div style={{ fontSize: 10, color: "#8a8579", marginTop: 14, lineHeight: 1.4, display: "flex", alignItems: "center", gap: 5 }}>
           <Type size={11} style={{ flexShrink: 0 }} />
-          Tap a widget's name above (Big Goals, Life Rules, Daily/Entry Goals, Earn Money / Notes, Calendar) to select it, then style only that one below.
+          Tap a widget's name above (Big Goals, Life Rules, Daily/Entry Goals, Time Table, Earn Money / Notes, Calendar) to select it, then style only that one below.
         </div>
         <TextStylePanel
           widgetLabel={WIDGETS.find((w) => w.id === activeTextWidget)?.label || ""}
@@ -7666,6 +7675,19 @@ function BTLDashboardInner() {
     return s;
   });
 
+  const toggleTimeItem = (id) => update((s) => {
+    s.timeTable = (s.timeTable || []).map((t) => t.id === id ? { ...t, done: !t.done } : t);
+    return s;
+  });
+  const addTimeItem = (time, text) => update((s) => {
+    s.timeTable = [...(s.timeTable || []), ensureTimeItemDefaults({ id: `${Date.now()}-${Math.random()}`, time, text, done: false })];
+    return s;
+  });
+  const removeTimeItem = (id) => update((s) => {
+    s.timeTable = (s.timeTable || []).filter((t) => t.id !== id);
+    return s;
+  });
+
   const addPlain = (listKey, text) => update((s) => { s[listKey] = [...s[listKey], text]; return s; });
   const removePlain = (listKey, idx) => update((s) => { s[listKey] = s[listKey].filter((_, i) => i !== idx); return s; });
   const editPlain = (listKey, idx, text) => update((s) => { s[listKey] = s[listKey].map((t, i) => i === idx ? text : t); return s; });
@@ -7877,7 +7899,7 @@ function BTLDashboardInner() {
     lifeRules: <TextList title="Life Rules" items={state.lifeRules} textStyle={state.layout.textStyles?.lifeRules} cardBg={theme.widgets.lifeRules?.bg} />,
     dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyles?.dailyGoals} cardBg={theme.widgets.dailyGoals?.bg} />,
     extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} cardBg={theme.widgets.extryGoals?.bg} />,
-    timeTable: <TimeTableWidget title="Time Table" items={state.timeTable} onToggle={toggleGoal("timeTable")} onAdd={addGoal("timeTable")} onRemove={removeGoal("timeTable")} accent="#8b5cf6" textStyle={state.layout.textStyles?.timeTable} cardBg={theme.widgets.timeTable?.bg} />,
+    timeTable: <TimeTable items={state.timeTable || []} onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem} accent={C.accent} textStyle={state.layout.textStyles?.timeTable} cardBg={theme.widgets.timeTable?.bg} />,
     earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} onImageDrop={processImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} cardBg={theme.widgets.earnMoney?.bg} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} metrics={theme.analyticsSummary.metrics} />,
     calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} textStyle={state.layout.textStyles?.calendar} />,
