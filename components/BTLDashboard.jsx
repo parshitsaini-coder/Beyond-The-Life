@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
+import { createPortal } from "react-dom";
 import { useAuth, signOutUser, signInWithGoogle } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
 import { ensurePublicProfile, useIncomingFriendRequestCount } from "@/lib/friendsStorage";
@@ -450,7 +451,11 @@ const PRIORITIES = [
 const prioInfo = (key) => PRIORITIES.find((p) => p.key === key) || PRIORITIES[1];
 
 /* ---------------- GOAL ICONS (emoji) ---------------- */
-const GOAL_EMOJIS = ["🎯","💪","🏋️","🧘","📚","💧","🥗","😴","💰","💼","❤️","🧠","✍️","🎨","🏃","🚭","📵","🙏","🧹","📅","☎️","🌱","🎵","🛏️"];
+const GOAL_EMOJIS = [
+  "🎯","💪","🏋️","🧘","📚","💧","🥗","😴","💰","💼","❤️","🧠","✍️","🎨","🏃","🚭","📵","🙏","🧹","📅","☎️","🌱","🎵","🛏️",
+  // fitness / goal-tracking additions
+  "🚴","🏊","🤸","🥊","⚽","🏀","🎾","🥇","🏆","📈","✅","🔥","⏰","🍎","🧃","🚶","🧗","🎓","📖","🧘‍♀️",
+];
 
 function ensureGoalDefaults(g) {
   return {
@@ -1177,6 +1182,78 @@ function TextList({ title, items, textStyle, cardBg }) {
 }
 
 /* ---------------- DAILY / EXTRY GOAL CHECKLIST (pro: categories, priority, recurring, subtasks) ---------------- */
+/* ---------------- EMOJI PICKER — portal-rendered, viewport-aware ----------------
+   Fix: the old picker was position:absolute inside the scrollable goal list,
+   so for rows near the bottom (e.g. the last item) it got clipped by the
+   list's own overflow — it barely peeked out, cut in half. This version
+   renders through a React portal straight onto <body>, is positioned with
+   the trigger's real on-screen coordinates (position: fixed), flips itself
+   upward automatically when there isn't enough room below, and closes
+   itself on outside-click, scroll, or resize so it never gets stranded. */
+function EmojiPickerPortal({ anchorRect, onPick, onClose }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    };
+    const handleDismiss = () => onClose();
+    document.addEventListener("mousedown", handleClick);
+    window.addEventListener("scroll", handleDismiss, true);
+    window.addEventListener("resize", handleDismiss);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      window.removeEventListener("scroll", handleDismiss, true);
+      window.removeEventListener("resize", handleDismiss);
+    };
+  }, [onClose]);
+
+  if (!anchorRect || typeof document === "undefined") return null;
+
+  const PICKER_W = 168;
+  const PICKER_H = 196;
+  const GAP = 6;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  let left = anchorRect.left;
+  if (left + PICKER_W > vw - 8) left = vw - PICKER_W - 8;
+  if (left < 8) left = 8;
+
+  const spaceBelow = vh - anchorRect.bottom;
+  const openUp = spaceBelow < PICKER_H + GAP && anchorRect.top > PICKER_H + GAP;
+  const top = openUp ? Math.max(8, anchorRect.top - PICKER_H - GAP) : anchorRect.bottom + GAP;
+
+  return createPortal(
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, scale: 0.9, y: openUp ? 6 : -6 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ type: "spring", stiffness: 460, damping: 32 }}
+      style={{
+        position: "fixed", top, left, zIndex: 9999, background: "#fff", border: "1px solid #ddd6c4",
+        borderRadius: 8, padding: 6, display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 2,
+        boxShadow: "0 12px 28px rgba(0,0,0,0.2)", width: PICKER_W, maxHeight: "min(70vh, 260px)", overflowY: "auto",
+      }}
+      className="btl-scroll"
+    >
+      {GOAL_EMOJIS.map((e) => (
+        <button key={e} onClick={() => { onPick(e); onClose(); }}
+          style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14, padding: 2, borderRadius: 4 }}
+          onMouseEnter={(ev) => ev.currentTarget.style.background = "#f0ece0"}
+          onMouseLeave={(ev) => ev.currentTarget.style.background = "none"}
+        >{e}</button>
+      ))}
+      <button onClick={() => { onPick(""); onClose(); }}
+        style={{ gridColumn: "span 6", border: "none", background: "none", cursor: "pointer", fontSize: 9, color: "#a39c86", padding: "3px 0" }}>
+        Clear icon
+      </button>
+    </motion.div>,
+    document.body
+  );
+}
+
 function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent, textStyle, cardBg }) {
   const ts = normalizeTextStyle(textStyle);
   const itemFontSize = Math.round(11 * ts.scale);
@@ -1192,7 +1269,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
   const [openId, setOpenId] = useState(null);
   const [subVal, setSubVal] = useState("");
   const [showOptions, setShowOptions] = useState(false);
-  const [pickerFor, setPickerFor] = useState(null); // "new" | goal id | null
+  const [picker, setPicker] = useState(null); // { id: "new" | goal id, rect: DOMRect } | null
   const [celebrateId, setCelebrateId] = useState(null); // goal id currently flashing "done" celebration
 
   const handleToggle = (id, wasDone) => {
@@ -1208,26 +1285,6 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
     onAdd(val.trim(), { category, priority, recurring, icon });
     setVal(""); setIcon("");
   };
-
-  const EmojiPicker = ({ onPick, onClose }) => (
-    <div style={{
-      position: "absolute", zIndex: 40, background: "#fff", border: "1px solid #ddd6c4", borderRadius: 8,
-      padding: 6, display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 2, boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
-      width: 150,
-    }}>
-      {GOAL_EMOJIS.map((e) => (
-        <button key={e} onClick={() => { onPick(e); onClose(); }}
-          style={{ border: "none", background: "none", cursor: "pointer", fontSize: 14, padding: 2, borderRadius: 4 }}
-          onMouseEnter={(ev) => ev.currentTarget.style.background = "#f0ece0"}
-          onMouseLeave={(ev) => ev.currentTarget.style.background = "none"}
-        >{e}</button>
-      ))}
-      <button onClick={() => { onPick(""); onClose(); }}
-        style={{ gridColumn: "span 6", border: "none", background: "none", cursor: "pointer", fontSize: 9, color: "#a39c86", padding: "3px 0" }}>
-        Clear icon
-      </button>
-    </div>
-  );
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
@@ -1278,19 +1335,12 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                     <motion.span
                       whileHover={{ scale: 1.2, rotate: 8 }}
                       whileTap={{ scale: 0.9 }}
-                      onClick={() => setPickerFor(pickerFor === g.id ? null : g.id)}
+                      onClick={(e) => setPicker(picker?.id === g.id ? null : { id: g.id, rect: e.currentTarget.getBoundingClientRect() })}
                       title="Set icon" style={{ cursor: "pointer", fontSize: 12, width: 16, display: "inline-flex", justifyContent: "center" }}
                     >{g.icon || "＋"}</motion.span>
                     <AnimatePresence>
-                      {pickerFor === g.id && (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.85, y: -6 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.9, y: -4 }}
-                          transition={{ type: "spring", stiffness: 420, damping: 30 }}
-                        >
-                          <EmojiPicker onPick={(e) => onSetIcon(g.id, e)} onClose={() => setPickerFor(null)} />
-                        </motion.div>
+                      {picker?.id === g.id && (
+                        <EmojiPickerPortal anchorRect={picker.rect} onPick={(e) => onSetIcon(g.id, e)} onClose={() => setPicker(null)} />
                       )}
                     </AnimatePresence>
                   </span>
@@ -1395,11 +1445,15 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
       <div style={{ marginTop: 6, flexShrink: 0 }}>
         <div style={{ display: "flex", gap: 4 }}>
           <span style={{ position: "relative", flexShrink: 0 }}>
-            <button onClick={() => setPickerFor(pickerFor === "new" ? null : "new")} title="Pick an icon"
+            <button onClick={(e) => setPicker(picker?.id === "new" ? null : { id: "new", rect: e.currentTarget.getBoundingClientRect() })} title="Pick an icon"
               style={{ border: "1px solid #ddd6c4", background: "#fff", borderRadius: 6, width: 26, height: "100%", cursor: "pointer", fontSize: 12 }}>
               {icon || "🙂"}
             </button>
-            {pickerFor === "new" && <EmojiPicker onPick={(e) => setIcon(e)} onClose={() => setPickerFor(null)} />}
+            <AnimatePresence>
+              {picker?.id === "new" && (
+                <EmojiPickerPortal anchorRect={picker.rect} onPick={(e) => setIcon(e)} onClose={() => setPicker(null)} />
+              )}
+            </AnimatePresence>
           </span>
           <input
             value={val} onChange={(e) => setVal(e.target.value)}

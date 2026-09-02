@@ -1,6 +1,19 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🛠️ Fix — colors weren't legible on dark Panel Theme presets + 7th "Black & White" preset added (this update)
+## 🖼️ New — browser tab / app icon added (this update)
+
+The browser tab (favicon) and home-screen icon now show a custom "B"
+monogram mark — dark badge, cream "B" wordmark, small orange spark
+accent — matching the app's existing dark + orange color language.
+
+- `app/icon.svg` — Next.js App Router auto-picks this up as the site
+  favicon, no `<link>` tags or `layout.jsx` changes needed.
+- `app/apple-icon.png` (180×180) — iOS "Add to Home Screen" icon,
+  auto-detected the same way.
+- `public/favicon.ico` — classic multi-size fallback (16/32/48/64px)
+  for older browsers and bookmark bars.
+
+## 🛠️ Fix — colors weren't legible on dark Panel Theme presets + 7th "Black & White" preset added (earlier update)
 
 **Bug fix:** picking a darker Panel Theme preset (Midnight / Charcoal)
 correctly changed every card's *background*, but a lot of body text —
