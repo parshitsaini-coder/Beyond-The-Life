@@ -5599,6 +5599,51 @@ const LIFE_STORY_EMOJIS = [
   "✈️","🏠","🏋️","🧘","🚶","🏃","🛌","💤","🎯","🚀",
 ];
 
+/* Theme customization for the Life Story journal — settings gear next to
+   "filters". Lives at state.lifeStory.theme = { fontFamily, fontSize,
+   textColor, bgColor, presetId }. Defaults match the app's normal look
+   (cream page, dark text) so nobody sees a change until they open Theme. */
+const LIFE_STORY_DEFAULT_THEME = {
+  presetId: "classic",
+  fontFamily: "inherit",
+  fontSize: 13,
+  textColor: C.text,
+  bgColor: "linear-gradient(180deg, #fbf9f2, #f5f2e8)",
+};
+
+/* 10 curated presets — swatch shows page bg + text color together so it's
+   obvious what you're picking. "Midnight" is the "black paper, white text"
+   look asked for; the rest give real variety rather than near-duplicates. */
+const LIFE_STORY_THEME_PRESETS = [
+  { id: "classic", name: "Classic", bg: "linear-gradient(180deg, #fbf9f2, #f5f2e8)", text: C.text, swatchBg: "#f5f2e8" },
+  { id: "midnight", name: "Midnight", bg: "linear-gradient(180deg, #1a1a1a, #0d0d0d)", text: "#f2f2f2", swatchBg: "#101010" },
+  { id: "sepia", name: "Sepia", bg: "linear-gradient(180deg, #f4ecd8, #e9dcc0)", text: "#4a3826", swatchBg: "#e9dcc0" },
+  { id: "ocean", name: "Ocean", bg: "linear-gradient(180deg, #eaf5fb, #d7ecf6)", text: "#0f3f56", swatchBg: "#d7ecf6" },
+  { id: "sunset", name: "Sunset", bg: "linear-gradient(180deg, #fff1e6, #ffe0cc)", text: "#7a3410", swatchBg: "#ffe0cc" },
+  { id: "forest", name: "Forest", bg: "linear-gradient(180deg, #eef6ee, #dcedd4)", text: "#1f4a2b", swatchBg: "#dcedd4" },
+  { id: "rose", name: "Rose", bg: "linear-gradient(180deg, #fdeef2, #fbdce4)", text: "#7a1f3d", swatchBg: "#fbdce4" },
+  { id: "lavender", name: "Lavender", bg: "linear-gradient(180deg, #f3eefc, #e6daf7)", text: "#3c2a63", swatchBg: "#e6daf7" },
+  { id: "slate", name: "Slate", bg: "linear-gradient(180deg, #eceff2, #dde2e8)", text: "#2b3542", swatchBg: "#dde2e8" },
+  { id: "mono", name: "Pure Mono", bg: "#ffffff", text: "#111111", swatchBg: "#ffffff" },
+];
+
+/* 12 fonts — a spread of web-safe serif/sans/mono/script stacks so no new
+   font files need loading (no extra npm installs / <link> tags). */
+const LIFE_STORY_FONTS = [
+  { id: "inherit", label: "Default", stack: "inherit" },
+  { id: "system", label: "System Sans", stack: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
+  { id: "georgia", label: "Georgia", stack: "Georgia, 'Times New Roman', serif" },
+  { id: "times", label: "Times New Roman", stack: "'Times New Roman', Times, serif" },
+  { id: "garamond", label: "Garamond", stack: "Garamond, 'Palatino Linotype', serif" },
+  { id: "palatino", label: "Palatino", stack: "'Palatino Linotype', Palatino, serif" },
+  { id: "bookman", label: "Bookman", stack: "'Bookman Old Style', serif" },
+  { id: "verdana", label: "Verdana", stack: "Verdana, Geneva, sans-serif" },
+  { id: "trebuchet", label: "Trebuchet MS", stack: "'Trebuchet MS', sans-serif" },
+  { id: "tahoma", label: "Tahoma", stack: "Tahoma, Geneva, sans-serif" },
+  { id: "courier", label: "Courier (typewriter)", stack: "'Courier New', Courier, monospace" },
+  { id: "comic", label: "Comic Sans", stack: "'Comic Sans MS', 'Comic Sans', cursive" },
+];
+
 /* Computes where a textarea's caret sits in pixels, relative to the
    textarea's own top-left corner — used to anchor the "@" mention
    popover right next to the cursor instead of a fixed spot. Standard
@@ -5812,7 +5857,13 @@ function insertAtCaretRemovingTrigger(editableEl, node) {
    textarea) so an inline 📷 chip can sit exactly where you typed "@" and
    still be clickable to open that photo — nothing gets pushed below the
    text or shown as a separate thumbnail strip. */
-function LifeStoryDayBlock({ iso, entry, isToday, onChangeHtml, onAddImage, onRemoveImage, blockRef }) {
+function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImage, onRemoveImage, blockRef }) {
+  const t = theme || LIFE_STORY_DEFAULT_THEME;
+  const isDark = /^#/.test(t.textColor) && (() => {
+    const hex = t.textColor.replace("#", "");
+    const r = parseInt(hex.substring(0, 2), 16), g = parseInt(hex.substring(2, 4), 16), b = parseInt(hex.substring(4, 6), 16);
+    return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+  })();
   const [mention, setMention] = useState(null); // { top, left } | null
   const fileRef = useRef(null);
   const editableRef = useRef(null);
@@ -5908,7 +5959,7 @@ function LifeStoryDayBlock({ iso, entry, isToday, onChangeHtml, onAddImage, onRe
         </span>
       </div>
 
-      <div style={{ position: "relative", background: "rgba(255,255,255,0.6)", border: "1px solid #ece7d8", borderRadius: 16, padding: 14 }}>
+      <div style={{ position: "relative", background: isDark ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.6)", border: `1px solid ${isDark ? "rgba(255,255,255,0.16)" : "#ece7d8"}`, borderRadius: 16, padding: 14 }}>
         {isToday ? (
           <div
             ref={editableRef}
@@ -5919,16 +5970,16 @@ function LifeStoryDayBlock({ iso, entry, isToday, onChangeHtml, onAddImage, onRe
             onPaste={handlePaste}
             onClick={handleChipClick}
             data-placeholder="Write today's story... type @ for emoji & photos"
-            style={{ width: "100%", minHeight: 76, outline: "none", fontSize: 13, lineHeight: 1.6, color: C.text, fontFamily: "inherit", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+            style={{ width: "100%", minHeight: 76, outline: "none", fontSize: t.fontSize, lineHeight: 1.6, color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
           />
         ) : entry?.html ? (
           <div
             onClick={handleChipClick}
-            style={{ fontSize: 13, lineHeight: 1.6, color: C.text, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+            style={{ fontSize: t.fontSize, lineHeight: 1.6, color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
             dangerouslySetInnerHTML={{ __html: entry.html }}
           />
         ) : (
-          <div style={{ fontSize: 13, color: "#c9c4b3", fontStyle: "italic" }}>No story written this day.</div>
+          <div style={{ fontSize: t.fontSize, color: isDark ? "#6b6b6b" : "#c9c4b3", fontStyle: "italic", fontFamily: t.fontFamily }}>No story written this day.</div>
         )}
 
         <AnimatePresence>
@@ -5948,11 +5999,115 @@ function LifeStoryDayBlock({ iso, entry, isToday, onChangeHtml, onAddImage, onRe
   );
 }
 
+/* Glass settings popover — Theme presets, Font, Size, Text color, Page
+   background color. Same blur/border/shadow recipe as the other Life
+   Story glass popups. Custom color inputs (native <input type="color">)
+   sit next to swatch presets so any color is reachable, not just the 10
+   curated themes. */
+function LifeStoryThemeSettings({ theme, onChange, onClose }) {
+  const set = (patch) => onChange({ ...theme, presetId: "custom", ...patch });
+  const applyPreset = (p) => onChange({ presetId: p.id, fontFamily: theme.fontFamily, fontSize: theme.fontSize, textColor: p.text, bgColor: p.bg });
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.92, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: -6 }}
+      transition={{ type: "spring", stiffness: 400, damping: 28 }}
+      style={{
+        position: "absolute", top: "115%", right: 0, width: 250, maxHeight: 380, overflowY: "auto", zIndex: 50,
+        background: "rgba(255,255,255,0.85)", backdropFilter: "blur(20px) saturate(180%)", WebkitBackdropFilter: "blur(20px) saturate(180%)",
+        border: "1px solid rgba(255,255,255,0.85)", borderRadius: 12, boxShadow: "0 16px 40px rgba(37,36,34,0.25)", padding: 10,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86" }}>PAGE THEME</div>
+        <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: "#a39c86" }}>
+          <X size={12} />
+        </motion.div>
+      </div>
+
+      {/* Preset swatches */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 10 }}>
+        {LIFE_STORY_THEME_PRESETS.map((p) => (
+          <motion.div
+            key={p.id} whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.94 }} onClick={() => applyPreset(p)}
+            title={p.name}
+            style={{
+              width: "100%", aspectRatio: "1", borderRadius: 8, cursor: "pointer", background: p.swatchBg,
+              border: theme.presetId === p.id ? `2px solid ${C.accent}` : "1px solid rgba(0,0,0,0.12)",
+              display: "flex", alignItems: "center", justifyContent: "center", boxShadow: theme.presetId === p.id ? "0 0 0 2px rgba(252,163,17,0.25)" : "none",
+            }}
+          >
+            <span style={{ fontSize: 11, fontWeight: 900, color: p.text }}>Aa</span>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Font family */}
+      <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+        <Type size={10} /> FONT
+      </div>
+      <select
+        value={theme.fontFamily}
+        onChange={(e) => set({ fontFamily: e.target.value })}
+        style={{ width: "100%", fontSize: 11, fontWeight: 700, color: C.dark, padding: "6px 8px", borderRadius: 8, border: "1px solid #ece7d8", background: "#fff", marginBottom: 10, cursor: "pointer" }}
+      >
+        {LIFE_STORY_FONTS.map((f) => (
+          <option key={f.id} value={f.stack} style={{ fontFamily: f.stack }}>{f.label}</option>
+        ))}
+      </select>
+
+      {/* Text size */}
+      <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+        <Baseline size={10} /> TEXT SIZE — {theme.fontSize}px
+      </div>
+      <input
+        type="range" min={11} max={22} step={1} value={theme.fontSize}
+        onChange={(e) => set({ fontSize: Number(e.target.value) })}
+        style={{ width: "100%", marginBottom: 10, accentColor: C.accent }}
+      />
+
+      {/* Text color + Background color */}
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            <Palette size={10} /> TEXT COLOR
+          </div>
+          <input
+            type="color" value={/^#/.test(theme.textColor) ? theme.textColor : "#403d39"}
+            onChange={(e) => set({ textColor: e.target.value })}
+            style={{ width: "100%", height: 28, borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            <Palette size={10} /> PAGE BG
+          </div>
+          <input
+            type="color" value={/^#[0-9a-fA-F]{6}$/.test(theme.bgColor) ? theme.bgColor : "#fbf9f2"}
+            onChange={(e) => set({ bgColor: e.target.value })}
+            style={{ width: "100%", height: 28, borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
+          />
+        </div>
+      </div>
+
+      <motion.div
+        whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+        onClick={() => onChange(LIFE_STORY_DEFAULT_THEME)}
+        style={{ marginTop: 10, textAlign: "center", fontSize: 10, fontWeight: 800, color: C.dark, border: "1px solid #ece7d8", borderRadius: 999, padding: "6px 0", cursor: "pointer", background: "#fff" }}
+      >
+        Reset to default
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function LifeStoryTab({ state, update, onClose }) {
   const story = state.lifeStory || { profile: null, entries: {} };
   const entries = story.entries || {};
+  const theme = { ...LIFE_STORY_DEFAULT_THEME, ...(story.theme || {}) };
   const today = todayISO();
   const [jumpOpen, setJumpOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
   const feedRef = useRef(null);
   const blockRefs = useRef({});
 
@@ -5968,6 +6123,7 @@ function LifeStoryTab({ state, update, onClose }) {
   }, []);
 
   const setProfile = (profile) => update((s) => ({ ...s, lifeStory: { profile, entries: s.lifeStory?.entries || {} } }));
+  const setTheme = (nextTheme) => update((s) => ({ ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: s.lifeStory?.entries || {}, theme: nextTheme } }));
   const setEntryHtml = (iso) => (html) => update((s) => ({
     ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...(s.lifeStory?.entries?.[iso] || {}), html } } },
   }));
@@ -6039,6 +6195,18 @@ function LifeStoryTab({ state, update, onClose }) {
           </AnimatePresence>
         </div>
 
+        <div style={{ position: "relative" }}>
+          <motion.button
+            whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }} onClick={() => setThemeOpen((v) => !v)}
+            style={{ border: `1px solid ${C.text}`, borderRadius: 999, padding: "5px 11px", background: "#fff", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: C.dark }}
+          ><Settings size={12} /> theme</motion.button>
+          <AnimatePresence>
+            {themeOpen && (
+              <LifeStoryThemeSettings theme={theme} onChange={setTheme} onClose={() => setThemeOpen(false)} />
+            )}
+          </AnimatePresence>
+        </div>
+
         {story.profile && (
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{ width: 26, height: 26, borderRadius: "50%", background: story.profile.image ? `url(${story.profile.image}) center/cover` : C.dark, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 800 }}>
@@ -6052,11 +6220,11 @@ function LifeStoryTab({ state, update, onClose }) {
         </motion.div>
       </div>
 
-      <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: 16, background: "linear-gradient(180deg, #fbf9f2, #f5f2e8)" }}>
+      <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: 16, background: theme.bgColor }}>
         <div style={{ maxWidth: 620, margin: "0 auto" }}>
           {dates.map((iso) => (
             <LifeStoryDayBlock
-              key={iso} iso={iso} entry={entries[iso]} isToday={iso === today}
+              key={iso} iso={iso} entry={entries[iso]} isToday={iso === today} theme={theme}
               onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
               blockRef={(el) => { blockRefs.current[iso] = el; }}
             />

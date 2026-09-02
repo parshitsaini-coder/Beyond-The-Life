@@ -1,6 +1,34 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Profile avatar + account popup (this update)
+## Life Story — page theme settings (this update)
+
+A **theme** button now sits next to **filters** in the Life Story header.
+Tapping it opens the same glass popover style as the rest of the app, with:
+
+- **10 preset themes** — Classic, Midnight (black paper, white text),
+  Sepia, Ocean, Sunset, Forest, Rose, Lavender, Slate, Pure Mono — each
+  shown as an "Aa" swatch so you see the look before picking it.
+- **Font** — 12 options (Default, System Sans, Georgia, Times New Roman,
+  Garamond, Palatino, Bookman, Verdana, Trebuchet MS, Tahoma, Courier
+  typewriter, Comic Sans), all web-safe stacks — no new npm installs or
+  font files to load.
+- **Text size** — an 11–22px slider.
+- **Text color** and **page background color** — native color pickers, so
+  any custom combination is reachable beyond the 10 presets (picking
+  either one switches the preset indicator to "custom").
+- **Reset to default** — one tap back to the app's normal cream/dark look.
+
+Applies to the whole Life Story page background and every day's story
+text (today's editable entry + all past entries). On dark presets like
+Midnight, the day cards themselves also switch to a subtle light-on-dark
+glass tint automatically, so text stays readable instead of dark-on-dark.
+
+Saved at `state.lifeStory.theme` — same per-user Firestore sync as
+everything else, so it persists across devices and sessions. Built with
+`framer-motion` for the popover, matching the Jump-to-date popover
+already in this tab — no new npm installs required.
+
+## Profile avatar + account popup (earlier update)
 
 A round **profile avatar** now sits in the header's top-right cluster —
 right where the plain sign-out icon used to sit on its own, next to the
