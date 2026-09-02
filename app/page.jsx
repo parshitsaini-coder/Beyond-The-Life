@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import BTLDashboard from '@/components/BTLDashboard';
 
 export default function Home() {
-  redirect("/dashboard");
+  return <BTLDashboard />;
 }
