@@ -1,6 +1,34 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🎨 New feature — 6 one-click "Panel Theme" presets in Setting → Theme (this update)
+## 🛠️ Fix — colors weren't legible on dark Panel Theme presets + 7th "Black & White" preset added (this update)
+
+**Bug fix:** picking a darker Panel Theme preset (Midnight / Charcoal)
+correctly changed every card's *background*, but a lot of body text —
+the header's Daily/Extry/Overall goal-ring numbers, the Day Streak
+area, Daily Goals / Extry Goals list text, Life Big Goals / Life
+Rules list text, the Analytics Summary widget's numbers, Calendar day
+numbers, and the "Today's Mood" label — was hardcoded to the app's
+original dark brown/black text color. On a light preset that's
+invisible-on-invisible... on a *dark* preset it went dark-text-on-
+dark-card, which is what was making colors feel "not managed
+properly."
+
+- Every one of those spots now **auto-computes its own text color**
+  from whatever background it's actually sitting on (its own widget
+  color, or the Dashboard scope color for header elements) — light
+  text on a dark card, dark text on a light card, automatically, with
+  no extra setting to configure. This applies whether the color came
+  from a Panel Theme preset, a per-widget custom color, or a manual
+  pick in any of the Theme tabs (Dashboard / Analytics / Widgets /
+  Analytics Summary / Money Management / Focus Mode / Friend
+  Celebration) — all of them already write into the same `bg`/`text`
+  fields this fix reads from, so no new theme fields were needed.
+- **New 7th preset — "Black & White"** — pure black background, white
+  text, near-black widget cards. Sits alongside the existing Ocean /
+  Sunset / Forest / Berry / Midnight / Charcoal presets in the same
+  one-click **Panel Theme** row at the top of Setting → 🎨 Theme.
+
+## 🎨 New feature — 6 one-click "Panel Theme" presets in Setting → Theme (earlier update)
 
 A new **Panel Theme** row now sits at the very top of **Setting → 🎨
 Theme**, above the existing Dashboard / Analytics / Widgets / Money /

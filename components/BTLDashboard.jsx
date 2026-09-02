@@ -143,6 +143,31 @@ function tintHex(hex, amount) {
   const toHex = (c) => c.toString(16).padStart(2, "0");
   return `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
 }
+/* ---- Auto contrast-safe text (this update) ----
+   Every widget/section can get any custom background color from the
+   Theme panel (including the new dark Panel Theme presets), but a lot
+   of body text was hardcoded to the app's default dark brown (C.text /
+   C.dark) — invisible on a dark card. These two helpers compute the
+   background's brightness and flip body text to light or dark
+   automatically, so text always stays readable no matter what color
+   (or preset) is picked, without needing a separate "text color" field
+   for every single widget. */
+function hexLuminance(hex) {
+  if (typeof hex !== "string" || !/^#[0-9a-fA-F]{6}$/.test(hex)) return 1; // unknown/empty -> assume light card
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function autoTextColor(bg, opts) {
+  const dark = (opts && opts.dark) || C.text;
+  const light = (opts && opts.light) || "#f1ede0";
+  if (!bg) return dark; // default "#fff"/no custom bg -> keep the original dark body text
+  return hexLuminance(bg) < 0.5 ? light : dark;
+}
+function autoMutedColor(bg) {
+  return hexLuminance(bg || "#fff") < 0.5 ? "#b7b2a2" : "#8a8579";
+}
 
 /* ---- Money Management tab — per-element custom colors (this update) ----
    Same idea as the Analytics element colors above, applied to the
@@ -240,6 +265,7 @@ const PANEL_THEME_PRESETS = [
   { id: "berry", label: "Berry", bg: "#fdeef0", text: "#5c1a2b", widgetBg: "#fdeef0", swatch: "linear-gradient(135deg, #fdeef0 50%, #d0577f 50%)" },
   { id: "midnight", label: "Midnight", bg: "#0f172a", text: "#e7ecf5", widgetBg: "#1b2436", swatch: "linear-gradient(135deg, #0f172a 50%, #3a4a6b 50%)" },
   { id: "charcoal", label: "Charcoal", bg: "#252422", text: "#f2ede0", widgetBg: "#33312d", swatch: "linear-gradient(135deg, #252422 50%, #6b675c 50%)" },
+  { id: "mono", label: "Black & White", bg: "#000000", text: "#ffffff", widgetBg: "#141414", swatch: "linear-gradient(135deg, #000000 50%, #ffffff 50%)" },
 ];
 export function normalizeScopeTheme(t) {
   const src = t && typeof t === "object" ? t : {};
@@ -605,6 +631,8 @@ function SaveStatus({ status }) {
 }
 
 function RingStat({ pct, size = 54, label, sub, color = C.accent }) {
+  const dt = useContext(DashboardThemeCtx);
+  const safeTextColor = dt.text || C.dark;
   const r = (size - 8) / 2;
   const circ = 2 * Math.PI * r;
   const clamped = Math.min(100, Math.max(0, pct));
@@ -632,12 +660,12 @@ function RingStat({ pct, size = 54, label, sub, color = C.accent }) {
           transition={{ type: "spring", stiffness: 90, damping: 18 }}
         />
         <text x={size / 2} y={size / 2} transform={`rotate(90 ${size / 2} ${size / 2})`}
-          textAnchor="middle" dominantBaseline="middle" fontSize={11} fontWeight={800} fill={C.dark}>
+          textAnchor="middle" dominantBaseline="middle" fontSize={11} fontWeight={800} fill={safeTextColor}>
           {Math.round(pct)}%
         </text>
       </motion.svg>
-      <div style={{ fontSize: 9, fontWeight: 700, color: C.dark, textAlign: "center", lineHeight: 1.1 }}>{label}</div>
-      {sub && <div style={{ fontSize: 8, color: "#8a8579" }}>{sub}</div>}
+      <div style={{ fontSize: 9, fontWeight: 700, color: safeTextColor, textAlign: "center", lineHeight: 1.1 }}>{label}</div>
+      {sub && <div style={{ fontSize: 8, color: safeTextColor, opacity: 0.65 }}>{sub}</div>}
     </motion.div>
   );
 }
@@ -976,7 +1004,7 @@ function TextList({ title, items, textStyle, cardBg }) {
         border: `1px solid ${C.text}`, borderRadius: 8, flex: 1, overflowY: "auto", background: cardBg || "#fff",
       }} className="btl-scroll">
         {items.length === 0 && (
-          <div style={{ padding: 10, fontSize: 12, color: "#b3ac99", textAlign: "center" }}>
+          <div style={{ padding: 10, fontSize: 12, color: autoMutedColor(cardBg), textAlign: "center" }}>
             Nothing yet — add one from Setting.
           </div>
         )}
@@ -984,7 +1012,7 @@ function TextList({ title, items, textStyle, cardBg }) {
           <div key={i} className="btl-goal-row" style={{
             display: "flex", alignItems: "center",
             padding: "8px 10px", borderBottom: i < items.length - 1 ? "1px solid #f0ece0" : "none",
-            fontSize: itemFontSize, fontWeight: itemWeight, color: itemColor, fontFamily: itemFontFamily,
+            fontSize: itemFontSize, fontWeight: itemWeight, color: itemColor || autoTextColor(cardBg), fontFamily: itemFontFamily,
           }}>
             <span>{t}</span>
           </div>
@@ -1051,7 +1079,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
             <div key={g.id} className="btl-goal-row" style={{ borderBottom: "1px solid #f0ece0", borderLeft: `3px solid ${cat.color}` }}>
               <div style={{
                 display: "flex", alignItems: "center", gap: 6, padding: "6px 4px 6px 6px",
-                textDecoration: g.done ? "line-through" : "none", color: g.done ? "#a39c86" : C.text,
+                textDecoration: g.done ? "line-through" : "none", color: g.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
               }}>
                 <input
                   type="checkbox" checked={g.done} onChange={() => onToggle(g.id)}
@@ -1095,7 +1123,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                     <label key={s.id} style={{
                       display: "flex", alignItems: "center", gap: 5, fontSize: subFontSize, padding: "2px 0", cursor: "pointer",
                       textDecoration: s.done ? "line-through" : "none", fontFamily: itemFontFamily, fontWeight: itemWeight,
-                      color: s.done ? "#b3ac99" : (itemColorOverride || C.text),
+                      color: s.done ? autoMutedColor(cardBg) : (itemColorOverride || autoTextColor(cardBg)),
                     }}>
                       <input type="checkbox" checked={s.done} onChange={() => onToggleSubtask(g.id, s.id)} style={{ width: 11, height: 11, accentColor: accent }} />
                       {s.text}
@@ -3333,7 +3361,7 @@ function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFil
         marginTop: 10, paddingTop: 8, borderTop: "1px solid #f0ece0",
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
-        <span style={{ fontSize: labelFontSize, fontWeight: tsWeight, color: ts.color || C.dark, fontFamily: tsFontFamily }}>Today's Mood :-</span>
+        <span style={{ fontSize: labelFontSize, fontWeight: tsWeight, color: ts.color || autoTextColor(cardBg), fontFamily: tsFontFamily }}>Today's Mood :-</span>
         <div style={{ display: "flex", gap: 5 }}>
           <MoodBtn active={todayMood === "happy"} onClick={() => onSetMood("happy")} title="Happy"><Smile size={15} /></MoodBtn>
           <MoodBtn active={todayMood === "neutral"} onClick={() => onSetMood("neutral")} title="Neutral"><Meh size={15} /></MoodBtn>
@@ -4073,7 +4101,7 @@ function buildCalendarCells(year, month) {
   while (cells.length % 7 !== 0) cells.push(null);
   return cells;
 }
-function CalendarDayCell({ day, iso, pct, isToday, isPast, index, fontSize, fontFamily, fontWeight, textColor }) {
+function CalendarDayCell({ day, iso, pct, isToday, isPast, index, fontSize, fontFamily, fontWeight, textColor, cardBg }) {
   const done = typeof pct === "number" && pct >= 100;
   const partial = typeof pct === "number" && pct > 0 && pct < 100;
   const missed = isPast && !done; // day already ended without being finished — gets a "cut" mark
@@ -4089,7 +4117,7 @@ function CalendarDayCell({ day, iso, pct, isToday, isPast, index, fontSize, font
         position: "relative", aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center",
         borderRadius: 7, fontSize, fontWeight, fontFamily,
         background: done ? C.accent : partial ? "#fff3d6" : "transparent",
-        color: done ? "#fff" : (textColor || C.text),
+        color: done ? "#fff" : (textColor || autoTextColor(cardBg)),
         boxShadow: isToday ? `inset 0 0 0 1.5px ${C.dark}` : "none",
         opacity: missed ? 0.62 : 1,
       }}
@@ -4180,18 +4208,18 @@ function CalendarWidget({ completionHistory, cardBg, textStyle }) {
   return (
     <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 10, background: cardBg || "#fff", width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: titleFontSize, fontWeight: 800, color: textColor || C.dark, fontFamily, display: "flex", alignItems: "center", gap: 5 }}><CalendarDays size={13} /> Calendar</span>
+        <span style={{ fontSize: titleFontSize, fontWeight: 800, color: textColor || autoTextColor(cardBg), fontFamily, display: "flex", alignItems: "center", gap: 5 }}><CalendarDays size={13} /> Calendar</span>
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
             key={monthLabel}
             initial={{ opacity: 0, x: dir >= 0 ? 8 : -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: dir >= 0 ? -8 : 8 }}
             transition={{ duration: 0.18 }}
-            style={{ fontSize: monthFontSize, fontWeight: 800, color: textColor || "#8a8579", fontFamily }}
+            style={{ fontSize: monthFontSize, fontWeight: 800, color: textColor || autoMutedColor(cardBg), fontFamily }}
           >{monthLabel}</motion.span>
         </AnimatePresence>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, fontSize: weekdayFontSize, fontWeight: 800, color: textColor || "#b3ac99", fontFamily, textAlign: "center" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, fontSize: weekdayFontSize, fontWeight: 800, color: textColor || autoMutedColor(cardBg), fontFamily, textAlign: "center" }}>
         {CALENDAR_WEEKDAYS.map((d, i) => <div key={i}>{d}</div>)}
       </div>
 
@@ -4214,7 +4242,7 @@ function CalendarWidget({ completionHistory, cardBg, textStyle }) {
                 <CalendarDayCell
                   key={iso} day={day} iso={iso} pct={hist[iso]} isToday={iso === todayISO}
                   isPast={cellDate < todayMidnight} index={i}
-                  fontSize={dayFontSize} fontFamily={fontFamily} fontWeight={fontWeight} textColor={textColor}
+                  fontSize={dayFontSize} fontFamily={fontFamily} fontWeight={fontWeight} textColor={textColor} cardBg={cardBg}
                 />
               );
             })}
@@ -4248,27 +4276,37 @@ function CalendarWidget({ completionHistory, cardBg, textStyle }) {
    metric mounts/reorders/unmounts with a spring, via framer-motion's
    AnimatePresence + layout animations (popLayout mode keeps neighbors
    sliding smoothly into the freed/claimed space). */
-function AnalyticsSummaryMetric({ meta, value }) {
+function AnalyticsSummaryMetric({ meta, value, textColor }) {
+  const dt = useContext(DashboardThemeCtx);
+  const safeTextColor = textColor || dt.text || C.dark;
+  // meta.color/labels default to the fixed C.dark brand color for
+  // "neutral" metrics (Overall ring, Net Money) — swap that one fixed
+  // shade for the current theme's text color so it stays legible
+  // against dark Panel Theme presets too; distinct accent colors
+  // (green/red/blue) are left untouched since those already read fine
+  // on both light and dark backgrounds.
+  const ringColor = meta.color === C.dark ? safeTextColor : meta.color;
   if (meta.type === "ring") {
-    return <RingStat pct={value} label={meta.label} color={meta.color} />;
+    return <RingStat pct={value} label={meta.label} color={ringColor} />;
   }
   const Icon = meta.icon;
   const display = meta.type === "money"
     ? `${value < 0 ? "-" : ""}₹${Math.abs(Math.round(value))}`
     : String(Math.round(value)).padStart(3, "0");
+  const moneyColor = meta.color === C.dark ? safeTextColor : (meta.color || safeTextColor);
   return (
     <div style={{ textAlign: "center", minWidth: 42 }}>
       <div style={{
         minWidth: 34, height: 34, borderRadius: meta.type === "money" ? 10 : "50%",
         background: meta.type === "money" ? "transparent" : C.dark,
-        color: meta.type === "money" ? (meta.color || C.dark) : "#fff",
+        color: meta.type === "money" ? moneyColor : "#fff",
         display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
         fontSize: meta.type === "money" ? 12 : 12, fontWeight: 900, margin: "0 auto 2px", padding: "0 4px",
       }}>
         {meta.type === "money" && Icon && <Icon size={11} />}
         {display}
       </div>
-      <div style={{ fontSize: 8, fontWeight: 700, color: "#8a8579", whiteSpace: "nowrap" }}>{meta.label}</div>
+      <div style={{ fontSize: 8, fontWeight: 700, color: safeTextColor, opacity: 0.65, whiteSpace: "nowrap" }}>{meta.label}</div>
     </div>
   );
 }
@@ -4279,7 +4317,7 @@ function AnalyticsSummaryWidget({ state, onOpen, cardBg, metrics }) {
   return (
     <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 10, background: cardBg || "#fff", width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark, display: "flex", alignItems: "center", gap: 5 }}><BarChart3 size={13} /> Analytics Summary</span>
+        <span style={{ fontSize: 11, fontWeight: 800, color: autoTextColor(cardBg), display: "flex", alignItems: "center", gap: 5 }}><BarChart3 size={13} /> Analytics Summary</span>
         <Oval className="btl-oval-btn" onClick={onOpen} style={{ cursor: "pointer", fontSize: 9, padding: "2px 9px" }}>Open full <ChevronRight size={11} style={{ marginLeft: 2 }} /></Oval>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1, flexWrap: "wrap", overflow: "hidden" }}>
@@ -4292,12 +4330,12 @@ function AnalyticsSummaryWidget({ state, onOpen, cardBg, metrics }) {
               exit={{ opacity: 0, scale: 0.5, y: -10 }}
               transition={{ type: "spring", stiffness: 360, damping: 26 }}
             >
-              <AnalyticsSummaryMetric meta={meta} value={values[meta.id]} />
+              <AnalyticsSummaryMetric meta={meta} value={values[meta.id]} textColor={autoTextColor(cardBg)} />
             </motion.div>
           ))}
         </AnimatePresence>
         {!activeMetrics.length && (
-          <span style={{ fontSize: 9, color: "#b3ac99", fontWeight: 700 }}>
+          <span style={{ fontSize: 9, color: autoMutedColor(cardBg), fontWeight: 700 }}>
             No metrics selected — pick some in Settings → Theme → Analytics Summary
           </span>
         )}
@@ -7477,7 +7515,7 @@ function BTLDashboardInner() {
               </div>
               <RingStat pct={dailyPct} label="Daily Goal" sub="Staytus" color={C.accent} />
               <RingStat pct={extryPct} label="Extry Goal" sub="Staytus" color={C.blue} />
-              <RingStat pct={overallPct} label="Goal" color={C.dark} />
+              <RingStat pct={overallPct} label="Goal" color={dashTheme.text || C.dark} />
               <div style={{ position: "relative" }}>
                 <ProfileButton user={fbUser} open={profileOpen} onToggle={() => setProfileOpen((v) => !v)} />
                 <ProfilePopup
