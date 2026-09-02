@@ -1,6 +1,53 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Header — brand title, streak badge, goal rings & avatar now animated (this update)
+## 🎉 New feature — Friend Celebration (invite, VS dashboard, live chat, friend's Memories) (this update)
+
+A new **red 👥 "Friend Celebration" icon** sits in the header, next to
+Setting. Clicking it opens a **full-screen panel** — not a small modal —
+with a dramatic **"VS" clash animation** (two avatars zoom in from either
+side and collide with a flash + "VS" text) every single time it opens.
+
+- **First screen (the "hub")** — your name/avatar up top, an **Invite a
+  Friend** box (type their email → they must already have signed into
+  BTL once), a live **Requests** list of anyone who's invited *you*
+  (Accept ✓ / Decline ✕), your own pending **Sent** invites (cancelable),
+  and a grid of **Your Friends** you can tap into.
+- **Accepting a request** (by you, or by the person you invited) creates
+  a `friendships/{uidA_uidB}` doc. If you're sitting on the hub when the
+  *other* person accepts, the app **auto-jumps straight into the VS
+  screen** with a fresh VS animation — no refresh needed.
+- **The VS split-screen dashboard** (opened from "Your Friends", or
+  automatically as above) shows **you vs. your friend side by side**:
+  avatar, Total Earn/Total Spend chips, 5 small ring stats (Daily /
+  Extry / Overall / Streak / Score), and read-only **Daily Goals** +
+  **Extra Goals** lists for each of you, live from Firestore.
+- **Chat button** (top center) opens a **glassmorphic chat popup**
+  (blurred dark glass, colored message bubbles, spring pop-in) — real
+  real-time messaging with your friend, stored per-friendship.
+- **Memory button** on your friend's side opens the **exact same
+  Memories modal** the rest of the app already uses (tabs for Goals /
+  Money / Photos / Notes, date timeline) — just fed with your friend's
+  live data instead of yours, and read-only (their notes box is hidden).
+- Built entirely with `framer-motion` + `lucide-react` (both already
+  dependencies) — **no new npm installs**.
+
+**New files:** `lib/friendsStorage.js` (all the Firestore calls for
+requests/friendships/chat) and `components/FriendCelebration.jsx` (the
+whole UI). `components/BTLDashboard.jsx` only changed by: exporting
+`MemoriesModal` (so the friend-memory view can reuse it), adding the
+header icon + badge, and rendering `<FriendCelebration />` alongside the
+other modals.
+
+⚠️ **You must redeploy `firestore.rules`** for this to work — new rules
+were added for `users_public`, `friend_requests`, `friendships`, and
+`friend_chats/{id}/messages`, plus your own `btl_state/{uid}` read rule
+was relaxed so an *accepted friend* (and only an accepted friend) can
+read your dashboard data for the VS screen. Go to **Firestore Database →
+Rules** in the Firebase console, paste the new `firestore.rules`, and
+click **Publish** — the app will otherwise get permission-denied errors
+on this feature (everything else keeps working as before).
+
+## Header — brand title, streak badge, goal rings & avatar now animated (earlier update)
 
 More header polish, same "alive not static" treatment as the icon
 buttons:

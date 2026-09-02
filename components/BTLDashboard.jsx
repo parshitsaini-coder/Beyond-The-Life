@@ -8,12 +8,15 @@ import {
   CheckCircle2, Wallet, StickyNote, Camera, Sparkles, Download, ZoomIn, CalendarDays,
   ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft,
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
-  Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn
+  Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn,
+  Users,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate } from "framer-motion";
 import { useAuth, signOutUser, signInWithGoogle } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
+import { ensurePublicProfile, useIncomingFriendRequestCount } from "@/lib/friendsStorage";
+import FriendCelebration from "@/components/FriendCelebration";
 
 /* ============================================================
    BEYOND THE LIFE (BTL)  —  personal life-goals dashboard
@@ -5717,7 +5720,7 @@ function MemPhotoLightbox({ src, onClose }) {
   );
 }
 
-function MemNotesPanel({ summary, memInput, setMemInput, onSubmit }) {
+function MemNotesPanel({ summary, memInput, setMemInput, onSubmit, readOnly }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, minHeight: 200 }}>
       {summary.dayNotes && (
@@ -5740,16 +5743,18 @@ function MemNotesPanel({ summary, memInput, setMemInput, onSubmit }) {
           ))}
         </div>
       </div>
-      <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
-        <input value={memInput} onChange={(e) => setMemInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && onSubmit()}
-          placeholder="Write a memory for this day..."
-          style={{ flex: 1, fontSize: 11, padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd6c4", background: "rgba(255,255,255,0.75)", outline: "none" }} />
-        <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.93 }} onClick={onSubmit}
-          style={{ border: "none", background: C.dark, color: "#fff", borderRadius: 8, padding: "0 14px", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
-          Add
-        </motion.button>
-      </div>
+      {!readOnly && (
+        <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
+          <input value={memInput} onChange={(e) => setMemInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && onSubmit()}
+            placeholder="Write a memory for this day..."
+            style={{ flex: 1, fontSize: 11, padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd6c4", background: "rgba(255,255,255,0.75)", outline: "none" }} />
+          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.93 }} onClick={onSubmit}
+            style={{ border: "none", background: C.dark, color: "#fff", borderRadius: 8, padding: "0 14px", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
+            Add
+          </motion.button>
+        </div>
+      )}
     </div>
   );
 }
@@ -5761,7 +5766,7 @@ const MEM_TABS = [
   { key: "notes", label: "Notes", icon: StickyNote },
 ];
 
-function MemoriesModal({ state, onAddMemory, onClose }) {
+export function MemoriesModal({ state, onAddMemory, onClose, readOnly }) {
   const dates = useMemo(() => collectMemoryDates(state), [state.completionHistory, state.moneyHistory, state.moodLog, state.dailyLogs, state.memories]);
   const [selectedDate, setSelectedDate] = useState(dates[0] || todayISO());
   const [tabKey, setTabKey] = useState("goals");
@@ -5834,7 +5839,7 @@ function MemoriesModal({ state, onAddMemory, onClose }) {
       <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid rgba(255,255,255,0.55)", display: "flex", flexDirection: "column", background: "rgba(255,255,255,0.25)" }}>
         <div style={{ padding: "14px 14px 8px", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           <Sparkles size={14} color={C.accent} />
-          <span style={{ fontWeight: 900, fontSize: 13, color: C.dark }}>Memories</span>
+          <span style={{ fontWeight: 900, fontSize: 13, color: C.dark }}>{readOnly ? "Friend's Memories" : "Memories"}</span>
           <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: "#9c9584", background: "rgba(255,255,255,0.6)", borderRadius: 999, padding: "2px 7px" }}>{dates.length}</span>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "2px 8px 10px" }} className="btl-scroll">
@@ -5889,7 +5894,7 @@ function MemoriesModal({ state, onAddMemory, onClose }) {
             {tabKey === "goals" && <MemGoalsPanel summary={summary} />}
             {tabKey === "money" && <MemMoneyPanel summary={summary} entries={dayMoneyEntries} onOpenPhoto={setLightbox} />}
             {tabKey === "photos" && <MemPhotosPanel summary={summary} onOpen={setLightbox} />}
-            {tabKey === "notes" && <MemNotesPanel summary={summary} memInput={memInput} setMemInput={setMemInput} onSubmit={submitMemory} />}
+            {tabKey === "notes" && <MemNotesPanel summary={summary} memInput={memInput} setMemInput={setMemInput} onSubmit={submitMemory} readOnly={readOnly} />}
           </motion.div>
         </div>
       </div>
@@ -6863,13 +6868,16 @@ function BTLDashboardInner() {
   const [moneyModal, setMoneyModal] = useState(null); // { mode: "earn"|"spend", amount } | null
   const [focusMode, setFocusMode] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [friendOpen, setFriendOpen] = useState(false); // Friend Celebration panel
   const [saveStatus, setSaveStatus] = useState("idle"); // "idle" | "saving" | "saved"
+  const incomingFriendReqCount = useIncomingFriendRequestCount(fbUser?.uid);
   const fileRef = useRef(null);
   const loaded = useRef(false);
 
   useEffect(() => {
     if (!fbUser) return;
     loadState(fbUser).then((s) => { setState(rolloverDailyGoals(s)); loaded.current = true; });
+    ensurePublicProfile(fbUser); // keep users_public/{uid} fresh so friends can find you by email
   }, [fbUser]);
 
   // Bug fix: goals ticked "kal" (yesterday) were staying ticked forever —
@@ -7284,6 +7292,20 @@ function BTLDashboardInner() {
               <GlowIconButton icon={Target} label="Focus Mode" active={focusMode} color={C.accent} onClick={() => setFocusMode((v) => !v)} />
               <GlowIconButton icon={Sparkles} label="Share Journey" color="#b083f0" onClick={() => setShowShare(true)} />
               <GlowIconButton icon={Settings} label="Setting" color={dashTheme.text} onClick={() => setSettingsOpen(true)} />
+              <div style={{ position: "relative" }}>
+                <GlowIconButton icon={Users} label="Friend Celebration" color="#e63946" onClick={() => setFriendOpen(true)} />
+                {incomingFriendReqCount > 0 && (
+                  <motion.span
+                    initial={{ scale: 0 }} animate={{ scale: 1 }}
+                    style={{
+                      position: "absolute", top: -3, right: -3, minWidth: 15, height: 15, borderRadius: 999,
+                      background: "#e63946", color: "#fff", fontSize: 9, fontWeight: 900,
+                      display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
+                      border: "1.5px solid #fff", pointerEvents: "none",
+                    }}
+                  >{incomingFriendReqCount}</motion.span>
+                )}
+              </div>
             </div>
 
 
@@ -7373,6 +7395,19 @@ function BTLDashboardInner() {
       {/* ---------- MEMORIES MODAL (Glassmorphism 2.0 / Liquid Glass — full journal, tabbed) ---------- */}
       <AnimatePresence>
         {memOpen && <MemoriesModal state={state} onAddMemory={addMemory} onClose={() => setMemOpen(false)} />}
+      </AnimatePresence>
+
+      {/* ---------- FRIEND CELEBRATION (icon in header) — invite/accept flow, VS
+           split-screen dashboard, glass chat, and friend's Memories reused above ---------- */}
+      <AnimatePresence>
+        {friendOpen && (
+          <FriendCelebration
+            user={fbUser}
+            myState={state}
+            myStats={{ dailyPct, extryPct, overallPct, streak: state.streak, lifeScore: headerLifeScore }}
+            onClose={() => setFriendOpen(false)}
+          />
+        )}
       </AnimatePresence>
 
       {/* ---------- SHARE JOURNEY MODAL (header icon — same modal Analytics uses) ---------- */}
