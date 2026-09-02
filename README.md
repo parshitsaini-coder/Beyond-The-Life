@@ -1,6 +1,43 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Share Your Journey — full pro upgrade: your name + today's goals list (this update)
+## Share Your Journey card — Earn/Spend redone, notes replace the quote (this update)
+
+Reworked the generated **Share Your Journey** image (Canvas 2D card):
+
+- **Removed the old "Total Earned" stat pill** from the 4-stat row (it
+  was cramped and only showed earnings, not spending).
+- **New dedicated Earn & Spend panel** right below the Life Score ring:
+  two proper side-by-side cards — 💰 **Earned** (green) and 💸 **Spent**
+  (red), pulled from the same `state.totalEarnLife` /
+  `state.totalSpendLife` totals used everywhere else in the app — plus
+  a small **Net ₹X** readout centered underneath.
+- **Bottom quote box now shows today's notes instead.** The old
+  hardcoded/`lifeRules` quote ("Wake up at 5 AM", etc.) is gone; that
+  box now reads straight from `state.notes` (same field the Earn/Spend
+  widget's notes textarea writes to), rendered in **bold black** text.
+  If there's nothing written yet today, it shows a plain "No notes
+  added today" placeholder instead.
+- No schema changes, no new npm installs — still pure Canvas 2D reading
+  fields the app already tracks.
+
+## Earn/Spend widget — a "Done" button to clear today's notes + photo (earlier update)
+
+Right below the notes box + photo upload square (the circled area) in
+the Earn/Spend Money widget, a green **"Done — clear notes & photo"**
+button now shows up as soon as either one has something in it.
+
+- Tap it and both clear instantly — the notes textarea empties and the
+  photo preview square goes back to the placeholder icon.
+- It's saved right away through the same `update()`/Firestore sync
+  path everything else in the app already uses, so it stays cleared
+  after a refresh — this isn't just a local/visual reset.
+- Doesn't touch anything in **Memories** — past photos there live in
+  `dailyLogs[day].images` (a separate running list), untouched by this.
+- The button fades in/out with its own tiny height animation (`framer-
+  motion`, already a dependency) instead of just popping in — no new
+  npm installs required.
+
+## Share Your Journey — full pro upgrade: your name + today's goals list (earlier update)
 
 The **Share Your Journey** card (Analytics tab → "📤 Share Journey") got a
 complete overhaul:

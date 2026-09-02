@@ -1309,10 +1309,11 @@ function generateShareCard(state, lifeScore, userName) {
 
   const W = 1080;
   const TOP_H = 900;
+  const EARN_SPEND_H = 150;
   const GOALS_TITLE_H = 60;
   const QUOTE_H = 190;
   const FOOTER_H = 90;
-  const H = TOP_H + GOALS_TITLE_H + panelH + 40 + QUOTE_H + FOOTER_H;
+  const H = TOP_H + EARN_SPEND_H + GOALS_TITLE_H + panelH + 40 + QUOTE_H + FOOTER_H;
 
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
@@ -1369,11 +1370,11 @@ function generateShareCard(state, lifeScore, userName) {
   ctx.fillStyle = lifeScore.color;
   ctx.fillText(`${lifeScore.emoji} ${lifeScore.label}`, cx, cy + 210);
 
-  // stat row — 4 up now, including today's goal count
+  // stat row — Total Earned pill removed (money now gets its own proper
+  // Earn/Spend panel below instead of being squeezed in here)
   const statY = 800;
   const stats = [
     { label: "Day Streak", value: String(state.streak || 0), emoji: "🔥" },
-    { label: "Total Earned", value: `₹${state.totalEarnLife || 0}`, emoji: "💰" },
     { label: "Today's Goals", value: `${doneGoals.length}/${allGoals.length}`, emoji: "📋" },
   ];
   const bestCat = computeBestCategory(state);
@@ -1392,8 +1393,51 @@ function generateShareCard(state, lifeScore, userName) {
     ctx.fillText(s.label, x, statY + 76);
   });
 
+  // ---- Earn & Spend — a proper dedicated panel, not squeezed into the
+  // stat row. Two cards side by side: green Earned, red Spent, with a
+  // small Net readout centered underneath. ----
+  {
+    const earnLife = state.totalEarnLife || 0;
+    const spendLife = state.totalSpendLife || 0;
+    const netLife = earnLife - spendLife;
+    const esY = TOP_H;
+    const esGap = 30;
+    const esColW = (W - 180 - esGap) / 2;
+    const esLeftX = 90, esRightX = 90 + esColW + esGap;
+    const esCardH = 100;
+
+    ctx.textAlign = "left";
+    drawRoundedRect(ctx, esLeftX, esY, esColW, esCardH, 20);
+    ctx.fillStyle = "#4a7c5914"; ctx.fill();
+    ctx.strokeStyle = "#4a7c5945"; ctx.lineWidth = 1.5; ctx.stroke();
+
+    drawRoundedRect(ctx, esRightX, esY, esColW, esCardH, 20);
+    ctx.fillStyle = "#c0392b0f"; ctx.fill();
+    ctx.strokeStyle = "#c0392b38"; ctx.stroke();
+
+    ctx.font = "44px Inter, sans-serif";
+    ctx.fillText("💰", esLeftX + 24, esY + 58);
+    ctx.fillText("💸", esRightX + 24, esY + 58);
+
+    ctx.font = "700 17px Inter, sans-serif";
+    ctx.fillStyle = "#4a7c59";
+    ctx.fillText("Earned", esLeftX + 82, esY + 34);
+    ctx.fillStyle = "#c0392b";
+    ctx.fillText("Spent", esRightX + 82, esY + 34);
+
+    ctx.font = "900 34px Inter, sans-serif";
+    ctx.fillStyle = C.dark;
+    ctx.fillText(`₹${earnLife}`, esLeftX + 82, esY + 68);
+    ctx.fillText(`₹${spendLife}`, esRightX + 82, esY + 68);
+
+    ctx.textAlign = "center";
+    ctx.font = "800 18px Inter, sans-serif";
+    ctx.fillStyle = netLife >= 0 ? "#4a7c59" : "#c0392b";
+    ctx.fillText(`Net ${netLife >= 0 ? "+" : ""}₹${netLife}`, W / 2, esY + esCardH + 32);
+  }
+
   // ---- Today's Goals — completed vs pending, side by side ----
-  let y = TOP_H;
+  let y = TOP_H + EARN_SPEND_H;
   ctx.font = "800 26px Inter, sans-serif";
   ctx.fillStyle = C.dark;
   ctx.fillText("📋 Today's Goals", W / 2, y + 30);
@@ -1457,14 +1501,24 @@ function generateShareCard(state, lifeScore, userName) {
   ctx.textAlign = "center";
   y += panelH + 40;
 
-  // divider + footer quote
+  // divider + footer — today's notes (from the Earn/Spend widget), bold
+  // black, instead of the old lifeRules quote
   drawRoundedRect(ctx, 90, y, W - 180, QUOTE_H, 24);
   ctx.fillStyle = "#ffffffaa";
   ctx.fill();
-  ctx.font = "italic 600 26px Inter, sans-serif";
-  ctx.fillStyle = C.text;
-  const quote = (state.lifeRules && state.lifeRules[0]) ? `"${state.lifeRules[0]}"` : "Small steps, every single day.";
-  wrapText(ctx, quote, W / 2, y + QUOTE_H / 2, W - 260, 34);
+  const todaysNotes = (state.notes || (state.dailyLogs && state.dailyLogs[todayISO()]?.notes) || "").trim();
+  ctx.font = "800 20px Inter, sans-serif";
+  ctx.fillStyle = "#a39c86";
+  ctx.fillText("📝 Today's Notes", W / 2, y + 40);
+  if (todaysNotes) {
+    ctx.font = "900 27px Inter, sans-serif";
+    ctx.fillStyle = "#000000";
+    wrapText(ctx, todaysNotes, W / 2, y + QUOTE_H / 2 + 20, W - 260, 36);
+  } else {
+    ctx.font = "700 22px Inter, sans-serif";
+    ctx.fillStyle = "#b3ac99";
+    ctx.fillText("No notes added today", W / 2, y + QUOTE_H / 2 + 20);
+  }
   y += QUOTE_H;
 
   ctx.font = "700 20px Inter, sans-serif";
@@ -3060,6 +3114,22 @@ function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFil
   const notesFontSize = Math.round(9 * ts.scale);
   const tsFontFamily = ts.font ? fontStackFor(ts.font) : undefined;
   const tsWeight = ts.bold ? 900 : 800;
+
+  // "Done" — clears today's draft note + photo preview (and mirrors the
+  // cleared note into dailyLogs so it's saved, same sync path the
+  // textarea's own onChange already uses). Doesn't touch past Memories
+  // photos — those live in dailyLogs[day].images, a separate array.
+  const clearNotesAndImage = () => {
+    update((s) => {
+      s.notes = "";
+      s.uploadedImage = null;
+      const day = todayISO();
+      const cur = s.dailyLogs?.[day] || {};
+      s.dailyLogs = { ...(s.dailyLogs || {}), [day]: { ...cur, notes: "" } };
+      return s;
+    });
+  };
+
   return (
     <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: cardBg || "#fff", width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box", display: "flex", flexDirection: "column" }} className="btl-scroll">
       <div style={{ display: "flex", gap: 6 }}>
@@ -3132,6 +3202,24 @@ function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFil
           <input ref={fileRef} type="file" accept="image/*" onChange={onImageFile} style={{ display: "none" }} />
         </div>
       </div>
+
+      <AnimatePresence>
+        {(state.notes || state.uploadedImage) && (
+          <motion.button
+            initial={{ opacity: 0, height: 0, marginTop: 0 }} animate={{ opacity: 1, height: "auto", marginTop: 6 }} exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+            onClick={clearNotesAndImage}
+            title="Clears today's notes and uploaded photo"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 5, width: "100%",
+              border: "none", borderRadius: 6, padding: "6px 0", background: "#4a7c59", color: "#fff",
+              fontSize: 9.5, fontWeight: 800, cursor: "pointer", overflow: "hidden",
+            }}
+          >
+            <CheckCircle2 size={12} /> Done — clear notes & photo
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* Today's Mood — replaces the old standalone multi-day "DATE" widget.
           Only today's mood lives here now, right in the card's own free space. */}
