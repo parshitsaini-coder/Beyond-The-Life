@@ -3,10 +3,11 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, UserPlus, MessageCircle, Send, Check, ArrowLeft, Handshake, Zap,
-  BookOpen, CheckCircle2, Circle, Loader2,
+  BookOpen, CheckCircle2, Circle, Loader2, Users,
 } from "lucide-react";
 import {
-  friendshipId, sendFriendRequestByEmail, listenIncomingRequests, listenOutgoingRequests,
+  friendshipId, sendFriendRequestByEmail, sendFriendRequestToUid, listAllUsers,
+  listenIncomingRequests, listenOutgoingRequests,
   acceptFriendRequest, declineFriendRequest, cancelFriendRequest, listenFriendships,
   listenFriendState, listenChatMessages, sendChatMessage,
 } from "@/lib/friendsStorage";
@@ -152,6 +153,33 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
   const [sending, setSending] = useState(false);
   const [busyId, setBusyId] = useState(null);
 
+  const [allUsers, setAllUsers] = useState(null); // null = loading
+  const [discoverErr, setDiscoverErr] = useState(false);
+  const [discoverSentIds, setDiscoverSentIds] = useState(() => new Set());
+  const [discoverStatus, setDiscoverStatus] = useState({}); // uid -> {ok, reason}
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    listAllUsers(user.uid)
+      .then((list) => { if (!cancelled) setAllUsers(list); })
+      .catch(() => { if (!cancelled) { setAllUsers([]); setDiscoverErr(true); } });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // Anyone already a friend, or with a pending request either way, is
+  // filtered out of "Discover" — no point showing a button for them there,
+  // they already live in Friends / Requests / Sent.
+  const friendUids = useMemo(() => new Set(friendships.map((f) => f.otherUid)), [friendships]);
+  const pendingUids = useMemo(
+    () => new Set([...incoming.map((r) => r.fromUid), ...outgoing.map((r) => r.toUid)]),
+    [incoming, outgoing]
+  );
+  const discoverList = useMemo(
+    () => (allUsers || []).filter((u) => !friendUids.has(u.uid) && !pendingUids.has(u.uid) && !discoverSentIds.has(u.uid)),
+    [allUsers, friendUids, pendingUids, discoverSentIds]
+  );
+
   const send = async () => {
     if (!email.trim() || sending) return;
     setSending(true); setStatus(null);
@@ -163,6 +191,19 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
       setStatus({ ok: false, reason: "error" });
     }
     setSending(false);
+  };
+
+  const sendToDiscoverUser = async (target) => {
+    setBusyId(target.uid);
+    try {
+      const res = await sendFriendRequestToUid(user, target);
+      setDiscoverStatus((s) => ({ ...s, [target.uid]: res }));
+      if (res.ok) setDiscoverSentIds((s) => new Set(s).add(target.uid));
+    } catch (e) {
+      setDiscoverStatus((s) => ({ ...s, [target.uid]: { ok: false, reason: "error" } }));
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const withBusy = (id, fn) => async () => { setBusyId(id); try { await fn(); } finally { setBusyId(null); } };
@@ -266,6 +307,49 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
             </div>
           </div>
         )}
+
+        {/* discover — every other user on the dashboard, request them directly */}
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
+            <Users size={13} color="rgba(255,255,255,0.65)" />
+            <span style={{ fontSize: 11, fontWeight: 900, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: 0.5 }}>
+              Discover {allUsers && discoverList.length > 0 && `(${discoverList.length})`}
+            </span>
+          </div>
+          {allUsers === null && (
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center", gap: 6 }}>
+              <Loader2 size={12} className="btl-spin" /> Users load ho rahe hain...
+            </div>
+          )}
+          {discoverErr && <div style={{ fontSize: 11, color: "#f4a261" }}>Users list load nahi ho payi, dobara try karein.</div>}
+          {allUsers !== null && !discoverErr && discoverList.length === 0 && (
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Abhi koi naya user dikhne ke liye nahi hai.</div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <AnimatePresence>
+              {discoverList.map((u) => {
+                const st = discoverStatus[u.uid];
+                return (
+                  <motion.div key={u.uid} layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }}
+                    style={{ display: "flex", flexDirection: "column", gap: 4, background: "rgba(255,255,255,0.06)", borderRadius: 12, padding: "9px 12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Avatar name={u.name} photoURL={u.photoURL} size={32} />
+                      <div style={{ fontSize: 12, fontWeight: 800, color: "#fff", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
+                      <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} disabled={busyId === u.uid}
+                        onClick={() => sendToDiscoverUser(u)}
+                        style={{ border: "none", background: C.accent, color: "#fff", borderRadius: 999, padding: "5px 12px", fontWeight: 800, fontSize: 10.5, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, flexShrink: 0, opacity: busyId === u.uid ? 0.7 : 1 }}>
+                        {busyId === u.uid ? <Loader2 size={11} className="btl-spin" /> : <UserPlus size={11} />} Request
+                      </motion.button>
+                    </div>
+                    {st && !st.ok && (
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#f4a261" }}>{STATUS_MSG[st.reason] || STATUS_MSG.error}</div>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        </div>
 
         {/* friends */}
         <div>
