@@ -1,6 +1,46 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Life Story — page theme settings (this update)
+## Life Story — animated shimmer border (this update)
+
+The old day-card border (`1px solid #ece7d8`) was almost invisible against
+the cream background — barely showed where the writing box actually was.
+Fixed by rebuilding it as a proper animated gradient border:
+
+- A 2px gradient ring (orange → soft gold → blue → orange) now wraps
+  every day card, clearly outlining it against the page background.
+- The gradient **slowly shimmers/travels** around the border on a loop —
+  faster on **today's** entry (5s) than on past entries (9s), so the box
+  you're actively writing in draws a bit more attention.
+- Today's card also carries a soft accent glow (`box-shadow`) so it reads
+  as the "active" one at a glance.
+- Built by animating `backgroundPosition` on a `background-size: 300%`
+  gradient via `framer-motion`'s `animate` — not animating the `border`
+  property directly, which the animation performance guidance for this
+  stack calls out as expensive; this keeps it GPU-friendly. No new npm
+  installs required.
+
+## Life Story — select-to-format toolbar (earlier update)
+
+Highlight any word or sentence inside **today's** entry and a small
+floating toolbar pops up right above the selection — no need to open the
+page-wide Theme settings for a one-off change:
+
+- **Bold**, **Italic**, **Underline** buttons.
+- **7 quick color swatches** + a full custom color wheel (native color
+  picker) for that selection only.
+- Works together with the page-wide Theme (font/size/bg) — this toolbar
+  only touches the exact text you've selected, so you can bold one word
+  and leave the rest alone.
+- Formatting is written straight into the entry's saved HTML (same
+  `dangerouslySetInnerHTML` already used to render past entries), so it
+  shows up correctly the next time you open the app too.
+
+Built with `document.execCommand` (`bold`/`italic`/`underline`/
+`foreColor`) — the same approach this file already used for
+paste-as-plain-text — applied only to the live selection, so no new npm
+installs required.
+
+## Life Story — page theme settings (earlier update)
 
 A **theme** button now sits next to **filters** in the Life Story header.
 Tapping it opens the same glass popover style as the rest of the app, with:
@@ -13,6 +53,7 @@ Tapping it opens the same glass popover style as the rest of the app, with:
   typewriter, Comic Sans), all web-safe stacks — no new npm installs or
   font files to load.
 - **Text size** — an 11–22px slider.
+- **Bold text** — a single on/off toggle applied to every entry.
 - **Text color** and **page background color** — native color pickers, so
   any custom combination is reachable beyond the 10 presets (picking
   either one switches the preset indicator to "custom").
@@ -27,6 +68,15 @@ Saved at `state.lifeStory.theme` — same per-user Firestore sync as
 everything else, so it persists across devices and sessions. Built with
 `framer-motion` for the popover, matching the Jump-to-date popover
 already in this tab — no new npm installs required.
+
+**Bug fix (this update):** typing an entry, adding/removing a photo, or
+setting up your Life Story profile was silently wiping the saved theme
+back to default. Root cause: those four save paths each rebuilt the
+`state.lifeStory` object from scratch and forgot to carry the `theme`
+field along — so the very next keystroke after picking a theme reset it.
+All four now preserve `theme` explicitly. Verified: pick a non-default
+theme, type text, add a photo, remove a photo — theme stays exactly as
+set in every case.
 
 ## Profile avatar + account popup (earlier update)
 

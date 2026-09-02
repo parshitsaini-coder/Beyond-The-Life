@@ -8,7 +8,7 @@ import {
   CheckCircle2, Wallet, StickyNote, Camera, Sparkles, Download, ZoomIn, CalendarDays,
   ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft,
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
-  Type, Palette, Bold, Baseline, User, LogIn
+  Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder } from "framer-motion";
@@ -5607,6 +5607,7 @@ const LIFE_STORY_DEFAULT_THEME = {
   presetId: "classic",
   fontFamily: "inherit",
   fontSize: 13,
+  bold: false,
   textColor: C.text,
   bgColor: "linear-gradient(180deg, #fbf9f2, #f5f2e8)",
 };
@@ -5709,6 +5710,56 @@ function LifeStoryMentionPopover({ pos, onPickEmoji, onAddPhoto, onClose }) {
           >{em}</motion.span>
         ))}
       </div>
+    </motion.div>
+  );
+}
+
+/* Floating selection toolbar — appears right above whatever text you
+   highlight inside today's entry, so you can Bold / Italic / Underline
+   or recolor just that word/sentence without opening the page-wide
+   Theme settings. Uses document.execCommand, same approach already used
+   for paste-as-plain-text above, applied only to the current selection. */
+const SELECTION_TOOLBAR_COLORS = ["#403d39", "#e63946", "#fca311", "#2a9d8f", "#3d5a80", "#7b2cbf", "#ffffff"];
+
+function LifeStorySelectionToolbar({ pos, onBold, onItalic, onUnderline, onColor, activeColorPickRef }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9, y: 6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 6 }}
+      transition={{ type: "spring", stiffness: 420, damping: 28 }}
+      style={{
+        position: "absolute", top: pos.top, left: pos.left, transform: "translate(-50%, -100%)", zIndex: 70,
+        display: "flex", alignItems: "center", gap: 4,
+        background: "rgba(37,36,34,0.92)", backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
+        border: "1px solid rgba(255,255,255,0.12)", borderRadius: 999, boxShadow: "0 10px 28px rgba(0,0,0,0.35)", padding: "5px 6px",
+        whiteSpace: "nowrap",
+      }}
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      <motion.button whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onMouseDown={(e) => { e.preventDefault(); onBold(); }}
+        style={{ width: 24, height: 24, borderRadius: 6, border: "none", background: "rgba(255,255,255,0.1)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+      ><Bold size={12} /></motion.button>
+      <motion.button whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onMouseDown={(e) => { e.preventDefault(); onItalic(); }}
+        style={{ width: 24, height: 24, borderRadius: 6, border: "none", background: "rgba(255,255,255,0.1)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+      ><Italic size={12} /></motion.button>
+      <motion.button whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onMouseDown={(e) => { e.preventDefault(); onUnderline(); }}
+        style={{ width: 24, height: 24, borderRadius: 6, border: "none", background: "rgba(255,255,255,0.1)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+      ><Underline size={12} /></motion.button>
+
+      <div style={{ width: 1, height: 16, background: "rgba(255,255,255,0.18)", margin: "0 2px" }} />
+
+      {SELECTION_TOOLBAR_COLORS.map((c) => (
+        <motion.span
+          key={c} whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }} onMouseDown={(e) => { e.preventDefault(); onColor(c); }}
+          style={{ width: 15, height: 15, borderRadius: "50%", background: c, border: c === "#ffffff" ? "1px solid rgba(255,255,255,0.4)" : "1px solid rgba(255,255,255,0.25)", cursor: "pointer" }}
+        />
+      ))}
+      <label style={{ width: 15, height: 15, borderRadius: "50%", background: "conic-gradient(red,orange,yellow,green,blue,violet,red)", cursor: "pointer", display: "block", position: "relative" }}>
+        <input
+          ref={activeColorPickRef} type="color" onMouseDown={(e) => e.preventDefault()}
+          onChange={(e) => onColor(e.target.value)}
+          style={{ opacity: 0, position: "absolute", inset: 0, width: "100%", height: "100%", cursor: "pointer" }}
+        />
+      </label>
     </motion.div>
   );
 }
@@ -5865,9 +5916,12 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
     return (r * 299 + g * 587 + b * 114) / 1000 < 128;
   })();
   const [mention, setMention] = useState(null); // { top, left } | null
+  const [selToolbar, setSelToolbar] = useState(null); // { top, left } | null
   const fileRef = useRef(null);
   const editableRef = useRef(null);
   const savedRangeRef = useRef(null);
+  const selRangeRef = useRef(null); // last non-collapsed selection, for the color-picker (native picker steals focus)
+  const colorInputRef = useRef(null);
   const [lightbox, setLightbox] = useState(null); // index into images
   const images = entry?.images || [];
   const initialHtml = useRef(entry?.html || "");
@@ -5876,6 +5930,49 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
     if (editableRef.current) editableRef.current.innerHTML = initialHtml.current;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Shows the floating Bold/Italic/Underline/Color toolbar right above
+  // whatever's highlighted inside today's entry. Ignores selections
+  // outside this block (e.g. dragging over other day cards).
+  const updateSelectionToolbar = () => {
+    if (!isToday) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed || !editableRef.current || !editableRef.current.contains(sel.anchorNode)) {
+      setSelToolbar(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) { setSelToolbar(null); return; }
+    const parentRect = editableRef.current.getBoundingClientRect();
+    selRangeRef.current = range.cloneRange();
+    setSelToolbar({ top: rect.top - parentRect.top - 10, left: rect.left - parentRect.left + rect.width / 2 });
+  };
+
+  useEffect(() => {
+    if (!isToday) return;
+    document.addEventListener("selectionchange", updateSelectionToolbar);
+    return () => document.removeEventListener("selectionchange", updateSelectionToolbar);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isToday]);
+
+  const restoreSelectionRange = () => {
+    if (!selRangeRef.current) return;
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(selRangeRef.current);
+  };
+
+  const runCmd = (cmd, val) => {
+    restoreSelectionRange();
+    document.execCommand(cmd, false, val);
+    onChangeHtml(editableRef.current.innerHTML);
+    updateSelectionToolbar();
+  };
+  const applyBold = () => runCmd("bold");
+  const applyItalic = () => runCmd("italic");
+  const applyUnderline = () => runCmd("underline");
+  const applyColor = (color) => runCmd("foreColor", color);
 
   const caretRectRelativeToEditable = () => {
     const sel = window.getSelection();
@@ -5959,36 +6056,53 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
         </span>
       </div>
 
-      <div style={{ position: "relative", background: isDark ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.6)", border: `1px solid ${isDark ? "rgba(255,255,255,0.16)" : "#ece7d8"}`, borderRadius: 16, padding: 14 }}>
-        {isToday ? (
-          <div
-            ref={editableRef}
-            className="life-story-editable"
-            contentEditable
-            suppressContentEditableWarning
-            onInput={handleInput}
-            onPaste={handlePaste}
-            onClick={handleChipClick}
-            data-placeholder="Write today's story... type @ for emoji & photos"
-            style={{ width: "100%", minHeight: 76, outline: "none", fontSize: t.fontSize, lineHeight: 1.6, color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-          />
-        ) : entry?.html ? (
-          <div
-            onClick={handleChipClick}
-            style={{ fontSize: t.fontSize, lineHeight: 1.6, color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
-            dangerouslySetInnerHTML={{ __html: entry.html }}
-          />
-        ) : (
-          <div style={{ fontSize: t.fontSize, color: isDark ? "#6b6b6b" : "#c9c4b3", fontStyle: "italic", fontFamily: t.fontFamily }}>No story written this day.</div>
-        )}
-
-        <AnimatePresence>
-          {mention && (
-            <LifeStoryMentionPopover pos={mention} onPickEmoji={pickEmoji} onAddPhoto={openAddPhoto} onClose={() => setMention(null)} />
+      <motion.div
+        style={{
+          position: "relative", borderRadius: 18, padding: 2, backgroundSize: "300% 300%",
+          background: isDark
+            ? "linear-gradient(120deg, #fca311, rgba(255,255,255,0.25), #fca311, #98c1d9, #fca311)"
+            : "linear-gradient(120deg, #fca311, #ffe3b8, #fca311, #98c1d9, #fca311)",
+          boxShadow: isToday ? "0 6px 22px rgba(252,163,17,0.28)" : "0 2px 10px rgba(37,36,34,0.06)",
+        }}
+        animate={{ backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"] }}
+        transition={{ duration: isToday ? 5 : 9, repeat: Infinity, ease: "linear" }}
+      >
+        <div style={{ position: "relative", background: isDark ? "rgba(20,20,20,0.94)" : "rgba(255,255,255,0.92)", borderRadius: 16, padding: 14 }}>
+          {isToday ? (
+            <div
+              ref={editableRef}
+              className="life-story-editable"
+              contentEditable
+              suppressContentEditableWarning
+              onInput={handleInput}
+              onPaste={handlePaste}
+              onClick={handleChipClick}
+              data-placeholder="Write today's story... type @ for emoji & photos"
+              style={{ width: "100%", minHeight: 76, outline: "none", fontSize: t.fontSize, fontWeight: t.bold ? 700 : 400, lineHeight: 1.6, color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+            />
+          ) : entry?.html ? (
+            <div
+              onClick={handleChipClick}
+              style={{ fontSize: t.fontSize, fontWeight: t.bold ? 700 : 400, lineHeight: 1.6, color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+              dangerouslySetInnerHTML={{ __html: entry.html }}
+            />
+          ) : (
+            <div style={{ fontSize: t.fontSize, color: isDark ? "#6b6b6b" : "#c9c4b3", fontStyle: "italic", fontFamily: t.fontFamily }}>No story written this day.</div>
           )}
-        </AnimatePresence>
-        <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
-      </div>
+
+          <AnimatePresence>
+            {mention && (
+              <LifeStoryMentionPopover pos={mention} onPickEmoji={pickEmoji} onAddPhoto={openAddPhoto} onClose={() => setMention(null)} />
+            )}
+          </AnimatePresence>
+          <AnimatePresence>
+            {selToolbar && (
+              <LifeStorySelectionToolbar pos={selToolbar} onBold={applyBold} onItalic={applyItalic} onUnderline={applyUnderline} onColor={applyColor} activeColorPickRef={colorInputRef} />
+            )}
+          </AnimatePresence>
+          <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
+        </div>
+      </motion.div>
 
       <AnimatePresence>
         {lightbox !== null && (
@@ -6006,7 +6120,7 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
    curated themes. */
 function LifeStoryThemeSettings({ theme, onChange, onClose }) {
   const set = (patch) => onChange({ ...theme, presetId: "custom", ...patch });
-  const applyPreset = (p) => onChange({ presetId: p.id, fontFamily: theme.fontFamily, fontSize: theme.fontSize, textColor: p.text, bgColor: p.bg });
+  const applyPreset = (p) => onChange({ presetId: p.id, fontFamily: theme.fontFamily, fontSize: theme.fontSize, bold: theme.bold, textColor: p.text, bgColor: p.bg });
 
   return (
     <motion.div
@@ -6066,6 +6180,18 @@ function LifeStoryThemeSettings({ theme, onChange, onClose }) {
         style={{ width: "100%", marginBottom: 10, accentColor: C.accent }}
       />
 
+      {/* Bold toggle */}
+      <motion.div
+        whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+        onClick={() => set({ bold: !theme.bold })}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 10, cursor: "pointer",
+          fontSize: 11, fontWeight: 800, color: theme.bold ? "#fff" : C.dark,
+          background: theme.bold ? C.accent : "#fff", border: `1px solid ${theme.bold ? C.accent : "#ece7d8"}`,
+          borderRadius: 999, padding: "6px 0",
+        }}
+      ><Bold size={12} /> Bold text {theme.bold ? "On" : "Off"}</motion.div>
+
       {/* Text color + Background color */}
       <div style={{ display: "flex", gap: 10 }}>
         <div style={{ flex: 1 }}>
@@ -6122,17 +6248,17 @@ function LifeStoryTab({ state, update, onClose }) {
     requestAnimationFrame(() => { feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight }); });
   }, []);
 
-  const setProfile = (profile) => update((s) => ({ ...s, lifeStory: { profile, entries: s.lifeStory?.entries || {} } }));
+  const setProfile = (profile) => update((s) => ({ ...s, lifeStory: { profile, entries: s.lifeStory?.entries || {}, theme: s.lifeStory?.theme } }));
   const setTheme = (nextTheme) => update((s) => ({ ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: s.lifeStory?.entries || {}, theme: nextTheme } }));
   const setEntryHtml = (iso) => (html) => update((s) => ({
-    ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...(s.lifeStory?.entries?.[iso] || {}), html } } },
+    ...s, lifeStory: { profile: s.lifeStory?.profile || null, theme: s.lifeStory?.theme, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...(s.lifeStory?.entries?.[iso] || {}), html } } },
   }));
   // dataUrl arrives already resized (LifeStoryDayBlock does the resizing) —
   // indices must stay stable forever since inline 📷 chips reference them.
   const addImage = (iso) => (dataUrl) => update((s) => {
     const cur = s.lifeStory?.entries?.[iso] || {};
     const images = [...(cur.images || []), dataUrl];
-    return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images } } } };
+    return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, theme: s.lifeStory?.theme, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images } } } };
   });
   // Nulls the slot instead of splicing (keeps every other chip's index
   // valid) and strips that one chip out of the saved HTML.
@@ -6147,7 +6273,7 @@ function LifeStoryTab({ state, update, onClose }) {
       if (chip) chip.remove();
       html = tmp.innerHTML;
     }
-    return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images, html } } } };
+    return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, theme: s.lifeStory?.theme, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images, html } } } };
   });
 
   const jumpTo = (iso) => {
