@@ -1,6 +1,36 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Life Story — hide today's entry with a macOS "genie" effect (this update)
+## Share Your Journey — full pro upgrade: your name + today's goals list (this update)
+
+The **Share Your Journey** card (Analytics tab → "📤 Share Journey") got a
+complete overhaul:
+
+- **Your name, front and center** — the card's headline is now
+  `"{Your Name}'s Journey"`, pulled straight from your signed-in Google
+  account (falls back to your Life Story profile name, then "My
+  Journey" if neither is set).
+- **Today's Goals — full breakdown.** A new section lists every goal
+  from both Daily Goals and Extra Goals for today, split into two
+  panels side by side:
+  - **✅ Completed** — green check markers, with each goal's category
+    color-dot next to it.
+  - **⏳ Pending** — hollow red-tinted markers for what's still left.
+  - A 4th stat pill ("📋 Today's Goals — X/Y") joined the existing
+    Day Streak / Total Earned / Top Category row.
+  - Long lists cap at 8 rows per side with a "+N more" so the image
+    never gets absurdly tall; the card's height is computed dynamically
+    off how many goals you actually have, so nothing ever gets cropped.
+- **Pro-level modal, with animation:**
+  - Spring pop-in/out on open and close, backdrop blur.
+  - A live "{name} · X/Y goals done today" chip above the preview.
+  - A shimmering skeleton while the card renders (instead of a bare
+    "Generating…" line).
+  - New **Copy** button (copies the PNG straight to your clipboard,
+    next to Download/Share) — only shown on browsers that support it.
+- Still pure Canvas 2D + `framer-motion` (both already in the project)
+  — no new npm installs required.
+
+## Life Story — hide today's entry with a macOS "genie" effect (earlier update)
 
 A small **hide / show** toggle now sits right next to the "Life Story"
 title in the header. Tap it and today's writing box gets sucked away

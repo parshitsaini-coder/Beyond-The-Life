@@ -1278,8 +1278,42 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
   lines.forEach((l, i) => ctx.fillText(l.trim(), x, startY + i * lineHeight));
 }
 
-function generateShareCard(state, lifeScore) {
-  const W = 1080, H = 1350;
+function truncateToWidth(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(t + "…").width > maxWidth) t = t.slice(0, -1);
+  return t + "…";
+}
+
+/* Share card v2 — adds the signed-in user's name up top and a full
+   "Today's Goals" breakdown (✅ completed / ⏳ pending, both lists
+   pulled straight from state.dailyGoals + state.extryGoals — the same
+   two arrays the checklists on the dashboard already read/write) below
+   the Life Score ring + stat row that were already here. Canvas height
+   is computed dynamically off however many goals exist today, so the
+   card never crops the list. Still pure Canvas 2D — no new npm installs. */
+function generateShareCard(state, lifeScore, userName) {
+  const dailyGoals = state.dailyGoals || [];
+  const extryGoals = state.extryGoals || [];
+  const allGoals = [...dailyGoals, ...extryGoals];
+  const doneGoals = allGoals.filter((g) => g.done);
+  const pendingGoals = allGoals.filter((g) => !g.done);
+
+  const MAX_ROWS = 8;
+  const ROW_H = 46;
+  const HEADER_INSET = 60;
+  const BOTTOM_PAD = 24;
+  const shownRows = Math.min(Math.max(doneGoals.length, pendingGoals.length, 1), MAX_ROWS);
+  const hasOverflow = doneGoals.length > MAX_ROWS || pendingGoals.length > MAX_ROWS;
+  const panelH = HEADER_INSET + shownRows * ROW_H + (hasOverflow ? 34 : 0) + BOTTOM_PAD;
+
+  const W = 1080;
+  const TOP_H = 900;
+  const GOALS_TITLE_H = 60;
+  const QUOTE_H = 190;
+  const FOOTER_H = 90;
+  const H = TOP_H + GOALS_TITLE_H + panelH + 40 + QUOTE_H + FOOTER_H;
+
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
@@ -1295,15 +1329,25 @@ function generateShareCard(state, lifeScore) {
   ctx.fillStyle = lifeScore.color + "22";
   ctx.beginPath(); ctx.arc(W - 60, 60, 220, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.arc(40, H - 80, 180, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#4a7c5915";
+  ctx.beginPath(); ctx.arc(W - 30, H * 0.58, 170, 0, Math.PI * 2); ctx.fill();
 
-  // header
-  ctx.fillStyle = C.dark;
-  ctx.font = "900 40px Inter, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("Byound The Life", W / 2, 110);
+
+  // small brand eyebrow
+  ctx.font = "800 20px Inter, sans-serif";
+  ctx.fillStyle = lifeScore.color;
+  ctx.fillText("BYOUND THE LIFE", W / 2, 64);
+
+  // headline — the signed-in user's name front and center
+  const name = (userName || "").trim();
+  ctx.fillStyle = C.dark;
+  ctx.font = "900 46px Inter, sans-serif";
+  ctx.fillText(name ? `${name}'s Journey` : "My Journey", W / 2, 118);
+
   ctx.font = "600 20px Inter, sans-serif";
   ctx.fillStyle = "#a39c86";
-  ctx.fillText(new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }), W / 2, 145);
+  ctx.fillText(new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" }), W / 2, 150);
 
   // Life score ring
   const cx = W / 2, cy = 400, R = 150;
@@ -1325,11 +1369,12 @@ function generateShareCard(state, lifeScore) {
   ctx.fillStyle = lifeScore.color;
   ctx.fillText(`${lifeScore.emoji} ${lifeScore.label}`, cx, cy + 210);
 
-  // stat row
+  // stat row — 4 up now, including today's goal count
   const statY = 800;
   const stats = [
     { label: "Day Streak", value: String(state.streak || 0), emoji: "🔥" },
     { label: "Total Earned", value: `₹${state.totalEarnLife || 0}`, emoji: "💰" },
+    { label: "Today's Goals", value: `${doneGoals.length}/${allGoals.length}`, emoji: "📋" },
   ];
   const bestCat = computeBestCategory(state);
   if (bestCat) stats.push({ label: "Top Category", value: bestCat.label, emoji: "🏆" });
@@ -1337,39 +1382,116 @@ function generateShareCard(state, lifeScore) {
   const colW = W / stats.length;
   stats.forEach((s, i) => {
     const x = colW * i + colW / 2;
-    ctx.font = "56px Inter, sans-serif";
+    ctx.font = "50px Inter, sans-serif";
     ctx.fillText(s.emoji, x, statY);
-    ctx.font = "900 34px Inter, sans-serif";
+    ctx.font = "900 30px Inter, sans-serif";
     ctx.fillStyle = C.dark;
-    ctx.fillText(s.value, x, statY + 55);
-    ctx.font = "600 18px Inter, sans-serif";
+    ctx.fillText(s.value, x, statY + 50);
+    ctx.font = "600 16px Inter, sans-serif";
     ctx.fillStyle = "#a39c86";
-    ctx.fillText(s.label, x, statY + 84);
+    ctx.fillText(s.label, x, statY + 76);
   });
 
+  // ---- Today's Goals — completed vs pending, side by side ----
+  let y = TOP_H;
+  ctx.font = "800 26px Inter, sans-serif";
+  ctx.fillStyle = C.dark;
+  ctx.fillText("📋 Today's Goals", W / 2, y + 30);
+  y += GOALS_TITLE_H;
+
+  const colGap = 40;
+  const colW2 = (W - 180 - colGap) / 2;
+  const leftX = 90, rightX = 90 + colW2 + colGap;
+
+  drawRoundedRect(ctx, leftX, y, colW2, panelH, 20);
+  ctx.fillStyle = "#4a7c5912"; ctx.fill();
+  ctx.strokeStyle = "#4a7c5940"; ctx.lineWidth = 1.5; ctx.stroke();
+
+  drawRoundedRect(ctx, rightX, y, colW2, panelH, 20);
+  ctx.fillStyle = "#c0392b0f"; ctx.fill();
+  ctx.strokeStyle = "#c0392b33"; ctx.stroke();
+
+  ctx.textAlign = "left";
+  ctx.font = "800 20px Inter, sans-serif";
+  ctx.fillStyle = "#4a7c59";
+  ctx.fillText(`✅ Completed (${doneGoals.length})`, leftX + 22, y + 34);
+  ctx.fillStyle = "#c0392b";
+  ctx.fillText(`⏳ Pending (${pendingGoals.length})`, rightX + 22, y + 34);
+
+  const drawGoalList = (goals, x, startY, mode) => {
+    const rowsToShow = Math.min(goals.length, MAX_ROWS);
+    for (let i = 0; i < rowsToShow; i++) {
+      const g = goals[i];
+      const rowY = startY + i * ROW_H;
+      if (mode === "check") {
+        ctx.beginPath(); ctx.arc(x + 10, rowY + 5, 12, 0, Math.PI * 2);
+        ctx.strokeStyle = "#4a7c5960"; ctx.lineWidth = 2; ctx.stroke();
+        ctx.strokeStyle = "#4a7c59"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x + 4, rowY + 6); ctx.lineTo(x + 8, rowY + 11); ctx.lineTo(x + 16, rowY - 1); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(x + 10, rowY + 5, 9, 0, Math.PI * 2);
+        ctx.strokeStyle = "#c0392b70"; ctx.lineWidth = 2; ctx.stroke();
+      }
+      const cat = catInfo(g.category);
+      ctx.fillStyle = cat.color;
+      ctx.beginPath(); ctx.arc(x + 34, rowY + 5, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.font = "600 19px Inter, sans-serif";
+      ctx.fillStyle = mode === "check" ? "#6b6459" : C.text;
+      ctx.fillText(truncateToWidth(ctx, g.text || "", colW2 - 90), x + 50, rowY + 12);
+    }
+    if (goals.length > MAX_ROWS) {
+      ctx.font = "700 16px Inter, sans-serif";
+      ctx.fillStyle = "#a39c86";
+      ctx.fillText(`+${goals.length - MAX_ROWS} more`, x + 50, startY + rowsToShow * ROW_H + 8);
+    }
+    if (goals.length === 0) {
+      ctx.font = "italic 600 17px Inter, sans-serif";
+      ctx.fillStyle = "#b3ac99";
+      ctx.fillText(mode === "check" ? "Nothing done yet — go get one! 💪" : "Everything's done! 🎉", x, startY + 6);
+    }
+  };
+
+  drawGoalList(doneGoals, leftX + 22, y + 60, "check");
+  drawGoalList(pendingGoals, rightX + 22, y + 60, "circle");
+
+  ctx.textAlign = "center";
+  y += panelH + 40;
+
   // divider + footer quote
-  drawRoundedRect(ctx, 90, 980, W - 180, 200, 24);
+  drawRoundedRect(ctx, 90, y, W - 180, QUOTE_H, 24);
   ctx.fillStyle = "#ffffffaa";
   ctx.fill();
   ctx.font = "italic 600 26px Inter, sans-serif";
   ctx.fillStyle = C.text;
   const quote = (state.lifeRules && state.lifeRules[0]) ? `"${state.lifeRules[0]}"` : "Small steps, every single day.";
-  wrapText(ctx, quote, W / 2, 1070, W - 260, 34);
+  wrapText(ctx, quote, W / 2, y + QUOTE_H / 2, W - 260, 34);
+  y += QUOTE_H;
 
   ctx.font = "700 20px Inter, sans-serif";
   ctx.fillStyle = "#a39c86";
-  ctx.fillText("Made with Byound The Life", W / 2, H - 50);
+  ctx.fillText("Made with Byound The Life", W / 2, y + 50);
 
   return canvas.toDataURL("image/png");
 }
 
-function ShareJourneyModal({ state, lifeScore, onClose }) {
+/* Share modal v2 — spring pop-in, a live "X/Y goals done today" chip
+   above the card, a shimmering skeleton while the canvas renders, and
+   a Copy-to-clipboard button alongside Download/Share (only shown when
+   the browser actually supports it). */
+function ShareJourneyModal({ state, lifeScore, userName, onClose }) {
   const [imgUrl, setImgUrl] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const allGoals = [...(state.dailyGoals || []), ...(state.extryGoals || [])];
+  const doneCount = allGoals.filter((g) => g.done).length;
+  const canCopyImage = typeof navigator !== "undefined" && !!navigator.clipboard?.write;
 
   useEffect(() => {
-    const url = generateShareCard(state, lifeScore);
-    setImgUrl(url);
-  }, [state, lifeScore]);
+    // tiny delay so the modal's spring entrance doesn't jank against the
+    // (synchronous) canvas draw
+    const t = setTimeout(() => setImgUrl(generateShareCard(state, lifeScore, userName)), 150);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, lifeScore, userName]);
 
   const download = () => {
     if (!imgUrl) return;
@@ -1377,6 +1499,17 @@ function ShareJourneyModal({ state, lifeScore, onClose }) {
     a.href = imgUrl;
     a.download = `byound-the-life-${new Date().toISOString().slice(0, 10)}.png`;
     a.click();
+  };
+
+  const copyImage = async () => {
+    if (!imgUrl || !canCopyImage) return;
+    try {
+      const res = await fetch(imgUrl);
+      const blob = await res.blob();
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (e) { /* clipboard permission denied/unsupported — Download still works */ }
   };
 
   const share = async () => {
@@ -1390,24 +1523,59 @@ function ShareJourneyModal({ state, lifeScore, onClose }) {
   };
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, background: "rgba(37,36,34,0.7)", zIndex: 200,
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
-    }} onClick={onClose}>
-      <div style={{ background: "#fff", borderRadius: 14, padding: 16, maxWidth: 360, width: "100%" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <span style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>Share Your Journey</span>
-          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer" }}><X size={16} color={C.dark} /></button>
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(37,36,34,0.72)", zIndex: 200,
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+        backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+      }} onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 18 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 10 }}
+        transition={{ type: "spring", stiffness: 340, damping: 28 }}
+        style={{ background: "#fff", borderRadius: 18, padding: 18, maxWidth: 400, width: "100%", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 30px 70px rgba(37,36,34,0.35)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <span style={{ fontSize: 14, fontWeight: 900, color: C.dark, display: "flex", alignItems: "center", gap: 6 }}>
+            <Sparkles size={14} color={C.accent} /> Share Your Journey
+          </span>
+          <motion.button whileHover={{ rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer" }}><X size={16} color={C.dark} /></motion.button>
         </div>
-        {imgUrl
-          ? <img src={imgUrl} alt="Your journey" style={{ width: "100%", borderRadius: 10, border: "1px solid #ece7d8" }} />
-          : <div style={{ padding: 60, textAlign: "center", fontSize: 11, color: "#a39c86" }}>Generating…</div>}
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <button onClick={download} style={{ flex: 1, border: `1px solid ${C.dark}`, background: "#fff", color: C.dark, borderRadius: 8, padding: "8px 0", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>Download</button>
-          <button onClick={share} style={{ flex: 1, border: "none", background: C.accent, color: "#fff", borderRadius: 8, padding: "8px 0", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>Share</button>
+        <div style={{ fontSize: 10.5, color: "#a39c86", marginBottom: 12 }}>
+          {userName ? `${userName} · ` : ""}{doneCount}/{allGoals.length} goals done today
         </div>
-      </div>
-    </div>
+
+        <AnimatePresence mode="wait">
+          {imgUrl ? (
+            <motion.img
+              key="img" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }}
+              src={imgUrl} alt="Your journey" style={{ width: "100%", borderRadius: 12, border: "1px solid #ece7d8", display: "block" }}
+            />
+          ) : (
+            <motion.div
+              key="loading"
+              style={{
+                padding: 70, textAlign: "center", fontSize: 11, color: "#a39c86", borderRadius: 12,
+                background: "linear-gradient(100deg, #f4efe1 30%, #fbf7ec 50%, #f4efe1 70%)", backgroundSize: "200% 100%",
+              }}
+              animate={{ backgroundPosition: ["0% 0%", "200% 0%"] }} transition={{ duration: 1.1, repeat: Infinity, ease: "linear" }}
+            >
+              Generating your card…
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }} onClick={download} style={{ flex: 1, border: `1px solid ${C.dark}`, background: "#fff", color: C.dark, borderRadius: 10, padding: "9px 0", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>⬇ Download</motion.button>
+          {canCopyImage && (
+            <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }} onClick={copyImage} style={{ flex: 1, border: `1px solid ${C.dark}`, background: copied ? "#eaf3ec" : "#fff", color: copied ? "#4a7c59" : C.dark, borderRadius: 10, padding: "9px 0", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>{copied ? "✓ Copied" : "📋 Copy"}</motion.button>
+          )}
+          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }} onClick={share} style={{ flex: 1, border: "none", background: C.accent, color: "#fff", borderRadius: 10, padding: "9px 0", fontWeight: 800, fontSize: 11, cursor: "pointer" }}>📤 Share</motion.button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -1785,7 +1953,7 @@ function DeepAnalyticsGrid({ state, ac }) {
   );
 }
 
-function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
+function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
   const [showShare, setShowShare] = useState(false);
   const at = normalizeScopeTheme(state.theme?.analytics);
   const atFontFamily = at.font ? fontStackFor(at.font) : undefined;
@@ -2084,7 +2252,7 @@ function AnalyticsTab({ state, onClose, onOpenMoneyManagement }) {
 
         <DeepAnalyticsGrid state={state} ac={ac} />
       </div>
-      {showShare && <ShareJourneyModal state={state} lifeScore={lifeScore} onClose={() => setShowShare(false)} />}
+      {showShare && <ShareJourneyModal state={state} lifeScore={lifeScore} userName={user?.displayName || state.lifeStory?.profile?.name || ""} onClose={() => setShowShare(false)} />}
     </div>
   );
 }
@@ -6910,7 +7078,7 @@ function BTLDashboardInner() {
         </div>
       ) : tab === "analytics" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <AnalyticsTab state={state} onClose={() => setTab("dashboard")} onOpenMoneyManagement={() => setTab("money")} />
+          <AnalyticsTab state={state} user={fbUser} onClose={() => setTab("dashboard")} onOpenMoneyManagement={() => setTab("money")} />
         </div>
       ) : tab === "money" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
