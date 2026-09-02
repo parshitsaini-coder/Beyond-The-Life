@@ -1,16 +1,36 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Share Your Journey card — Earn/Spend redone, notes replace the quote (this update)
+## Earn/Spend widget — "Done" button no longer wipes today's saved note (this update)
+
+**Bug fix:** typing a note in the Earn/Spend widget and tapping **Done**
+was instantly erasing it from `dailyLogs[today].notes` — the exact
+field **Memories → Notes** reads from. So the note vanished the moment
+you hit Done, and Memories always showed "Nothing written for this day
+yet," even right after writing something.
+
+- `Done` now only clears the widget's own draft textarea + photo
+  preview (a fresh blank box, same as before), and **no longer touches
+  `dailyLogs[day].notes`**. Whatever you typed stays saved for today,
+  so it now shows up correctly in **Memories → that day → Notes**.
+- If you keep typing a new note afterward (same day), it live-syncs and
+  overwrites the saved note as normal — same behavior as before this
+  fix, just without the accidental wipe on Done.
+- The Share Your Journey card's "Today's Notes" box (previous update)
+  already had a fallback to `dailyLogs[today].notes`, so it now shows
+  the correct saved note after Done too.
+
+## Share Your Journey card — Earn/Spend redone, notes replace the quote (earlier update)
 
 Reworked the generated **Share Your Journey** image (Canvas 2D card):
 
 - **Removed the old "Total Earned" stat pill** from the 4-stat row (it
   was cramped and only showed earnings, not spending).
 - **New dedicated Earn & Spend panel** right below the Life Score ring:
-  two proper side-by-side cards — 💰 **Earned** (green) and 💸 **Spent**
-  (red), pulled from the same `state.totalEarnLife` /
-  `state.totalSpendLife` totals used everywhere else in the app — plus
-  a small **Net ₹X** readout centered underneath.
+  two proper side-by-side cards — 💰 **Earned Today** (green) and 💸
+  **Spent Today** (red), sourced from `state.moneyHistory[today]` (the
+  same per-day aggregate the Money Management trend chart already
+  uses) — not the lifetime totals — plus a **Net Today ₹X** readout
+  centered underneath.
 - **Bottom quote box now shows today's notes instead.** The old
   hardcoded/`lifeRules` quote ("Wake up at 5 AM", etc.) is gone; that
   box now reads straight from `state.notes` (same field the Earn/Spend

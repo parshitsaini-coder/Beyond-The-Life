@@ -1394,12 +1394,15 @@ function generateShareCard(state, lifeScore, userName) {
   });
 
   // ---- Earn & Spend — a proper dedicated panel, not squeezed into the
-  // stat row. Two cards side by side: green Earned, red Spent, with a
-  // small Net readout centered underneath. ----
+  // stat row. Shows TODAY's earn/spend (from state.moneyHistory[today],
+  // the same per-day aggregate the trend chart already uses) — not the
+  // lifetime totals. Two cards side by side: green Earned, red Spent,
+  // with a small Net readout centered underneath. ----
   {
-    const earnLife = state.totalEarnLife || 0;
-    const spendLife = state.totalSpendLife || 0;
-    const netLife = earnLife - spendLife;
+    const todayMoney = (state.moneyHistory && state.moneyHistory[todayISO()]) || { earn: 0, spend: 0 };
+    const earnToday = todayMoney.earn || 0;
+    const spendToday = todayMoney.spend || 0;
+    const netToday = earnToday - spendToday;
     const esY = TOP_H;
     const esGap = 30;
     const esColW = (W - 180 - esGap) / 2;
@@ -1421,19 +1424,19 @@ function generateShareCard(state, lifeScore, userName) {
 
     ctx.font = "700 17px Inter, sans-serif";
     ctx.fillStyle = "#4a7c59";
-    ctx.fillText("Earned", esLeftX + 82, esY + 34);
+    ctx.fillText("Earned Today", esLeftX + 82, esY + 34);
     ctx.fillStyle = "#c0392b";
-    ctx.fillText("Spent", esRightX + 82, esY + 34);
+    ctx.fillText("Spent Today", esRightX + 82, esY + 34);
 
     ctx.font = "900 34px Inter, sans-serif";
     ctx.fillStyle = C.dark;
-    ctx.fillText(`₹${earnLife}`, esLeftX + 82, esY + 68);
-    ctx.fillText(`₹${spendLife}`, esRightX + 82, esY + 68);
+    ctx.fillText(`₹${earnToday}`, esLeftX + 82, esY + 68);
+    ctx.fillText(`₹${spendToday}`, esRightX + 82, esY + 68);
 
     ctx.textAlign = "center";
     ctx.font = "800 18px Inter, sans-serif";
-    ctx.fillStyle = netLife >= 0 ? "#4a7c59" : "#c0392b";
-    ctx.fillText(`Net ${netLife >= 0 ? "+" : ""}₹${netLife}`, W / 2, esY + esCardH + 32);
+    ctx.fillStyle = netToday >= 0 ? "#4a7c59" : "#c0392b";
+    ctx.fillText(`Net Today ${netToday >= 0 ? "+" : ""}₹${netToday}`, W / 2, esY + esCardH + 32);
   }
 
   // ---- Today's Goals — completed vs pending, side by side ----
@@ -3115,17 +3118,17 @@ function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFil
   const tsFontFamily = ts.font ? fontStackFor(ts.font) : undefined;
   const tsWeight = ts.bold ? 900 : 800;
 
-  // "Done" — clears today's draft note + photo preview (and mirrors the
-  // cleared note into dailyLogs so it's saved, same sync path the
-  // textarea's own onChange already uses). Doesn't touch past Memories
-  // photos — those live in dailyLogs[day].images, a separate array.
+  // "Done" — clears the widget's draft textarea + photo preview so it's
+  // ready for a fresh note, WITHOUT wiping what's already saved for
+  // today in dailyLogs[day].notes — that's the exact field Memories →
+  // Notes reads, so erasing it here was the bug (notes disappeared from
+  // Memories the instant you hit Done). Now Done only resets the visual
+  // draft; the saved note for today stays intact until you actually
+  // type something new (which live-syncs the same way it always has).
   const clearNotesAndImage = () => {
     update((s) => {
       s.notes = "";
       s.uploadedImage = null;
-      const day = todayISO();
-      const cur = s.dailyLogs?.[day] || {};
-      s.dailyLogs = { ...(s.dailyLogs || {}), [day]: { ...cur, notes: "" } };
       return s;
     });
   };
