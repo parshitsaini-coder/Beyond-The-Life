@@ -1,6 +1,29 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Life Story — animated shimmer border (this update)
+## Life Story — hide/restore with a Genie effect (this update)
+
+A small round button now sits right next to the "Life Story" title in the
+header — click it to **hide** the whole story body (the date badge +
+every day's card), and click again to **bring it back**, both times with
+an Apple-style **macOS Dock "Genie" minimize** animation:
+
+- **Hiding**: the content stretches slightly, skews, and squeezes down —
+  shrinking and warping as it gets sucked toward the button, just like a
+  window folding into the Dock — then fades out.
+- **Restoring**: the reverse — it unfurls back out from that same button
+  position up to full size.
+- The target point is **measured live** from the button's real on-screen
+  position (`getBoundingClientRect`) every time you hide it, so the
+  squeeze always aims exactly at the button, not a guessed corner.
+- Icon on the button swaps between a "minimize" and "maximize" glyph so
+  it's always clear which action tapping it will do next.
+- Built entirely with `framer-motion`'s keyframe `animate`/`exit` arrays
+  (scale, skew, position, and border-radius all animated together on a
+  custom easing curve) — a lightweight CSS-transform approximation of the
+  real genie warp, not a full mesh-deform, so no canvas/WebGL and no new
+  npm installs required.
+
+## Life Story — animated shimmer border (earlier update)
 
 The old day-card border (`1px solid #ece7d8`) was almost invisible against
 the cream background — barely showed where the writing box actually was.

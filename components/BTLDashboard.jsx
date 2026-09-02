@@ -4,7 +4,7 @@ import {
   Settings, X, Plus, Smile, Meh, Frown, Image as ImageIcon,
   LogOut, Trash2, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Flame, Target, BookOpen,
   Repeat, RotateCcw, BarChart3, TrendingUp, TrendingDown, Award, Tag, Pencil,
-  GripVertical, Pin, PinOff, LayoutGrid, RefreshCw, Maximize2, Move,
+  GripVertical, Pin, PinOff, LayoutGrid, RefreshCw, Maximize2, Minimize2, Move,
   CheckCircle2, Wallet, StickyNote, Camera, Sparkles, Download, ZoomIn, CalendarDays,
   ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft,
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
@@ -6237,6 +6237,38 @@ function LifeStoryTab({ state, update, onClose }) {
   const feedRef = useRef(null);
   const blockRefs = useRef({});
 
+  // Genie effect (macOS Dock-minimize style) for hiding/restoring the whole
+  // story body. minimizeBtnRef is the "dock icon" the content visually gets
+  // sucked into / unfurls back out of — target offset is measured live from
+  // its on-screen position so the effect always aims at the real button.
+  const [minimized, setMinimized] = useState(false);
+  const [genieTarget, setGenieTarget] = useState({ x: -160, y: -120 });
+  const minimizeBtnRef = useRef(null);
+  const genieBodyRef = useRef(null);
+
+  const computeGenieTarget = () => {
+    if (!minimizeBtnRef.current || !genieBodyRef.current) return;
+    const btn = minimizeBtnRef.current.getBoundingClientRect();
+    const body = genieBodyRef.current.getBoundingClientRect();
+    setGenieTarget({
+      x: (btn.left + btn.width / 2) - (body.left + body.width / 2),
+      y: (btn.top + btn.height / 2) - (body.top + body.height / 2),
+    });
+  };
+
+  const toggleMinimized = () => {
+    if (!minimized) computeGenieTarget(); // measure before it hides
+    setMinimized((v) => !v);
+    setJumpOpen(false);
+    setThemeOpen(false);
+  };
+
+  useEffect(() => {
+    if (!minimized) {
+      requestAnimationFrame(() => { feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight }); });
+    }
+  }, [minimized]);
+
   const dates = useMemo(() => {
     const keys = new Set(Object.keys(entries));
     keys.add(today);
@@ -6289,6 +6321,19 @@ function LifeStoryTab({ state, update, onClose }) {
         </motion.div>
         <Pencil size={14} color={C.dark} />
         <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Life Story</span>
+
+        <motion.button
+          ref={minimizeBtnRef}
+          whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.9 }} onClick={toggleMinimized}
+          title={minimized ? "Restore Life Story" : "Hide Life Story"}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%",
+            border: `1px solid ${minimized ? C.accent : "#ece7d8"}`, background: minimized ? C.accent : "#fff",
+            color: minimized ? "#fff" : C.dark, cursor: "pointer",
+          }}
+        >
+          {minimized ? <Maximize2 size={11} /> : <Minimize2 size={11} />}
+        </motion.button>
 
         <div style={{ flex: 1 }} />
 
@@ -6346,17 +6391,34 @@ function LifeStoryTab({ state, update, onClose }) {
         </motion.div>
       </div>
 
-      <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: 16, background: theme.bgColor }}>
-        <div style={{ maxWidth: 620, margin: "0 auto" }}>
-          {dates.map((iso) => (
-            <LifeStoryDayBlock
-              key={iso} iso={iso} entry={entries[iso]} isToday={iso === today} theme={theme}
-              onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
-              blockRef={(el) => { blockRefs.current[iso] = el; }}
-            />
-          ))}
-        </div>
-      </div>
+      <AnimatePresence>
+        {!minimized && (
+          <motion.div
+            key="story-body" ref={genieBodyRef}
+            style={{ flex: 1, overflow: "hidden", transformOrigin: "top left" }}
+            initial={{ opacity: 0, scale: 0.05, x: genieTarget.x, y: genieTarget.y, skewX: 10, skewY: -6, borderRadius: 100 }}
+            animate={{ opacity: 1, scale: 1, x: 0, y: 0, skewX: 0, skewY: 0, borderRadius: 0 }}
+            exit={{
+              opacity: [1, 1, 0], scale: [1, 0.5, 0.04],
+              x: [0, genieTarget.x * 0.35, genieTarget.x], y: [0, genieTarget.y * 0.4, genieTarget.y],
+              skewX: [0, -12, 0], skewY: [0, 8, 0], borderRadius: [0, 60, 100],
+            }}
+            transition={{ duration: 0.55, ease: [0.65, 0, 0.35, 1], times: [0, 0.55, 1] }}
+          >
+            <div ref={feedRef} style={{ height: "100%", overflowY: "auto", padding: 16, background: theme.bgColor }}>
+              <div style={{ maxWidth: 620, margin: "0 auto" }}>
+                {dates.map((iso) => (
+                  <LifeStoryDayBlock
+                    key={iso} iso={iso} entry={entries[iso]} isToday={iso === today} theme={theme}
+                    onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
+                    blockRef={(el) => { blockRefs.current[iso] = el; }}
+                  />
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>{!story.profile && <LifeStoryProfileSetup onSave={setProfile} />}</AnimatePresence>
     </div>
