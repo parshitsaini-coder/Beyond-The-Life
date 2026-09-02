@@ -1,12 +1,37 @@
-'use client';
+"use client";
+import { createContext, useContext, useEffect, useState } from "react";
+import { onAuthStateChanged, signInWithPopup, signOut as fbSignOut } from "firebase/auth";
+import { auth, googleProvider } from "@/lib/firebase";
 
-import React, { createContext, useContext, useState } from 'react';
-
-const AuthContext = createContext({ user: null });
+const AuthContext = createContext({ user: null, loading: true });
 
 export function AuthProvider({ children }) {
-  const [user] = useState({ uid: 'user_1', displayName: 'Lakshit' });
-  return <AuthContext.Provider value={{ user }}>{children}</AuthContext.Provider>;
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  return (
+    <AuthContext.Provider value={{ user, loading }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
-export const useAuth = () => useContext(AuthContext);
+export function useAuth() {
+  return useContext(AuthContext);
+}
+
+export async function signInWithGoogle() {
+  await signInWithPopup(auth, googleProvider);
+}
+
+export async function signOutUser() {
+  await fbSignOut(auth);
+}
