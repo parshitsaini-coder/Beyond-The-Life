@@ -5768,43 +5768,132 @@ function formatStoryDate(iso) {
 /* One day's block in the feed: date pill + card. Only the entry for
    `isToday` is editable — everything before it is a settled, read-only
    page of the journal. */
-function LifeStoryDayBlock({ iso, entry, isToday, onChangeText, onAddImage, onRemoveImage, blockRef }) {
+/* Builds the actual DOM node for an inline photo chip — a small clickable
+   camera glyph sized to match the surrounding text (font-size: 1em), so it
+   sits inline exactly where "@" was typed instead of floating below. */
+function buildStoryChipNode(idx) {
+  const span = document.createElement("span");
+  span.setAttribute("data-story-chip", "1");
+  span.setAttribute("data-idx", String(idx));
+  span.setAttribute("contenteditable", "false");
+  span.style.cssText = "display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:1em;line-height:1;vertical-align:-0.15em;padding:0 1px;user-select:none;";
+  span.textContent = "📷";
+  return span;
+}
+
+/* Removes the "@" that triggered the popover, then inserts `node` right at
+   the caret and leaves the cursor immediately after it so typing continues
+   naturally on the same line. */
+function insertAtCaretRemovingTrigger(editableEl, node) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return false;
+  let range = sel.getRangeAt(0).cloneRange();
+  if (!editableEl.contains(range.startContainer)) return false;
+  range.collapse(true);
+  if (range.startContainer.nodeType === Node.TEXT_NODE && range.startOffset > 0) {
+    range.setStart(range.startContainer, range.startOffset - 1);
+    range.deleteContents();
+  }
+  range.insertNode(node);
+  const spacer = document.createTextNode("\u00A0");
+  node.after(spacer);
+  range = document.createRange();
+  range.setStartAfter(spacer);
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+  editableEl.focus();
+  return true;
+}
+
+/* One day's block in the feed: date pill + card. Only the entry for
+   `isToday` is editable — everything before it is a settled, read-only
+   page of the journal. Story text is a contentEditable div (not a plain
+   textarea) so an inline 📷 chip can sit exactly where you typed "@" and
+   still be clickable to open that photo — nothing gets pushed below the
+   text or shown as a separate thumbnail strip. */
+function LifeStoryDayBlock({ iso, entry, isToday, onChangeHtml, onAddImage, onRemoveImage, blockRef }) {
   const [mention, setMention] = useState(null); // { top, left } | null
   const fileRef = useRef(null);
-  const taRef = useRef(null);
+  const editableRef = useRef(null);
+  const savedRangeRef = useRef(null);
   const [lightbox, setLightbox] = useState(null); // index into images
   const images = entry?.images || [];
+  const initialHtml = useRef(entry?.html || "");
 
-  const handleChange = (e) => {
-    const val = e.target.value;
-    onChangeText(val);
-    if (val[e.target.selectionStart - 1] === "@") {
-      const coords = getCaretCoordinates(e.target);
-      setMention({ top: coords.top + 22, left: coords.left });
-    } else if (mention) {
-      setMention(null);
+  useEffect(() => {
+    if (editableRef.current) editableRef.current.innerHTML = initialHtml.current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const caretRectRelativeToEditable = () => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const range = sel.getRangeAt(0).cloneRange();
+    range.collapse(true);
+    const rect = range.getBoundingClientRect();
+    const parentRect = editableRef.current.getBoundingClientRect();
+    return { top: rect.top - parentRect.top + rect.height, left: rect.left - parentRect.left };
+  };
+
+  const handleInput = () => {
+    onChangeHtml(editableRef.current.innerHTML);
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && editableRef.current.contains(sel.anchorNode)) {
+      const probe = document.createRange();
+      probe.selectNodeContents(editableRef.current);
+      probe.setEnd(sel.focusNode, sel.focusOffset);
+      const textBefore = probe.toString();
+      if (textBefore.endsWith("@")) {
+        savedRangeRef.current = sel.getRangeAt(0).cloneRange();
+        const pos = caretRectRelativeToEditable();
+        if (pos) setMention(pos);
+      } else if (mention) {
+        setMention(null);
+      }
     }
   };
-  const removeTrailingAt = (val) => {
-    const ta = taRef.current;
-    if (!ta) return val;
-    const pos = ta.selectionStart;
-    if (val[pos - 1] === "@") return val.slice(0, pos - 1) + val.slice(pos);
-    return val;
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    document.execCommand("insertText", false, text);
   };
+
   const pickEmoji = (em) => {
-    const cleaned = removeTrailingAt(entry?.text || "");
-    onChangeText(cleaned + em + " ");
+    if (savedRangeRef.current) {
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedRangeRef.current);
+    }
+    insertAtCaretRemovingTrigger(editableRef.current, document.createTextNode(em));
     setMention(null);
-    taRef.current?.focus();
+    onChangeHtml(editableRef.current.innerHTML);
   };
+
   const openAddPhoto = () => { setMention(null); fileRef.current?.click(); };
+
   const onFile = (e) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    onChangeText(removeTrailingAt(entry?.text || ""));
-    onAddImage(file);
+    if (!file.type?.startsWith("image/")) { alert("Please pick an image file."); return; }
+    const idx = images.length;
+    resizeImageDataUrl(file, 640, 0.75).then((dataUrl) => {
+      onAddImage(dataUrl);
+      if (savedRangeRef.current) {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(savedRangeRef.current);
+      }
+      insertAtCaretRemovingTrigger(editableRef.current, buildStoryChipNode(idx));
+      onChangeHtml(editableRef.current.innerHTML);
+    }).catch(() => alert("Couldn't read that image, try another one."));
+  };
+
+  const handleChipClick = (e) => {
+    const chip = e.target.closest("[data-story-chip]");
+    if (chip) setLightbox(Number(chip.dataset.idx));
   };
 
   return (
@@ -5819,22 +5908,27 @@ function LifeStoryDayBlock({ iso, entry, isToday, onChangeText, onAddImage, onRe
         </span>
       </div>
 
-      <div style={{
-        position: "relative", background: "rgba(255,255,255,0.6)", border: "1px solid #ece7d8", borderRadius: 16, padding: 14,
-      }}>
+      <div style={{ position: "relative", background: "rgba(255,255,255,0.6)", border: "1px solid #ece7d8", borderRadius: 16, padding: 14 }}>
         {isToday ? (
-          <textarea
-            ref={taRef}
-            value={entry?.text || ""}
-            onChange={handleChange}
-            placeholder="Write today's story... type @ for emoji & photos"
-            rows={4}
-            style={{ width: "100%", boxSizing: "border-box", border: "none", background: "transparent", outline: "none", resize: "vertical", fontSize: 13, lineHeight: 1.6, color: C.text, fontFamily: "inherit" }}
+          <div
+            ref={editableRef}
+            className="life-story-editable"
+            contentEditable
+            suppressContentEditableWarning
+            onInput={handleInput}
+            onPaste={handlePaste}
+            onClick={handleChipClick}
+            data-placeholder="Write today's story... type @ for emoji & photos"
+            style={{ width: "100%", minHeight: 76, outline: "none", fontSize: 13, lineHeight: 1.6, color: C.text, fontFamily: "inherit", whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+          />
+        ) : entry?.html ? (
+          <div
+            onClick={handleChipClick}
+            style={{ fontSize: 13, lineHeight: 1.6, color: C.text, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+            dangerouslySetInnerHTML={{ __html: entry.html }}
           />
         ) : (
-          <div style={{ fontSize: 13, lineHeight: 1.6, color: C.text, whiteSpace: "pre-wrap" }}>
-            {entry?.text || <span style={{ color: "#c9c4b3", fontStyle: "italic" }}>No story written this day.</span>}
-          </div>
+          <div style={{ fontSize: 13, color: "#c9c4b3", fontStyle: "italic" }}>No story written this day.</div>
         )}
 
         <AnimatePresence>
@@ -5843,40 +5937,11 @@ function LifeStoryDayBlock({ iso, entry, isToday, onChangeText, onAddImage, onRe
           )}
         </AnimatePresence>
         <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
-
-        {images.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-            {images.map((src, i) => (
-              <motion.div key={i} whileHover="hover" initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }}
-                style={{ position: "relative", width: 78, height: 78, borderRadius: 10, overflow: "hidden", cursor: "pointer" }}
-                onClick={() => setLightbox(i)}
-              >
-                <img src={src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-                <motion.div
-                  variants={{ hover: { opacity: 1 }, initial: { opacity: 0 } }} initial="initial"
-                  style={{ position: "absolute", inset: 0, background: "rgba(20,19,17,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}
-                >
-                  <motion.div variants={{ hover: { scale: 1 }, initial: { scale: 0.6 } }} style={{ background: "rgba(255,255,255,0.9)", borderRadius: "50%", padding: 7, display: "flex" }}>
-                    <Camera size={13} color={C.dark} />
-                  </motion.div>
-                </motion.div>
-              </motion.div>
-            ))}
-          </div>
-        )}
-
-        {isToday && (
-          <motion.button
-            whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
-            onClick={() => fileRef.current?.click()}
-            style={{ marginTop: 10, border: "1px dashed #ddd6c4", background: "transparent", borderRadius: 8, padding: "5px 10px", fontSize: 10, fontWeight: 800, color: "#a39c86", cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}
-          ><Camera size={12} /> Add photo</motion.button>
-        )}
       </div>
 
       <AnimatePresence>
         {lightbox !== null && (
-          <LifeStoryLightbox src={images[lightbox]} onClose={() => setLightbox(null)} onDelete={() => onRemoveImage(lightbox)} />
+          <LifeStoryLightbox src={images[lightbox]} onClose={() => setLightbox(null)} onDelete={() => { onRemoveImage(lightbox); setLightbox(null); }} />
         )}
       </AnimatePresence>
     </div>
@@ -5903,23 +5968,30 @@ function LifeStoryTab({ state, update, onClose }) {
   }, []);
 
   const setProfile = (profile) => update((s) => ({ ...s, lifeStory: { profile, entries: s.lifeStory?.entries || {} } }));
-  const setEntryText = (iso) => (text) => update((s) => ({
-    ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...(s.lifeStory?.entries?.[iso] || {}), text } } },
+  const setEntryHtml = (iso) => (html) => update((s) => ({
+    ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...(s.lifeStory?.entries?.[iso] || {}), html } } },
   }));
-  const addImage = (iso) => (file) => {
-    if (!file.type?.startsWith("image/")) { alert("Please pick an image file."); return; }
-    resizeImageDataUrl(file, 640, 0.75).then((dataUrl) => {
-      update((s) => {
-        const cur = s.lifeStory?.entries?.[iso] || {};
-        const images = [...(cur.images || []), dataUrl].slice(-20);
-        return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images } } } };
-      });
-    }).catch(() => alert("Couldn't read that image, try another one."));
-  };
+  // dataUrl arrives already resized (LifeStoryDayBlock does the resizing) —
+  // indices must stay stable forever since inline 📷 chips reference them.
+  const addImage = (iso) => (dataUrl) => update((s) => {
+    const cur = s.lifeStory?.entries?.[iso] || {};
+    const images = [...(cur.images || []), dataUrl];
+    return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images } } } };
+  });
+  // Nulls the slot instead of splicing (keeps every other chip's index
+  // valid) and strips that one chip out of the saved HTML.
   const removeImage = (iso) => (idx) => update((s) => {
     const cur = s.lifeStory?.entries?.[iso] || {};
-    const images = (cur.images || []).filter((_, i) => i !== idx);
-    return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images } } } };
+    const images = (cur.images || []).map((img, i) => (i === idx ? null : img));
+    let html = cur.html || "";
+    if (typeof document !== "undefined") {
+      const tmp = document.createElement("div");
+      tmp.innerHTML = html;
+      const chip = tmp.querySelector(`[data-story-chip][data-idx="${idx}"]`);
+      if (chip) chip.remove();
+      html = tmp.innerHTML;
+    }
+    return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images, html } } } };
   });
 
   const jumpTo = (iso) => {
@@ -5985,7 +6057,7 @@ function LifeStoryTab({ state, update, onClose }) {
           {dates.map((iso) => (
             <LifeStoryDayBlock
               key={iso} iso={iso} entry={entries[iso]} isToday={iso === today}
-              onChangeText={setEntryText(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
+              onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
               blockRef={(el) => { blockRefs.current[iso] = el; }}
             />
           ))}
@@ -6334,6 +6406,9 @@ function BTLDashboardInner() {
         .btl-mood-btn:hover { transform: scale(1.18); }
         .btl-oval-btn { transition: transform 100ms ease, box-shadow 150ms ease; }
         .btl-oval-btn:active { transform: scale(0.94); }
+        .life-story-editable:empty:before { content: attr(data-placeholder); color: #c9c4b3; font-style: italic; }
+        .life-story-editable [data-story-chip] { transition: transform 120ms ease; }
+        .life-story-editable [data-story-chip]:hover { transform: scale(1.25); }
         @keyframes btlShineLeft {
           0% { transform: translateX(-100%); opacity: 0; }
           15% { opacity: 1; }
