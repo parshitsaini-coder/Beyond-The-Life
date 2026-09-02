@@ -1,6 +1,22 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## Earn/Spend widget — "Done" button no longer wipes today's saved note (this update)
+## Header — Total Earn/Spend pills stacked, amounts bold + highlighted (this update)
+
+The **"Total Earn Money life"** and **"Total Spend Money life"** pills in
+the top header used to sit inline in the same crowded row as
+Goals/memor/life story. Now:
+
+- They're **stacked one above the other** (Earned on top, Spent below)
+  in their own small column, instead of squeezed sideways into the row.
+- The **₹ amount itself** is now **bold** and sits in its own small
+  rounded highlight chip — green tint for Earned, red tint for Spent —
+  so the numbers are easy to spot at a glance instead of blending into
+  the label text.
+- Pure layout/styling change — same `state.totalEarnLife` /
+  `state.totalSpendLife` values, same "Coming soon" tooltip, nothing
+  else touched.
+
+## Earn/Spend widget — "Done" button no longer wipes today's saved note (earlier update)
 
 **Bug fix:** typing a note in the Earn/Spend widget and tapping **Done**
 was instantly erasing it from `dailyLogs[today].notes` — the exact

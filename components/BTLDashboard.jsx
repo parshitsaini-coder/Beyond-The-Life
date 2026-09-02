@@ -7185,8 +7185,20 @@ function BTLDashboardInner() {
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8, flexShrink: 0 }}>
             <Oval style={{ background: C.dark, color: C.bg, borderColor: C.dark, fontSize: 16, fontWeight: 900 }}>Byound The Life</Oval>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Goals</Oval>
-            <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Total Earn Money life :- ₹{state.totalEarnLife.toFixed(0)}</Oval>
-            <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed", borderColor: "#c0392b", color: "#c0392b" }}>Total Spend Money life :- ₹{(state.totalSpendLife || 0).toFixed(0)}</Oval>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed", justifyContent: "flex-start" }}>
+                Total Earn Money life :-&nbsp;
+                <span style={{ fontWeight: 900, color: "#4a7c59", background: "#4a7c5920", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>
+                  ₹{state.totalEarnLife.toFixed(0)}
+                </span>
+              </Oval>
+              <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed", borderColor: "#c0392b", color: "#c0392b", justifyContent: "flex-start" }}>
+                Total Spend Money life :-&nbsp;
+                <span style={{ fontWeight: 900, color: "#c0392b", background: "#c0392b20", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>
+                  ₹{(state.totalSpendLife || 0).toFixed(0)}
+                </span>
+              </Oval>
+            </div>
             <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={11} style={{ marginRight: 4 }} />memor</Oval>
             <Oval className="btl-oval-btn" onClick={() => setTab("lifeStory")} style={{ cursor: "pointer", background: "#b083f0", borderColor: "#b083f0", color: "#fff" }}><Pencil size={11} style={{ marginRight: 4 }} />life story</Oval>
             <motion.button
