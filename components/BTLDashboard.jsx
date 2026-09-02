@@ -670,6 +670,159 @@ function RingStat({ pct, size = 54, label, sub, color = C.accent }) {
   );
 }
 
+/* ---------------- DAY STREAK BADGE — "pro max" 3D medal ----------------
+   A metallic coin-style badge with real depth: CSS 3D transforms (perspective +
+   preserve-3d) give it a tilt that follows the cursor, a rotating conic-gradient
+   rim simulates a spinning metal edge, an orbiting flame flickers behind the
+   number, tiny sparks drift around it, a diagonal shine sweeps across the face
+   on a loop, and the streak number does a 3D flip-roll whenever it changes.
+   Everything here is framer-motion + CSS — no new dependencies. */
+function DayStreakBadge({ streak, accent = C.accent, dark = C.dark }) {
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const [hovering, setHovering] = useState(false);
+
+  const sparks = useMemo(
+    () =>
+      Array.from({ length: 6 }, (_, i) => ({
+        id: i,
+        angle: (360 / 6) * i,
+        delay: i * 0.28,
+        dist: 20 + (i % 2) * 4,
+      })),
+    []
+  );
+
+  const handleMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width - 0.5;
+    const py = (e.clientY - rect.top) / rect.height - 0.5;
+    setTilt({ x: py * -28, y: px * 28 });
+  };
+  const handleLeave = () => {
+    setHovering(false);
+    setTilt({ x: 0, y: 0 });
+  };
+
+  const streakStr = String(streak).padStart(3, "0");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+      <div
+        style={{ perspective: 500, width: 36, height: 36, position: "relative" }}
+        onMouseMove={handleMove}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={handleLeave}
+      >
+        {/* Ambient pulsing halo */}
+        <motion.span
+          aria-hidden
+          animate={{
+            boxShadow: [
+              `0 0 0px 0px ${accent}00`,
+              `0 0 14px 3px ${accent}90`,
+              `0 0 0px 0px ${accent}00`,
+            ],
+          }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          style={{ position: "absolute", inset: -4, borderRadius: "50%", pointerEvents: "none" }}
+        />
+
+        {/* Drifting sparks */}
+        {sparks.map((s) => (
+          <motion.span
+            key={s.id}
+            aria-hidden
+            initial={{ opacity: 0 }}
+            animate={{
+              opacity: [0, 1, 0],
+              x: [0, Math.cos((s.angle * Math.PI) / 180) * s.dist],
+              y: [0, Math.sin((s.angle * Math.PI) / 180) * s.dist],
+              scale: [0.3, 1, 0.3],
+            }}
+            transition={{ duration: 2.4, repeat: Infinity, delay: s.delay, ease: "easeInOut" }}
+            style={{
+              position: "absolute", top: "50%", left: "50%", width: 3, height: 3, borderRadius: "50%",
+              background: accent, marginTop: -1.5, marginLeft: -1.5, pointerEvents: "none",
+            }}
+          />
+        ))}
+
+        {/* Spinning conic rim (simulated brushed-metal edge) */}
+        <motion.div
+          aria-hidden
+          animate={{ rotate: 360 }}
+          transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
+          style={{
+            position: "absolute", inset: 0, borderRadius: "50%", padding: 2,
+            background: `conic-gradient(from 0deg, ${accent}, #fff4, ${dark}, ${accent})`,
+          }}
+        >
+          <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: dark }} />
+        </motion.div>
+
+        {/* Tilting coin face */}
+        <motion.div
+          title="Day Streak"
+          animate={{
+            rotateX: tilt.x,
+            rotateY: tilt.y,
+            scale: hovering ? 1.14 : 1,
+          }}
+          transition={{ type: "spring", stiffness: 260, damping: 18 }}
+          style={{
+            position: "absolute", inset: 3, borderRadius: "50%", transformStyle: "preserve-3d",
+            background: `radial-gradient(circle at 35% 30%, ${accent}dd, ${dark} 70%)`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            overflow: "hidden", cursor: "default",
+          }}
+        >
+          {/* Flickering flame, tucked just behind the number */}
+          <motion.span
+            aria-hidden
+            animate={{ opacity: [0.25, 0.55, 0.3], scale: [0.9, 1.08, 0.95], rotate: [-4, 4, -4] }}
+            transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+            style={{ position: "absolute", top: -3, color: "#ffd27a", filter: "blur(0.3px)" }}
+          >
+            <Flame size={13} fill="#ffb347" />
+          </motion.span>
+
+          {/* Flip-roll number readout */}
+          <div style={{ position: "relative", height: 12, display: "flex", alignItems: "center", perspective: 200 }}>
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.span
+                key={streakStr}
+                initial={{ rotateX: 90, opacity: 0, y: -4 }}
+                animate={{ rotateX: 0, opacity: 1, y: 0 }}
+                exit={{ rotateX: -90, opacity: 0, y: 4 }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
+                style={{
+                  fontSize: 10.5, fontWeight: 900, color: "#fff", letterSpacing: 0.3,
+                  textShadow: "0 1px 2px rgba(0,0,0,0.5)", display: "inline-block",
+                }}
+              >
+                {streakStr}
+              </motion.span>
+            </AnimatePresence>
+          </div>
+
+          {/* Diagonal shine sweep */}
+          <motion.span
+            aria-hidden
+            animate={{ x: ["-120%", "220%"] }}
+            transition={{ duration: 2.6, repeat: Infinity, repeatDelay: 1.4, ease: "easeInOut" }}
+            style={{
+              position: "absolute", top: -10, bottom: -10, width: "35%",
+              background: "linear-gradient(75deg, transparent, rgba(255,255,255,0.45), transparent)",
+              transform: "skewX(-20deg)", pointerEvents: "none",
+            }}
+          />
+        </motion.div>
+      </div>
+      <div style={{ fontSize: 8, fontWeight: 700, color: dark, opacity: 0.65, letterSpacing: 0.3 }}>Streak</div>
+    </div>
+  );
+}
+
 /* ---------------- SHINE / COMPLETE ANIMATION ---------------- */
 function ShineOverlay({ active }) {
   if (!active) return null;
@@ -1039,6 +1192,15 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
   const [subVal, setSubVal] = useState("");
   const [showOptions, setShowOptions] = useState(false);
   const [pickerFor, setPickerFor] = useState(null); // "new" | goal id | null
+  const [celebrateId, setCelebrateId] = useState(null); // goal id currently flashing "done" celebration
+
+  const handleToggle = (id, wasDone) => {
+    onToggle(id);
+    if (!wasDone) {
+      setCelebrateId(id);
+      setTimeout(() => setCelebrateId((c) => (c === id ? null : c)), 700);
+    }
+  };
 
   const submit = () => {
     if (!val.trim()) return;
@@ -1070,78 +1232,163 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
       <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, flexShrink: 0 }}>{title}</Oval>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: cardBg || "#fff" }} className="btl-scroll">
-        {items.map((g) => {
-          const cat = catInfo(g.category);
-          const prio = prioInfo(g.priority);
-          const isOpen = openId === g.id;
-          const subDone = (g.subtasks || []).filter((s) => s.done).length;
-          return (
-            <div key={g.id} className="btl-goal-row" style={{ borderBottom: "1px solid #f0ece0", borderLeft: `3px solid ${cat.color}` }}>
-              <div style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "6px 4px 6px 6px",
-                textDecoration: g.done ? "line-through" : "none", color: g.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
-              }}>
-                <input
-                  type="checkbox" checked={g.done} onChange={() => onToggle(g.id)}
-                  className="btl-check" style={{ accentColor: accent, width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
-                />
-                <span style={{ position: "relative", flexShrink: 0 }}>
-                  <span
-                    onClick={() => setPickerFor(pickerFor === g.id ? null : g.id)}
-                    title="Set icon" style={{ cursor: "pointer", fontSize: 12, width: 16, display: "inline-flex", justifyContent: "center" }}
-                  >{g.icon || "＋"}</span>
-                  {pickerFor === g.id && <EmojiPicker onPick={(e) => onSetIcon(g.id, e)} onClose={() => setPickerFor(null)} />}
-                </span>
-                <span
-                  style={{
-                    flex: 1, fontSize: itemFontSize, cursor: "pointer", fontFamily: itemFontFamily,
-                    fontWeight: itemWeight, color: !g.done && itemColorOverride ? itemColorOverride : undefined,
-                  }}
-                  onClick={() => onToggle(g.id)}
-                >{g.text}</span>
-                <span title={`Priority: ${prio.label}`} style={{
-                  fontSize: 8, fontWeight: 900, color: "#fff", background: prio.color,
-                  borderRadius: 4, padding: "1px 4px", flexShrink: 0,
-                }}>{prio.label[0]}</span>
-                {g.recurring
-                  ? <Repeat size={11} title="Recurring" style={{ color: "#a39c86", flexShrink: 0 }} />
-                  : <RotateCcw size={11} title="One-time" style={{ color: "#d8d2bf", flexShrink: 0, opacity: 0.5 }} />}
-                {(g.subtasks || []).length > 0 && (
-                  <span style={{ fontSize: 8, color: "#a39c86", flexShrink: 0 }}>{subDone}/{g.subtasks.length}</span>
-                )}
-                <button onClick={() => setOpenId(isOpen ? null : g.id)} style={{ border: "none", background: "none", cursor: "pointer", padding: 0, flexShrink: 0, color: "#c9c2ac" }}>
-                  {isOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                </button>
-                <Trash2 size={11} style={{ color: "#d8d2bf", cursor: "pointer", flexShrink: 0 }} onClick={() => onRemove(g.id)} />
-              </div>
-              {isOpen && (
-                <div style={{ padding: "2px 8px 8px 22px", background: "#fbf9f2" }}>
-                  <div style={{ fontSize: 8, color: "#a39c86", marginBottom: 3 }}>
-                    <Tag size={9} style={{ verticalAlign: -1, marginRight: 3 }} />{cat.label}
-                  </div>
-                  {(g.subtasks || []).map((s) => (
-                    <label key={s.id} style={{
-                      display: "flex", alignItems: "center", gap: 5, fontSize: subFontSize, padding: "2px 0", cursor: "pointer",
-                      textDecoration: s.done ? "line-through" : "none", fontFamily: itemFontFamily, fontWeight: itemWeight,
-                      color: s.done ? autoMutedColor(cardBg) : (itemColorOverride || autoTextColor(cardBg)),
-                    }}>
-                      <input type="checkbox" checked={s.done} onChange={() => onToggleSubtask(g.id, s.id)} style={{ width: 11, height: 11, accentColor: accent }} />
-                      {s.text}
-                    </label>
-                  ))}
-                  <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-                    <input
-                      value={openId === g.id ? subVal : ""} onChange={(e) => setSubVal(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter" && subVal.trim()) { onAddSubtask(g.id, subVal.trim()); setSubVal(""); } }}
-                      placeholder="Add sub-task..."
-                      style={{ flex: 1, fontSize: 9, padding: "3px 6px", borderRadius: 5, border: "1px solid #ece7d8", outline: "none" }}
+        <AnimatePresence initial={false}>
+          {items.map((g) => {
+            const cat = catInfo(g.category);
+            const prio = prioInfo(g.priority);
+            const isOpen = openId === g.id;
+            const subDone = (g.subtasks || []).filter((s) => s.done).length;
+            const isCelebrating = celebrateId === g.id;
+            return (
+              <motion.div
+                key={g.id}
+                layout
+                initial={{ opacity: 0, y: -10, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, x: 80, height: 0, transition: { duration: 0.22, ease: "easeIn" } }}
+                transition={{ type: "spring", stiffness: 480, damping: 32 }}
+                className="btl-goal-row"
+                style={{ borderBottom: "1px solid #f0ece0", borderLeft: `3px solid ${cat.color}`, position: "relative", overflow: "hidden" }}
+              >
+                <AnimatePresence>
+                  {isCelebrating && (
+                    <motion.div
+                      key="celebrate-flash"
+                      initial={{ opacity: 0.35 }}
+                      animate={{ opacity: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.7, ease: "easeOut" }}
+                      style={{ position: "absolute", inset: 0, background: cat.color, pointerEvents: "none" }}
                     />
-                  </div>
+                  )}
+                </AnimatePresence>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "6px 4px 6px 6px", position: "relative",
+                  color: g.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
+                }}>
+                  <motion.input
+                    type="checkbox" checked={g.done} onChange={() => handleToggle(g.id, g.done)}
+                    className="btl-check" style={{ accentColor: accent, width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
+                    whileTap={{ scale: 0.8 }}
+                    animate={isCelebrating ? { scale: [1, 1.35, 1] } : { scale: 1 }}
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                  />
+                  <span style={{ position: "relative", flexShrink: 0 }}>
+                    <motion.span
+                      whileHover={{ scale: 1.2, rotate: 8 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() => setPickerFor(pickerFor === g.id ? null : g.id)}
+                      title="Set icon" style={{ cursor: "pointer", fontSize: 12, width: 16, display: "inline-flex", justifyContent: "center" }}
+                    >{g.icon || "＋"}</motion.span>
+                    <AnimatePresence>
+                      {pickerFor === g.id && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.85, y: -6 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.9, y: -4 }}
+                          transition={{ type: "spring", stiffness: 420, damping: 30 }}
+                        >
+                          <EmojiPicker onPick={(e) => onSetIcon(g.id, e)} onClose={() => setPickerFor(null)} />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </span>
+                  <motion.span
+                    style={{
+                      flex: 1, fontSize: itemFontSize, cursor: "pointer", fontFamily: itemFontFamily,
+                      fontWeight: itemWeight, color: !g.done && itemColorOverride ? itemColorOverride : undefined,
+                      display: "inline-block",
+                    }}
+                    animate={{
+                      textDecoration: g.done ? "line-through" : "none",
+                      opacity: g.done ? 0.65 : 1,
+                      scale: isCelebrating ? [1, 1.06, 1] : 1,
+                    }}
+                    transition={{ duration: 0.3 }}
+                    onClick={() => handleToggle(g.id, g.done)}
+                  >{g.text}</motion.span>
+                  <span title={`Priority: ${prio.label}`} style={{
+                    fontSize: 8, fontWeight: 900, color: "#fff", background: prio.color,
+                    borderRadius: 4, padding: "1px 4px", flexShrink: 0,
+                  }}>{prio.label[0]}</span>
+                  {g.recurring
+                    ? <Repeat size={11} title="Recurring" style={{ color: "#a39c86", flexShrink: 0 }} />
+                    : <RotateCcw size={11} title="One-time" style={{ color: "#d8d2bf", flexShrink: 0, opacity: 0.5 }} />}
+                  {(g.subtasks || []).length > 0 && (
+                    <span style={{ fontSize: 8, color: "#a39c86", flexShrink: 0 }}>{subDone}/{g.subtasks.length}</span>
+                  )}
+                  <motion.button
+                    onClick={() => setOpenId(isOpen ? null : g.id)}
+                    whileHover={{ scale: 1.15 }}
+                    whileTap={{ scale: 0.85 }}
+                    animate={{ rotate: isOpen ? 180 : 0 }}
+                    transition={{ duration: 0.25 }}
+                    style={{ border: "none", background: "none", cursor: "pointer", padding: 0, flexShrink: 0, color: "#c9c2ac" }}
+                  >
+                    <ChevronDown size={12} />
+                  </motion.button>
+                  <motion.span
+                    whileHover={{ scale: 1.2, rotate: -10, color: "#e07a5f" }}
+                    whileTap={{ scale: 0.85 }}
+                    style={{ display: "inline-flex", flexShrink: 0 }}
+                  >
+                    <Trash2 size={11} style={{ color: "#d8d2bf", cursor: "pointer" }} onClick={() => onRemove(g.id)} />
+                  </motion.span>
                 </div>
-              )}
-            </div>
-          );
-        })}
+                <AnimatePresence initial={false}>
+                  {isOpen && (
+                    <motion.div
+                      key="subtasks"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.25, ease: "easeInOut" }}
+                      style={{ overflow: "hidden" }}
+                    >
+                      <div style={{ padding: "2px 8px 8px 22px", background: "#fbf9f2" }}>
+                        <div style={{ fontSize: 8, color: "#a39c86", marginBottom: 3 }}>
+                          <Tag size={9} style={{ verticalAlign: -1, marginRight: 3 }} />{cat.label}
+                        </div>
+                        <AnimatePresence initial={false}>
+                          {(g.subtasks || []).map((s) => (
+                            <motion.label
+                              key={s.id}
+                              layout
+                              initial={{ opacity: 0, x: -8 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              exit={{ opacity: 0, x: 8 }}
+                              transition={{ duration: 0.2 }}
+                              style={{
+                                display: "flex", alignItems: "center", gap: 5, fontSize: subFontSize, padding: "2px 0", cursor: "pointer",
+                                textDecoration: s.done ? "line-through" : "none", fontFamily: itemFontFamily, fontWeight: itemWeight,
+                                color: s.done ? autoMutedColor(cardBg) : (itemColorOverride || autoTextColor(cardBg)),
+                              }}
+                            >
+                              <motion.input
+                                type="checkbox" checked={s.done} onChange={() => onToggleSubtask(g.id, s.id)}
+                                whileTap={{ scale: 0.8 }}
+                                style={{ width: 11, height: 11, accentColor: accent }}
+                              />
+                              {s.text}
+                            </motion.label>
+                          ))}
+                        </AnimatePresence>
+                        <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                          <input
+                            value={openId === g.id ? subVal : ""} onChange={(e) => setSubVal(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter" && subVal.trim()) { onAddSubtask(g.id, subVal.trim()); setSubVal(""); } }}
+                            placeholder="Add sub-task..."
+                            style={{ flex: 1, fontSize: 9, padding: "3px 6px", borderRadius: 5, border: "1px solid #ece7d8", outline: "none" }}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
 
       <div style={{ marginTop: 6, flexShrink: 0 }}>
@@ -1159,13 +1406,19 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
             placeholder="Add item..."
             style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
           />
-          <button onClick={() => setShowOptions((v) => !v)} title="Category / priority / recurring"
+          <motion.button
+            onClick={() => setShowOptions((v) => !v)} title="Category / priority / recurring"
+            whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
             style={{ border: "1px solid #ddd6c4", background: showOptions ? "#f0ece0" : "#fff", borderRadius: 6, padding: "0 7px", cursor: "pointer", fontSize: 10 }}>
             <Tag size={12} />
-          </button>
-          <button onClick={submit} style={{ border: "none", background: accent, color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer" }}>
+          </motion.button>
+          <motion.button
+            onClick={submit}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.85, rotate: 90 }}
+            style={{ border: "none", background: accent, color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer" }}>
             <Plus size={13} />
-          </button>
+          </motion.button>
         </div>
         {showOptions && (
           <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
@@ -7502,17 +7755,7 @@ function BTLDashboardInner() {
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <SaveStatus status={saveStatus} />
-              <div style={{ textAlign: "center" }}>
-                <motion.div
-                  animate={{ boxShadow: [`0 0 0px 0px ${C.accent}00`, `0 0 10px 2px ${C.accent}80`, `0 0 0px 0px ${C.accent}00`] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                  whileHover={{ scale: 1.1 }}
-                  title="Day Streak"
-                  style={{
-                    width: 30, height: 30, borderRadius: "50%", background: C.dark, color: "#fff",
-                    display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800,
-                  }}>{String(state.streak).padStart(3, "0")}</motion.div>
-              </div>
+              <DayStreakBadge streak={state.streak} accent={C.accent} dark={C.dark} />
               <RingStat pct={dailyPct} label="Daily Goal" sub="Staytus" color={C.accent} />
               <RingStat pct={extryPct} label="Extry Goal" sub="Staytus" color={C.blue} />
               <RingStat pct={overallPct} label="Goal" color={dashTheme.text || C.dark} />
