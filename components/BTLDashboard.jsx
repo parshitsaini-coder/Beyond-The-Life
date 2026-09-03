@@ -9590,7 +9590,11 @@ function BTLDashboardInner() {
       fontFamily: "Inter, system-ui, sans-serif", background: dashTheme.bg, color: dashTheme.text,
       height: "100%", maxHeight: "100%", borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
       border: `1px solid #ece7d8`, fontSize: 11, boxSizing: "border-box",
-      display: "flex", flexDirection: "column",
+      display: "flex", flexDirection: "column", zIndex: 0, // zIndex:0 (not auto) makes this div its OWN stacking
+      // context, so the zIndex:-1 liquid-glass blobs below are contained
+      // inside it (painted above ITS OWN background) instead of escaping
+      // to the nearest ancestor stacking context and disappearing behind
+      // the rest of the page — without this the blobs render invisible.
       zoom: "80%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "70%" for smaller, "90%" for bigger.
     }}>
       {/* ---- Liquid Glass animated background (this update) ----
@@ -9616,22 +9620,22 @@ function BTLDashboardInner() {
       <div style={{ position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: "-10%", filter: "url(#btl-liquid-goo)" }}>
           {/* Ambient blobs — slow drift + shape morph, always present */}
-          <div className="btl-liquid-blob btl-liquid-blob-a" style={{ position: "absolute", top: "-14%", left: "-8%", width: 340, height: 340, background: "radial-gradient(circle, rgba(252,163,17,0.34), transparent 70%)" }} />
-          <div className="btl-liquid-blob btl-liquid-blob-b" style={{ position: "absolute", bottom: "-18%", right: "-10%", width: 400, height: 400, background: "radial-gradient(circle, rgba(152,193,217,0.34), transparent 70%)" }} />
-          <div className="btl-liquid-blob btl-liquid-blob-c" style={{ position: "absolute", top: "40%", left: "44%", width: 300, height: 300, background: "radial-gradient(circle, rgba(224,122,95,0.24), transparent 70%)" }} />
+          <div className="btl-liquid-blob btl-liquid-blob-a" style={{ position: "absolute", top: "-14%", left: "-8%", width: 340, height: 340, background: "radial-gradient(circle, rgba(252,163,17,0.46), transparent 70%)" }} />
+          <div className="btl-liquid-blob btl-liquid-blob-b" style={{ position: "absolute", bottom: "-18%", right: "-10%", width: 400, height: 400, background: "radial-gradient(circle, rgba(152,193,217,0.46), transparent 70%)" }} />
+          <div className="btl-liquid-blob btl-liquid-blob-c" style={{ position: "absolute", top: "40%", left: "44%", width: 300, height: 300, background: "radial-gradient(circle, rgba(224,122,95,0.34), transparent 70%)" }} />
           {/* Cursor-follower blobs — springy, laggy, glide toward the mouse */}
           <motion.div className="btl-liquid-blob" style={{
             position: "absolute", width: 260, height: 260, left: liquidTrailLeft, top: liquidTrailTop,
-            x: "-50%", y: "-50%", background: "radial-gradient(circle, rgba(152,193,217,0.30), transparent 72%)",
+            x: "-50%", y: "-50%", background: "radial-gradient(circle, rgba(152,193,217,0.42), transparent 72%)",
           }} />
           <motion.div className="btl-liquid-blob" style={{
             position: "absolute", width: 380, height: 380, left: liquidLeft, top: liquidTop,
-            x: "-50%", y: "-50%", background: "radial-gradient(circle, rgba(252,163,17,0.4), rgba(224,122,95,0.22) 45%, transparent 72%)",
+            x: "-50%", y: "-50%", background: "radial-gradient(circle, rgba(252,163,17,0.52), rgba(224,122,95,0.3) 45%, transparent 72%)",
           }} />
         </div>
         {/* Fine frosted grain on top of the blobs — softens hard gradient
             edges so it reads as glass haze rather than colored spotlights. */}
-        <div style={{ position: "absolute", inset: 0, backdropFilter: "blur(38px) saturate(150%)", WebkitBackdropFilter: "blur(38px) saturate(150%)" }} />
+        <div style={{ position: "absolute", inset: 0, backdropFilter: "blur(24px) saturate(160%)", WebkitBackdropFilter: "blur(24px) saturate(160%)" }} />
       </div>
       <style>{`
         /* ---- Liquid Glass background animation (this update) ---- */
