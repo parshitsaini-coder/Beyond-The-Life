@@ -13,7 +13,7 @@ import {
   AlarmClock, Volume2, Play,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
-import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
+import { motion, AnimatePresence, Reorder, animate, useDragControls, useMotionValue, useSpring, useMotionTemplate, useReducedMotion } from "framer-motion";
 import { createPortal } from "react-dom";
 import { useAuth, signOutUser, signInWithGoogle } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
@@ -605,6 +605,16 @@ const TIME_CATEGORIES = [
   { key: "health", label: "Health", emoji: "💪", color: "#4a7c59" },
   { key: "rest", label: "Rest", emoji: "🛌", color: "#b083f0" },
   { key: "personal", label: "Personal", emoji: "🧑", color: "#f4d35e" },
+  { key: "sleep", label: "Sleep", emoji: "😴", color: "#5c6bc0" },
+  { key: "meals", label: "Meals", emoji: "🍽️", color: "#e07a5f" },
+  { key: "commute", label: "Commute", emoji: "🚗", color: "#457b9d" },
+  { key: "exercise", label: "Exercise", emoji: "🏋️", color: "#e63946" },
+  { key: "family", label: "Family", emoji: "👨‍👩‍👧", color: "#f77f00" },
+  { key: "social", label: "Social", emoji: "🎉", color: "#ff6f91" },
+  { key: "chores", label: "Chores", emoji: "🧹", color: "#8d99ae" },
+  { key: "finance", label: "Finance", emoji: "💰", color: "#2a9d8f" },
+  { key: "hobby", label: "Hobby", emoji: "🎨", color: "#9d4edd" },
+  { key: "meeting", label: "Meeting", emoji: "🗓️", color: "#219ebc" },
   { key: "other", label: "Other", emoji: "🔖", color: "#b3ac99" },
 ];
 const timeCatInfo = (key) => TIME_CATEGORIES.find((c) => c.key === key) || TIME_CATEGORIES[TIME_CATEGORIES.length - 1];
@@ -1004,28 +1014,71 @@ function Oval({ children, style, onClick, ...rest }) {
 function GlowIconButton({ icon: Icon, label, active, color, onClick, filled }) {
   const bg = active || filled ? color : "#fff";
   const fg = active || filled ? "#fff" : color;
+  const reduce = useReducedMotion();
+
+  // Mouse-tracking spotlight: springs chase the cursor's position inside the
+  // button so the glow visibly "reaches toward" the pointer instead of just
+  // sitting there — decorative delight, gated to fine pointers + hover.
+  const mx = useMotionValue(50);
+  const my = useMotionValue(50);
+  const sx = useSpring(mx, { stiffness: 300, damping: 22, mass: 0.4 });
+  const sy = useSpring(my, { stiffness: 300, damping: 22, mass: 0.4 });
+  const spotlight = useMotionTemplate`radial-gradient(circle at ${sx}% ${sy}%, ${color}55, transparent 70%)`;
+
+  const [hovered, setHovered] = useState(false);
+
+  const handleMouseMove = (e) => {
+    if (reduce) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    mx.set(((e.clientX - rect.left) / rect.width) * 100);
+    my.set(((e.clientY - rect.top) / rect.height) * 100);
+  };
+  const resetSpotlight = () => { mx.set(50); my.set(50); setHovered(false); };
+
   return (
     <motion.button
       onClick={onClick}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={resetSpotlight}
       title={label}
       aria-label={label}
-      whileHover={{ y: -3, scale: 1.08 }}
+      whileHover={reduce ? undefined : { y: -3, scale: 1.1 }}
       whileTap={{ scale: 0.88 }}
       transition={{ type: "spring", stiffness: 420, damping: 20 }}
+      className="btl-glow-icon-btn"
       style={{
         position: "relative", width: 34, height: 34, borderRadius: "50%",
         border: `1.5px solid ${color}`, background: bg, color: fg,
         display: "flex", alignItems: "center", justifyContent: "center",
-        cursor: "pointer", flexShrink: 0, padding: 0,
+        cursor: "pointer", flexShrink: 0, padding: 0, overflow: "hidden",
       }}
     >
+      {/* idle ambient pulse — subtle, always on */}
       <motion.span
         aria-hidden
-        animate={{ boxShadow: [`0 0 0px 0px ${color}00`, `0 0 9px 2px ${color}66`, `0 0 0px 0px ${color}00`] }}
+        animate={reduce ? undefined : { boxShadow: [`0 0 0px 0px ${color}00`, `0 0 9px 2px ${color}66`, `0 0 0px 0px ${color}00`] }}
         transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
         style={{ position: "absolute", inset: -3, borderRadius: "50%", pointerEvents: "none" }}
       />
-      <Icon size={15} />
+      {/* mouse-tracking spotlight — chases the cursor, fine pointers only */}
+      {!reduce && (
+        <motion.span
+          aria-hidden
+          animate={{ opacity: hovered ? 1 : 0 }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
+          className="btl-glow-icon-spotlight"
+          style={{ position: "absolute", inset: 0, borderRadius: "50%", pointerEvents: "none", background: spotlight }}
+        />
+      )}
+      <motion.span
+        aria-hidden
+        animate={hovered && !reduce ? { rotate: [0, -14, 10, 0], scale: 1.12 } : { rotate: 0, scale: 1 }}
+        transition={{ duration: 0.45, ease: [0.23, 1, 0.32, 1] }}
+        style={{ display: "flex" }}
+      >
+        <Icon size={15} />
+      </motion.span>
     </motion.button>
   );
 }
