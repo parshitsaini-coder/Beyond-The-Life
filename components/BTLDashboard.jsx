@@ -9,7 +9,7 @@ import {
   ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft,
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
   Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn,
-  Users, Clock, PieChart as PieChartIcon,
+  Users, Clock, PieChart as PieChartIcon, Bell, BellOff,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -500,6 +500,11 @@ function ensureTimeItemDefaults(t) {
     done: !!t.done,
     icon: t.icon || "",
     category: TIME_CATEGORIES.some((c) => c.key === t.category) ? t.category : "other",
+    // Repeats every day (rolloverDailyGoals unchecks it at the next date
+    // change) when true; a one-off event that keeps whatever `done` state
+    // it's left in when false. Defaults true since a schedule is usually
+    // meant to repeat — flip it off per-row from the 🔁 icon on the row.
+    recurring: t.recurring !== undefined ? !!t.recurring : true,
   };
 }
 
@@ -1575,6 +1580,49 @@ function formatTime12(hhmm) {
   return `${h}:${m} ${ampm}`;
 }
 
+/* ---------------- TIME TABLE: reminder chime (this update) ----------------
+   Two-tone beep built straight from the Web Audio API — no MP3/asset file
+   to bundle, so "sound on NOW slot" works the instant this ships. Wrapped
+   in try/catch: silently does nothing on a browser/tab where audio isn't
+   allowed yet (autoplay policies) instead of throwing. */
+function playChime() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "sine";
+    o.frequency.value = 880;
+    g.gain.value = 0.0001;
+    o.connect(g); g.connect(ctx.destination);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.16, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.55);
+    o.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.4);
+    o.stop(ctx.currentTime + 0.6);
+    o.onended = () => ctx.close();
+  } catch (e) { /* audio not available — fine, notification still fires */ }
+}
+
+/* ---------------- TIME TABLE: drag-to-reschedule time math (this update) ----------------
+   Dragging a row to a new spot in the list (via Reorder.Group below) drops
+   it between two neighbors; these turn that new position into an actual
+   "HH:MM" so the row's clock time — not just its on-screen order — follows
+   the drag. */
+function clampMinutes(total) { return Math.max(0, Math.min(23 * 60 + 59, total)); }
+function minutesOf(hhmm) { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; }
+function timeFromMinutes(total) {
+  const t = clampMinutes(total);
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+}
+function addMinutesToTime(hhmm, delta) { return timeFromMinutes(minutesOf(hhmm) + delta); }
+function midpointTime(t1, t2) {
+  let a = minutesOf(t1), b = minutesOf(t2);
+  if (b <= a) b += 24 * 60;
+  return timeFromMinutes(Math.round((a + b) / 2));
+}
+
 function TimeCheckBurst() {
   const dots = Array.from({ length: 6 });
   return (
@@ -1610,7 +1658,99 @@ function TimeCheckBurst() {
   );
 }
 
-function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg, streak = 0, history = {} }) {
+/* Single row of the Time Table — split out from the main component so each
+   row can own its own useDragControls() (Reorder.Item needs one drag
+   controller per row; hooks can't be created inside a .map()). Dragging the
+   grip handle up/down reorders the row, and TimeTable's onReorder below
+   turns that new position into a real new "HH:MM" via midpointTime(). */
+function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, accent, cardBg, itemFontSize, itemFontFamily, itemColorOverride, itemWeight, onToggle, onRemove, onToggleRecurring }) {
+  const dragControls = useDragControls();
+  const cat = timeCatInfo(t.category);
+  return (
+    <Reorder.Item
+      value={t}
+      dragListener={false}
+      dragControls={dragControls}
+      layout
+      initial={{ opacity: 0, y: -10, height: 0 }}
+      animate={{ opacity: 1, y: 0, height: "auto" }}
+      exit={{ opacity: 0, x: 80, height: 0, transition: { duration: 0.22, ease: "easeIn" } }}
+      transition={{ type: "spring", stiffness: 480, damping: 32 }}
+      whileDrag={{ scale: 1.02, boxShadow: "0 8px 22px rgba(37,36,34,0.16)", cursor: "grabbing", zIndex: 5 }}
+      style={{
+        borderBottom: "1px solid #f0ece0",
+        borderLeft: `3px solid ${t.done ? "#c7dfc9" : isUpcoming ? accent : isOverdue ? "#e07a5f" : "#ddd6c4"}`,
+        position: "relative", overflow: "hidden", listStyle: "none", background: cardBg || "#fff",
+      }}
+    >
+      <AnimatePresence>{isCelebrating && <TimeCheckBurst />}</AnimatePresence>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 5, padding: "6px 4px 6px 2px", position: "relative",
+        color: t.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
+      }}>
+        <span
+          onPointerDown={(e) => dragControls.start(e)}
+          title="Drag to reschedule"
+          style={{ display: "flex", alignItems: "center", touchAction: "none", cursor: "grab", flexShrink: 0, color: "#c9c2ac" }}
+        >
+          <GripVertical size={12} />
+        </span>
+        <motion.input
+          type="checkbox" checked={t.done} onChange={() => onToggle(t.id, t.done)}
+          className="btl-check" style={{ accentColor: accent, width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
+          whileTap={{ scale: 0.8 }}
+          animate={isCelebrating ? { scale: [1, 1.35, 1] } : { scale: 1 }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
+        />
+        <span title={cat.label} style={{ width: 6, height: 6, borderRadius: "50%", background: cat.color, flexShrink: 0 }} />
+        <motion.span
+          animate={isUpcoming && !t.done ? { boxShadow: ["0 0 0 0 rgba(252,163,17,0.45)", "0 0 0 5px rgba(252,163,17,0)"] } : { boxShadow: "0 0 0 0 rgba(0,0,0,0)" }}
+          transition={{ duration: 1.6, repeat: isUpcoming && !t.done ? Infinity : 0, ease: "easeOut" }}
+          style={{
+            fontSize: 9, fontWeight: 800, flexShrink: 0, borderRadius: 999, padding: "2px 6px", minWidth: 58, textAlign: "center",
+            color: t.done ? "#a39c86" : isUpcoming ? "#fff" : "#8a8579",
+            background: isUpcoming && !t.done ? accent : "rgba(0,0,0,0.05)",
+          }}
+        >{formatTime12(t.time)}</motion.span>
+        <motion.span
+          style={{
+            flex: 1, fontSize: itemFontSize, cursor: "pointer", fontFamily: itemFontFamily,
+            fontWeight: itemWeight, color: !t.done && itemColorOverride ? itemColorOverride : undefined,
+            display: "inline-block", minWidth: 0,
+          }}
+          animate={{
+            textDecoration: t.done ? "line-through" : "none",
+            opacity: t.done ? 0.65 : 1,
+            scale: isCelebrating ? [1, 1.06, 1] : 1,
+          }}
+          transition={{ duration: 0.3 }}
+          onClick={() => onToggle(t.id, t.done)}
+        >{t.text}</motion.span>
+        {isUpcoming && !t.done && (
+          <span style={{ fontSize: 8, fontWeight: 900, color: accent, flexShrink: 0 }}>NOW</span>
+        )}
+        <motion.span
+          whileHover={{ scale: 1.2 }}
+          whileTap={{ scale: 0.85 }}
+          title={t.recurring ? "Repeats daily — click to make one-off" : "One-off — click to repeat daily"}
+          style={{ display: "inline-flex", flexShrink: 0, cursor: "pointer", color: t.recurring ? accent : "#d8d2bf" }}
+          onClick={() => onToggleRecurring(t.id)}
+        >
+          <Repeat size={11} />
+        </motion.span>
+        <motion.span
+          whileHover={{ scale: 1.2, rotate: -10, color: "#e07a5f" }}
+          whileTap={{ scale: 0.85 }}
+          style={{ display: "inline-flex", flexShrink: 0 }}
+        >
+          <Trash2 size={11} style={{ color: "#d8d2bf", cursor: "pointer" }} onClick={() => onRemove(t.id)} />
+        </motion.span>
+      </div>
+    </Reorder.Item>
+  );
+}
+
+function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRecurring, accent, textStyle, cardBg, streak = 0, history = {} }) {
   const ts = normalizeTextStyle(textStyle);
   const itemFontSize = Math.round(11 * ts.scale);
   const itemFontFamily = ts.font ? fontStackFor(ts.font) : undefined;
@@ -1620,13 +1760,23 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
   const [time, setTime] = useState("09:00");
   const [text, setText] = useState("");
   const [category, setCategory] = useState("other");
+  const [repeatNew, setRepeatNew] = useState(true);
   const [celebrateId, setCelebrateId] = useState(null);
   const [showHeat, setShowHeat] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
+  // Reminder on/off is a per-browser preference (notification permission is
+  // per-browser too), so it lives in localStorage rather than Firestore —
+  // survives reloads without needing a sync round-trip.
+  const [notifyOn, setNotifyOn] = useState(false);
+  const notifiedRef = useRef(new Set());
   const [nowStr, setNowStr] = useState(() => {
     const d = new Date();
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   });
+
+  useEffect(() => {
+    try { setNotifyOn(localStorage.getItem("btl_timetable_notify") === "1"); } catch (e) { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -1635,6 +1785,39 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
     }, 30000);
     return () => clearInterval(t);
   }, []);
+
+  // Reminder: whenever the clock (nowStr, ticking every 30s above) reaches
+  // a slot's time, fire a browser notification + chime once. notifiedRef
+  // is keyed by day+id so it won't repeat on the same day, and clears
+  // itself once the tab reaches a fresh day.
+  useEffect(() => {
+    if (!notifyOn) return;
+    const today = todayISO();
+    for (const s of Array.from(notifiedRef.current)) {
+      if (!s.startsWith(today)) notifiedRef.current.delete(s);
+    }
+    (items || []).forEach((it) => {
+      if (it.done || it.time !== nowStr) return;
+      const key = `${today}-${it.id}`;
+      if (notifiedRef.current.has(key)) return;
+      notifiedRef.current.add(key);
+      playChime();
+      try {
+        if ("Notification" in window && Notification.permission === "granted") {
+          new Notification("⏰ " + it.text, { body: `It's ${formatTime12(it.time)} — time table reminder`, tag: key });
+        }
+      } catch (e) { /* ignore */ }
+    });
+  }, [nowStr, notifyOn, items]);
+
+  const toggleNotify = () => {
+    const next = !notifyOn;
+    setNotifyOn(next);
+    try { localStorage.setItem("btl_timetable_notify", next ? "1" : "0"); } catch (e) { /* ignore */ }
+    if (next && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  };
 
   const sorted = [...(items || [])].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
   const upcoming = sorted.find((t) => !t.done && (t.time || "") >= nowStr);
@@ -1648,9 +1831,31 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
     }
   };
 
+  // Drag-to-reschedule: Reorder.Group hands back the full row in its new
+  // visual order. Find the one row whose position actually moved, then
+  // recompute *its* time from its new neighbors' times (their times are
+  // untouched) so the clock time follows the drop position.
+  const handleReorder = (newOrder) => {
+    const oldIds = sorted.map((x) => x.id);
+    const newIds = newOrder.map((x) => x.id);
+    let idx = -1;
+    for (let i = 0; i < newIds.length; i++) {
+      if (newIds[i] !== oldIds[i]) { idx = i; break; }
+    }
+    if (idx === -1) return;
+    const moved = newOrder[idx];
+    const prev = newOrder[idx - 1];
+    const next = newOrder[idx + 1];
+    let newTime;
+    if (prev && next) newTime = midpointTime(prev.time, next.time);
+    else if (next) newTime = addMinutesToTime(next.time, -15);
+    else if (prev) newTime = addMinutesToTime(prev.time, 15);
+    if (newTime && newTime !== moved.time) onReschedule(moved.id, newTime);
+  };
+
   const submit = () => {
     if (!text.trim()) return;
-    onAdd(time, text.trim(), category);
+    onAdd(time, text.trim(), category, repeatNew);
     setText("");
   };
 
@@ -1659,7 +1864,10 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
       <ChecklistHeader
         title={<><Clock size={11} style={{ marginRight: 3, verticalAlign: -1 }} />Time Table</>}
         streak={streak} accent={accent} showHeat={showHeat} onToggleHeat={() => setShowHeat((v) => !v)}
-        extraToggle={{ icon: <PieChartIcon size={10} />, active: showBreakdown, onClick: () => setShowBreakdown((v) => !v), title: "Where today's hours go" }}
+        extraToggles={[
+          { icon: notifyOn ? <Bell size={10} /> : <BellOff size={10} />, active: notifyOn, onClick: toggleNotify, title: notifyOn ? "Reminders on — click to mute" : "Get notified when a slot starts" },
+          { icon: <PieChartIcon size={10} />, active: showBreakdown, onClick: () => setShowBreakdown((v) => !v), title: "Where today's hours go" },
+        ]}
       />
       <AnimatePresence initial={false}>
         {showHeat && <WidgetHeatmapPanel history={history} accent={accent} />}
@@ -1671,77 +1879,23 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
             No time blocks yet — add your first one below.
           </div>
         )}
-        <AnimatePresence initial={false}>
-          {sorted.map((t) => {
-            const isUpcoming = t.id === upcomingId;
-            const isOverdue = !t.done && !isUpcoming && (t.time || "") < nowStr;
-            const isCelebrating = celebrateId === t.id;
-            const cat = timeCatInfo(t.category);
-            return (
-              <motion.div
+        <Reorder.Group axis="y" values={sorted} onReorder={handleReorder} style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          <AnimatePresence initial={false}>
+            {sorted.map((t) => (
+              <TimeTableRow
                 key={t.id}
-                layout
-                initial={{ opacity: 0, y: -10, height: 0 }}
-                animate={{ opacity: 1, y: 0, height: "auto" }}
-                exit={{ opacity: 0, x: 80, height: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-                transition={{ type: "spring", stiffness: 480, damping: 32 }}
-                style={{
-                  borderBottom: "1px solid #f0ece0",
-                  borderLeft: `3px solid ${t.done ? "#c7dfc9" : isUpcoming ? accent : isOverdue ? "#e07a5f" : "#ddd6c4"}`,
-                  position: "relative", overflow: "hidden",
-                }}
-              >
-                <AnimatePresence>{isCelebrating && <TimeCheckBurst />}</AnimatePresence>
-                <div style={{
-                  display: "flex", alignItems: "center", gap: 6, padding: "6px 4px 6px 6px", position: "relative",
-                  color: t.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
-                }}>
-                  <motion.input
-                    type="checkbox" checked={t.done} onChange={() => handleToggle(t.id, t.done)}
-                    className="btl-check" style={{ accentColor: accent, width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
-                    whileTap={{ scale: 0.8 }}
-                    animate={isCelebrating ? { scale: [1, 1.35, 1] } : { scale: 1 }}
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                  />
-                  <span title={cat.label} style={{ width: 6, height: 6, borderRadius: "50%", background: cat.color, flexShrink: 0 }} />
-                  <motion.span
-                    animate={isUpcoming && !t.done ? { boxShadow: ["0 0 0 0 rgba(252,163,17,0.45)", "0 0 0 5px rgba(252,163,17,0)"] } : { boxShadow: "0 0 0 0 rgba(0,0,0,0)" }}
-                    transition={{ duration: 1.6, repeat: isUpcoming && !t.done ? Infinity : 0, ease: "easeOut" }}
-                    style={{
-                      fontSize: 9, fontWeight: 800, flexShrink: 0, borderRadius: 999, padding: "2px 6px", minWidth: 58, textAlign: "center",
-                      color: t.done ? "#a39c86" : isUpcoming ? "#fff" : "#8a8579",
-                      background: isUpcoming && !t.done ? accent : "rgba(0,0,0,0.05)",
-                    }}
-                  >{formatTime12(t.time)}</motion.span>
-                  <motion.span
-                    style={{
-                      flex: 1, fontSize: itemFontSize, cursor: "pointer", fontFamily: itemFontFamily,
-                      fontWeight: itemWeight, color: !t.done && itemColorOverride ? itemColorOverride : undefined,
-                      display: "inline-block",
-                    }}
-                    animate={{
-                      textDecoration: t.done ? "line-through" : "none",
-                      opacity: t.done ? 0.65 : 1,
-                      scale: isCelebrating ? [1, 1.06, 1] : 1,
-                    }}
-                    transition={{ duration: 0.3 }}
-                    onClick={() => handleToggle(t.id, t.done)}
-                  >{t.text}</motion.span>
-                  {isUpcoming && !t.done && (
-                    <span style={{ fontSize: 8, fontWeight: 900, color: accent, flexShrink: 0 }}>NOW</span>
-                  )}
-                  <motion.span
-                    whileHover={{ scale: 1.2, rotate: -10, color: "#e07a5f" }}
-                    whileTap={{ scale: 0.85 }}
-                    style={{ display: "inline-flex", flexShrink: 0 }}
-                  >
-                    <Trash2 size={11} style={{ color: "#d8d2bf", cursor: "pointer" }} onClick={() => onRemove(t.id)} />
-                  </motion.span>
-                </div>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
+                t={t}
+                isUpcoming={t.id === upcomingId}
+                isOverdue={!t.done && t.id !== upcomingId && (t.time || "") < nowStr}
+                isCelebrating={celebrateId === t.id}
+                accent={accent} cardBg={cardBg}
+                itemFontSize={itemFontSize} itemFontFamily={itemFontFamily}
+                itemColorOverride={itemColorOverride} itemWeight={itemWeight}
+                onToggle={handleToggle} onRemove={onRemove} onToggleRecurring={onToggleRecurring}
+              />
+            ))}
+          </AnimatePresence>
+        </Reorder.Group>
       </div>
 
       <div style={{ marginTop: 6, flexShrink: 0, display: "flex", gap: 4, flexWrap: "wrap" }}>
@@ -1761,6 +1915,18 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
           placeholder="What to do at this time..."
           style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", minWidth: 0 }}
         />
+        <motion.button
+          onClick={() => setRepeatNew((v) => !v)}
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.9 }}
+          title={repeatNew ? "New slot repeats daily — click for one-off" : "New slot is one-off — click to repeat daily"}
+          style={{
+            border: "none", borderRadius: 6, padding: "0 7px", cursor: "pointer", flexShrink: 0,
+            background: repeatNew ? accent : "rgba(0,0,0,0.06)", color: repeatNew ? "#fff" : "#8a8579",
+            display: "flex", alignItems: "center",
+          }}>
+          <Repeat size={12} />
+        </motion.button>
         <motion.button
           onClick={submit}
           whileHover={{ scale: 1.1 }}
@@ -2436,27 +2602,32 @@ function StreakChip({ streak, accent }) {
 /* Header row shared by GoalChecklist + TimeTable: centered Oval title, with the
    streak chip and a heatmap-toggle button pinned to the right so the title stays
    visually centered regardless of whether a widget has an active streak yet. */
-function ChecklistHeader({ title, streak, accent, showHeat, onToggleHeat, extraToggle }) {
+function ChecklistHeader({ title, streak, accent, showHeat, onToggleHeat, extraToggle, extraToggles }) {
+  // Back-compat: TimeTable now passes an array via `extraToggles` (bell +
+  // pie chart); GoalChecklist still passes nothing. `extraToggle` (singular)
+  // is kept working too in case anything else still calls it that way.
+  const toggles = extraToggles || (extraToggle ? [extraToggle] : []);
   return (
     <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 6, flexShrink: 0, minHeight: 22 }}>
       <Oval style={{ display: "block", margin: 0, background: C.dark, color: C.bg, borderColor: C.dark }}>{title}</Oval>
       <div style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", gap: 4 }}>
         <StreakChip streak={streak} accent={accent} />
-        {extraToggle && (
+        {toggles.map((tgl, i) => (
           <motion.button
-            onClick={extraToggle.onClick}
+            key={i}
+            onClick={tgl.onClick}
             whileHover={{ scale: 1.12 }}
             whileTap={{ scale: 0.88 }}
-            title={extraToggle.title}
+            title={tgl.title}
             style={{
               border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
               width: 18, height: 18, borderRadius: 6,
-              background: extraToggle.active ? accent : "rgba(0,0,0,0.05)", color: extraToggle.active ? "#fff" : "#8a8579",
+              background: tgl.active ? accent : "rgba(0,0,0,0.05)", color: tgl.active ? "#fff" : "#8a8579",
             }}
           >
-            {extraToggle.icon}
+            {tgl.icon}
           </motion.button>
-        )}
+        ))}
         <motion.button
           onClick={onToggleHeat}
           whileHover={{ scale: 1.12 }}
@@ -3245,6 +3416,10 @@ function rolloverDailyGoals(s) {
     lastActiveDay: today,
     dailyGoals: (s.dailyGoals || []).map((g) => (g.done ? { ...g, done: false } : g)),
     extryGoals: (s.extryGoals || []).map((g) => (g.done ? { ...g, done: false } : g)),
+    // Recurring slots reset every day like goals do; a one-off slot
+    // (recurring === false) keeps whatever done/undone state it was left
+    // in — it already happened (or didn't) and isn't meant to repeat.
+    timeTable: (s.timeTable || []).map((t) => (t.recurring !== false && t.done) ? { ...t, done: false } : t),
   };
 }
 
@@ -7918,12 +8093,25 @@ function BTLDashboardInner() {
     recordWidgetProgress(s, "timeTable", s.timeTable);
     return s;
   });
-  const addTimeItem = (time, text, category) => update((s) => {
-    s.timeTable = [...(s.timeTable || []), ensureTimeItemDefaults({ id: `${Date.now()}-${Math.random()}`, time, text, category, done: false })];
+  const addTimeItem = (time, text, category, recurring = true) => update((s) => {
+    s.timeTable = [...(s.timeTable || []), ensureTimeItemDefaults({ id: `${Date.now()}-${Math.random()}`, time, text, category, recurring, done: false })];
     return s;
   });
   const removeTimeItem = (id) => update((s) => {
     s.timeTable = (s.timeTable || []).filter((t) => t.id !== id);
+    return s;
+  });
+  // Drag-to-reschedule (this update): TimeTable's Reorder.Group computes the
+  // new "HH:MM" from where a row was dropped and calls this with just the
+  // result — same shape as every other single-field patch below.
+  const rescheduleTimeItem = (id, time) => update((s) => {
+    s.timeTable = (s.timeTable || []).map((t) => t.id === id ? { ...t, time } : t);
+    return s;
+  });
+  // Recurring toggle (this update): flips whether a slot resets each day in
+  // rolloverDailyGoals below, or stays as a one-off event.
+  const toggleTimeRecurring = (id) => update((s) => {
+    s.timeTable = (s.timeTable || []).map((t) => t.id === id ? { ...t, recurring: !t.recurring } : t);
     return s;
   });
 
@@ -8138,7 +8326,7 @@ function BTLDashboardInner() {
     lifeRules: <TextList title="Life Rules" items={state.lifeRules} textStyle={state.layout.textStyles?.lifeRules} cardBg={theme.widgets.lifeRules?.bg} />,
     dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyles?.dailyGoals} cardBg={theme.widgets.dailyGoals?.bg} streak={state.widgetStreaks?.dailyGoals || 0} history={state.widgetHistory?.dailyGoals || {}} />,
     extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} cardBg={theme.widgets.extryGoals?.bg} streak={state.widgetStreaks?.extryGoals || 0} history={state.widgetHistory?.extryGoals || {}} />,
-    timeTable: <TimeTable items={state.timeTable || []} onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem} accent={C.accent} textStyle={state.layout.textStyles?.timeTable} cardBg={theme.widgets.timeTable?.bg} streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}} />,
+    timeTable: <TimeTable items={state.timeTable || []} onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem} onReschedule={rescheduleTimeItem} onToggleRecurring={toggleTimeRecurring} accent={C.accent} textStyle={state.layout.textStyles?.timeTable} cardBg={theme.widgets.timeTable?.bg} streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}} />,
     earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} onImageDrop={processImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} cardBg={theme.widgets.earnMoney?.bg} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} metrics={theme.analyticsSummary.metrics} />,
     calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} textStyle={state.layout.textStyles?.calendar} />,
