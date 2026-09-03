@@ -200,6 +200,25 @@ function glassCardStyle(cardBg) {
   };
 }
 
+/* ---- Swipe-to-complete on mobile (this update) ----
+   Detects a coarse/touch pointer (phones & tablets) so the swipe
+   gesture on goal rows below only activates on mobile — desktop mouse
+   users keep the existing checkbox/click behavior completely
+   untouched, with no risk of the drag gesture eating clicks. */
+function useIsTouchDevice() {
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    try {
+      const mq = window.matchMedia("(pointer: coarse)");
+      setIsTouch(mq.matches);
+      const handler = (e) => setIsTouch(e.matches);
+      if (mq.addEventListener) mq.addEventListener("change", handler); else mq.addListener(handler);
+      return () => { if (mq.removeEventListener) mq.removeEventListener("change", handler); else mq.removeListener(handler); };
+    } catch (e) { /* ignore — assume desktop/mouse */ }
+  }, []);
+  return isTouch;
+}
+
 /* ---- Money Management tab — per-element custom colors (this update) ----
    Same idea as the Analytics element colors above, applied to the
    Money Management screen: every distinctly-colored stat card, chart
@@ -1364,6 +1383,39 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
   const [celebrateId, setCelebrateId] = useState(null); // goal id currently flashing "done" celebration
   const [showHeat, setShowHeat] = useState(false);
 
+  // ---- Progress nudge at 50% subtasks (this update) ----
+  // Tracks each goal's last-seen subtask completion ratio; the moment a
+  // goal crosses from <50% to >=50% (and isn't fully done yet — that
+  // already gets its own full "done" celebration), a small "Halfway
+  // there" pill flashes on that row for a second and a half.
+  const subtaskRatioRef = useRef({});
+  const [nudgeId, setNudgeId] = useState(null);
+  useEffect(() => {
+    (items || []).forEach((g) => {
+      const total = (g.subtasks || []).length;
+      if (total === 0) return;
+      const done = g.subtasks.filter((s) => s.done).length;
+      const ratio = done / total;
+      const prevRatio = subtaskRatioRef.current[g.id] ?? 0;
+      if (prevRatio < 0.5 && ratio >= 0.5 && ratio < 1) {
+        setNudgeId(g.id);
+        setTimeout(() => setNudgeId((cur) => (cur === g.id ? null : cur)), 1600);
+      }
+      subtaskRatioRef.current[g.id] = ratio;
+    });
+  }, [items]);
+
+  // ---- Swipe-to-complete on mobile (this update) ----
+  // Alongside the checkbox (still there, still works everywhere), a
+  // touch device can swipe a goal row right to complete it or, if
+  // already done, swipe it left to undo — dragX tracks each row's
+  // live drag offset (keyed by goal id) purely for the reveal-behind
+  // background below; the actual toggle only commits past a ~60px
+  // threshold on release, and desktop mouse users never see this
+  // (isTouch stays false, drag is disabled entirely).
+  const isTouch = useIsTouchDevice();
+  const [dragX, setDragX] = useState({});
+
   const handleToggle = (id, wasDone) => {
     onToggle(id);
     if (!wasDone) {
@@ -1392,6 +1444,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
             const isOpen = openId === g.id;
             const subDone = (g.subtasks || []).filter((s) => s.done).length;
             const isCelebrating = celebrateId === g.id;
+            const dx = dragX[g.id] || 0;
             return (
               <motion.div
                 key={g.id}
@@ -1415,10 +1468,53 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                     />
                   )}
                 </AnimatePresence>
-                <div style={{
-                  display: "flex", alignItems: "center", gap: 6, padding: "6px 4px 6px 6px", position: "relative",
-                  color: g.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
-                }}>
+                {isTouch && dx !== 0 && (
+                  <div style={{
+                    position: "absolute", inset: 0, zIndex: 0, display: "flex", alignItems: "center", pointerEvents: "none",
+                    justifyContent: dx > 0 ? "flex-start" : "flex-end", paddingLeft: 16, paddingRight: 16,
+                    background: dx > 0 ? "rgba(74,124,89,0.18)" : "rgba(192,57,43,0.14)",
+                    opacity: Math.min(Math.abs(dx) / 60, 1),
+                  }}>
+                    {dx > 0
+                      ? <CheckCircle2 size={16} style={{ color: "#4a7c59" }} />
+                      : <RotateCcw size={16} style={{ color: "#c0392b" }} />}
+                  </div>
+                )}
+                <AnimatePresence>
+                  {nudgeId === g.id && (
+                    <motion.div
+                      key="halfway-nudge"
+                      initial={{ opacity: 0, y: -4, scale: 0.9 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -4, scale: 0.9 }}
+                      transition={{ duration: 0.25 }}
+                      style={{
+                        position: "absolute", top: 3, right: 4, zIndex: 2, pointerEvents: "none",
+                        fontSize: 8, fontWeight: 800, color: "#fff", background: accent,
+                        borderRadius: 20, padding: "2px 7px", display: "flex", alignItems: "center", gap: 3,
+                        boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
+                      }}
+                    >
+                      <Sparkles size={9} /> Halfway there
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <motion.div
+                  drag={isTouch ? "x" : false}
+                  dragConstraints={{ left: 0, right: 0 }}
+                  dragElastic={0.7}
+                  onDrag={(e, info) => setDragX((prev) => ({ ...prev, [g.id]: info.offset.x }))}
+                  onDragEnd={(e, info) => {
+                    const offset = info.offset.x;
+                    setDragX((prev) => ({ ...prev, [g.id]: 0 }));
+                    if (!g.done && offset > 60) handleToggle(g.id, g.done);
+                    else if (g.done && offset < -60) handleToggle(g.id, g.done);
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6, padding: "6px 4px 6px 6px", position: "relative", zIndex: 1,
+                    color: g.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
+                    touchAction: isTouch ? "pan-y" : undefined,
+                  }}>
                   <motion.input
                     type="checkbox" checked={g.done} onChange={() => handleToggle(g.id, g.done)}
                     className="btl-check" style={{ accentColor: accent, width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
@@ -1480,7 +1576,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                   >
                     <Trash2 size={11} style={{ color: "#d8d2bf", cursor: "pointer" }} onClick={() => onRemove(g.id)} />
                   </motion.span>
-                </div>
+                </motion.div>
                 <AnimatePresence initial={false}>
                   {isOpen && (
                     <motion.div

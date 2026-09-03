@@ -1,6 +1,34 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🌫️ New — Glassmorphism 2.0 on Daily Goals / Extry Goals, Time Table & Calendar cards (this update)
+## ✨ New — "system intelligence" micro-interactions on Daily Goals / Extry Goals (this update)
+
+Two small but noticeable interactions on the **Daily Goals** and **Extry
+Goals** cards (both use the same `GoalChecklist` component):
+
+- **50%-subtask progress nudge** — the moment a goal's subtasks cross
+  from under half done to half-or-more done (and it isn't fully done
+  yet — that already has its own full "done" celebration flash), a
+  small pill reading **"✨ Halfway there"** pops onto that row's
+  top-right corner for about 1.5s, then fades. Tracked via a
+  per-goal last-seen-ratio ref (`subtaskRatioRef`) inside
+  `GoalChecklist`, compared each time the `items` prop updates — purely
+  a UI nudge, doesn't touch stored state.
+- **Swipe-to-complete on mobile** — on a touch device (phones/tablets,
+  detected via `(pointer: coarse)` through the new `useIsTouchDevice()`
+  hook), a goal row can now be **swiped right to mark it done**, or —
+  if it's already done — **swiped left to undo**, in addition to the
+  checkbox (which still works exactly as before, on every device). As
+  you drag, a green check (or red undo) reveals behind the row with
+  opacity tied to drag distance; release past ~60px to commit, short of
+  that and it springs back. **Desktop mouse users see zero change** —
+  drag is entirely disabled (`drag={false}`) unless a coarse pointer is
+  detected, so no existing click/hover behavior on the row (icon
+  picker, expand chevron, delete) is affected.
+- Both are pure `framer-motion` + a bit of local state — no new npm
+  installs, no new Firestore fields (the nudge and drag offset are
+  transient UI state, not persisted).
+
+## 🌫️ New — Glassmorphism 2.0 on Daily Goals / Extry Goals, Time Table & Calendar cards (earlier update)
 
 The three checklist-style cards on the dashboard no longer render as a
 flat, fully-opaque cream fill — they now use a frosted-glass look:
