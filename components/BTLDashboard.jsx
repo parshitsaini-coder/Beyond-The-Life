@@ -380,6 +380,28 @@ const ANALYTICS_SUMMARY_DEFAULT_METRICS = ["daily", "extry", "overall", "streak"
 function analyticsSummaryMetricMeta(id) {
   return ANALYTICS_SUMMARY_METRICS.find((m) => m.id === id) || null;
 }
+/* ---- Analytics Summary widget — per-metric custom colors (this update) ----
+   One override per metric ring/badge/value (Daily, Extry, Overall, Day
+   Streak, Total Earned, Total Spent, Net Money), plus a shared field for
+   every metric's label + percentage/value text — same pattern as the
+   Analytics & Money element-color editors above. Empty string ("") means
+   "use the built-in default" for that element. */
+const ANALYTICS_SUMMARY_ELEMENT_COLOR_FIELDS = [
+  { key: "daily", label: "Daily ring", defaultHex: C.accent },
+  { key: "extry", label: "Extry ring", defaultHex: C.blue },
+  { key: "overall", label: "Overall ring", defaultHex: C.dark },
+  { key: "streak", label: "Day Streak badge", defaultHex: C.dark },
+  { key: "earned", label: "Total Earned value", defaultHex: "#2e7d32" },
+  { key: "spent", label: "Total Spent value", defaultHex: "#c0392b" },
+  { key: "net", label: "Net Money value", defaultHex: C.dark },
+  { key: "text", label: "Labels & percentage/value text", defaultHex: "#252422" },
+];
+function normalizeAnalyticsSummaryColors(t) {
+  const src = t && typeof t === "object" ? t : {};
+  const out = {};
+  ANALYTICS_SUMMARY_ELEMENT_COLOR_FIELDS.forEach((f) => { out[f.key] = typeof src[f.key] === "string" ? src[f.key] : ""; });
+  return out;
+}
 function normalizeAnalyticsSummaryTheme(t) {
   const src = t && typeof t === "object" ? t : {};
   const validIds = ANALYTICS_SUMMARY_METRICS.map((m) => m.id);
@@ -418,6 +440,7 @@ function normalizeTheme(t) {
     friendCelebration: normalizeScopeTheme(src.friendCelebration),
     widgets: normalizeWidgetThemes(src.widgets),
     analyticsSummary: normalizeAnalyticsSummaryTheme(src.analyticsSummary),
+    analyticsSummaryColors: normalizeAnalyticsSummaryColors(src.analyticsSummaryColors),
     analyticsColors: normalizeAnalyticsColors(src.analyticsColors),
     moneyColors: normalizeMoneyColors(src.moneyColors),
     panelPreset: typeof src.panelPreset === "string" ? src.panelPreset : "",
@@ -2161,7 +2184,7 @@ function MoodBtn({ active, onClick, children, title }) {
 }
 
 /* ---------------- SETTINGS PANEL CONTENT (rendered inside the glass modal) ---------------- */
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset }) {
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset }) {
   const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
@@ -2246,6 +2269,8 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             onWidgetSize={onWidgetSizePreset}
             onAnalyticsSummaryChange={onAnalyticsSummaryChange}
             onAnalyticsSummaryReset={onAnalyticsSummaryReset}
+            onAnalyticsSummaryColorChange={onAnalyticsSummaryColorChange}
+            onAnalyticsSummaryColorReset={onAnalyticsSummaryColorReset}
             onAnalyticsColorChange={onAnalyticsColorChange}
             onAnalyticsColorReset={onAnalyticsColorReset}
             onMoneyColorChange={onMoneyColorChange}
@@ -5414,16 +5439,19 @@ function CalendarWidget({ completionHistory, cardBg, textStyle }) {
    metric mounts/reorders/unmounts with a spring, via framer-motion's
    AnimatePresence + layout animations (popLayout mode keeps neighbors
    sliding smoothly into the freed/claimed space). */
-function AnalyticsSummaryMetric({ meta, value, textColor }) {
+function AnalyticsSummaryMetric({ meta, value, textColor, colors }) {
   const dt = useContext(DashboardThemeCtx);
-  const safeTextColor = textColor || dt.text || C.dark;
+  const sc = colors || {};
+  const safeTextColor = sc.text || textColor || dt.text || C.dark;
   // meta.color/labels default to the fixed C.dark brand color for
   // "neutral" metrics (Overall ring, Net Money) — swap that one fixed
   // shade for the current theme's text color so it stays legible
   // against dark Panel Theme presets too; distinct accent colors
   // (green/red/blue) are left untouched since those already read fine
-  // on both light and dark backgrounds.
-  const ringColor = meta.color === C.dark ? safeTextColor : meta.color;
+  // on both light and dark backgrounds. A per-metric custom color
+  // (from Settings → Theme → Analytics Summary) always wins.
+  const baseColor = meta.color === C.dark ? safeTextColor : meta.color;
+  const ringColor = sc[meta.id] || baseColor;
   if (meta.type === "ring") {
     return <RingStat pct={value} label={meta.label} color={ringColor} textColor={safeTextColor} />;
   }
@@ -5431,12 +5459,12 @@ function AnalyticsSummaryMetric({ meta, value, textColor }) {
   const display = meta.type === "money"
     ? `${value < 0 ? "-" : ""}₹${Math.abs(Math.round(value))}`
     : String(Math.round(value)).padStart(3, "0");
-  const moneyColor = meta.color === C.dark ? safeTextColor : (meta.color || safeTextColor);
+  const moneyColor = sc[meta.id] || (meta.color === C.dark ? safeTextColor : (meta.color || safeTextColor));
   return (
     <div style={{ textAlign: "center", minWidth: 42 }}>
       <div style={{
         minWidth: 34, height: 34, borderRadius: meta.type === "money" ? 10 : "50%",
-        background: meta.type === "money" ? "transparent" : C.dark,
+        background: meta.type === "money" ? "transparent" : (sc[meta.id] || C.dark),
         color: meta.type === "money" ? moneyColor : "#fff",
         display: "flex", alignItems: "center", justifyContent: "center", gap: 3,
         fontSize: meta.type === "money" ? 12 : 12, fontWeight: 900, margin: "0 auto 2px", padding: "0 4px",
@@ -5448,7 +5476,7 @@ function AnalyticsSummaryMetric({ meta, value, textColor }) {
     </div>
   );
 }
-function AnalyticsSummaryWidget({ state, onOpen, cardBg, metrics }) {
+function AnalyticsSummaryWidget({ state, onOpen, cardBg, metrics, colors }) {
   const values = computeAnalyticsSummaryValues(state);
   const activeIds = metrics && metrics.length ? metrics : ANALYTICS_SUMMARY_DEFAULT_METRICS;
   const activeMetrics = activeIds.map(analyticsSummaryMetricMeta).filter(Boolean);
@@ -5468,7 +5496,7 @@ function AnalyticsSummaryWidget({ state, onOpen, cardBg, metrics }) {
               exit={{ opacity: 0, scale: 0.5, y: -10 }}
               transition={{ type: "spring", stiffness: 360, damping: 26 }}
             >
-              <AnalyticsSummaryMetric meta={meta} value={values[meta.id]} textColor={autoTextColor(cardBg)} />
+              <AnalyticsSummaryMetric meta={meta} value={values[meta.id]} textColor={autoTextColor(cardBg)} colors={colors} />
             </motion.div>
           ))}
         </AnimatePresence>
@@ -6318,6 +6346,53 @@ function AnalyticsColorsEditor({ value, onChange, onReset }) {
   );
 }
 
+/* Same pattern as AnalyticsColorsEditor, for the Analytics Summary widget's
+   per-metric ring/badge/value colors + shared label text color. */
+function AnalyticsSummaryColorsEditor({ value, onChange, onReset }) {
+  const v = normalizeAnalyticsSummaryColors(value);
+  const isDefault = ANALYTICS_SUMMARY_ELEMENT_COLOR_FIELDS.every((f) => !v[f.key]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+      transition={{ type: "spring", stiffness: 320, damping: 28 }}
+      style={{ border: "1px solid #ece7d8", borderRadius: 10, background: "rgba(255,255,255,0.7)", overflow: "hidden" }}
+    >
+      <div style={{
+        display: "flex", alignItems: "center", gap: 6, padding: "8px 10px",
+        borderBottom: "1px solid #ece7d8", background: "rgba(255,252,242,0.6)",
+      }}>
+        <Palette size={12} style={{ color: C.dark }} />
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>Element colors</span>
+        <div style={{ flex: 1 }} />
+        {!isDefault && (
+          <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={onReset} title="Reset element colors" style={{
+            border: "1px solid #ddd6c4", background: "#fff", color: "#8a8579", borderRadius: 999,
+            padding: "2px 8px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
+          }}><RefreshCw size={10} /> Reset</motion.button>
+        )}
+      </div>
+      <div style={{ padding: "10px 10px 12px" }}>
+        <div style={{ fontSize: 9, color: "#8a8579", marginBottom: 10, lineHeight: 1.4 }}>
+          Pick a custom color for any ring, badge/value or label text in the Analytics Summary widget —
+          each one below is independent of the others.
+        </div>
+        {ANALYTICS_SUMMARY_ELEMENT_COLOR_FIELDS.map((f) => (
+          <ColorSwatchRow
+            key={f.key}
+            icon={<Baseline size={10} />}
+            label={f.label}
+            options={TEXT_COLOR_OPTIONS}
+            value={v[f.key]}
+            onChange={(hex) => onChange(f.key, hex)}
+            defaultSwatchHex={f.defaultHex}
+          />
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
 /* Same pattern as AnalyticsColorsEditor, for the Money Management tab. */
 function MoneyColorsEditor({ value, onChange, onReset }) {
   const v = normalizeMoneyColors(value);
@@ -6454,7 +6529,7 @@ function WidgetsThemeEditor({ widgetThemes, layoutSizes, onWidgetChange, onWidge
    remove) below it, and a row of "+ add" pills for whatever's left —
    every add/remove/reorder ripples into the preview immediately via
    framer-motion layout animations. */
-function AnalyticsSummaryThemeEditor({ state, metrics, onChange, onReset }) {
+function AnalyticsSummaryThemeEditor({ state, metrics, colors, onChange, onReset }) {
   const activeIds = metrics && metrics.length ? metrics : ANALYTICS_SUMMARY_DEFAULT_METRICS;
   const activeMetrics = activeIds.map(analyticsSummaryMetricMeta).filter(Boolean);
   const inactiveMetrics = ANALYTICS_SUMMARY_METRICS.filter((m) => !activeIds.includes(m.id));
@@ -6494,7 +6569,7 @@ function AnalyticsSummaryThemeEditor({ state, metrics, onChange, onReset }) {
 
         {/* Live preview — the exact widget shown on the dashboard */}
         <div style={{ height: 100, marginBottom: 12 }}>
-          <AnalyticsSummaryWidget state={state} onOpen={() => {}} metrics={activeIds} />
+          <AnalyticsSummaryWidget state={state} onOpen={() => {}} metrics={activeIds} colors={colors} />
         </div>
 
         {/* Active metrics — drag to reorder, X to remove */}
@@ -6622,7 +6697,7 @@ function PanelPresetRow({ activePreset, onApply, onReset }) {
 }
 
 /* Top-level Theme tab shown inside Settings — five sub-sections. */
-function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPreset, onResetPreset }) {
+function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPreset, onResetPreset }) {
   const [section, setSection] = useState("dashboard");
   const t = normalizeTheme(theme);
   const SECTIONS = [
@@ -6681,10 +6756,17 @@ function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, on
           />
         )}
         {section === "analyticsSummary" && (
-          <AnalyticsSummaryThemeEditor
-            key="analyticsSummary" state={state} metrics={t.analyticsSummary.metrics}
-            onChange={onAnalyticsSummaryChange} onReset={onAnalyticsSummaryReset}
-          />
+          <div key="analyticsSummary" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <AnalyticsSummaryThemeEditor
+              state={state} metrics={t.analyticsSummary.metrics} colors={t.analyticsSummaryColors}
+              onChange={onAnalyticsSummaryChange} onReset={onAnalyticsSummaryReset}
+            />
+            <AnalyticsSummaryColorsEditor
+              value={t.analyticsSummaryColors}
+              onChange={(key, hex) => onAnalyticsSummaryColorChange(key, hex)}
+              onReset={onAnalyticsSummaryColorReset}
+            />
+          </div>
         )}
         {section === "money" && (
           <div key="money" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -8473,6 +8555,18 @@ function BTLDashboardInner() {
     s.theme = theme;
     return s;
   });
+  const setAnalyticsSummaryColor = (key, hex) => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.analyticsSummaryColors = { ...theme.analyticsSummaryColors, [key]: hex };
+    s.theme = theme;
+    return s;
+  });
+  const resetAnalyticsSummaryColors = () => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.analyticsSummaryColors = normalizeAnalyticsSummaryColors({});
+    s.theme = theme;
+    return s;
+  });
   const setAnalyticsColor = (key, hex) => update((s) => {
     const theme = normalizeTheme(s.theme);
     theme.analyticsColors = { ...theme.analyticsColors, [key]: hex };
@@ -8540,7 +8634,7 @@ function BTLDashboardInner() {
     extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} cardBg={theme.widgets.extryGoals?.bg} streak={state.widgetStreaks?.extryGoals || 0} history={state.widgetHistory?.extryGoals || {}} />,
     timeTable: <TimeTable items={state.timeTable || []} onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem} onReschedule={rescheduleTimeItem} onToggleRecurring={toggleTimeRecurring} accent={C.accent} textStyle={state.layout.textStyles?.timeTable} cardBg={theme.widgets.timeTable?.bg} streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}} />,
     earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} onImageDrop={processImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} cardBg={theme.widgets.earnMoney?.bg} />,
-    analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} metrics={theme.analyticsSummary.metrics} />,
+    analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} metrics={theme.analyticsSummary.metrics} colors={theme.analyticsSummaryColors} />,
     calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} textStyle={state.layout.textStyles?.calendar} />,
   };
 
@@ -8705,10 +8799,10 @@ function BTLDashboardInner() {
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <SaveStatus status={saveStatus} />
-              <DayStreakBadge streak={state.streak} accent={C.accent} dark={C.dark} />
-              <RingStat pct={dailyPct} label="Daily Goal" sub="Staytus" color={C.accent} />
-              <RingStat pct={extryPct} label="Extry Goal" sub="Staytus" color={C.blue} />
-              <RingStat pct={overallPct} label="Goal" color={dashTheme.text || C.dark} />
+              <DayStreakBadge streak={state.streak} accent={C.accent} dark={theme.analyticsSummaryColors.streak || C.dark} />
+              <RingStat pct={dailyPct} label="Daily Goal" sub="Staytus" color={theme.analyticsSummaryColors.daily || C.accent} textColor={theme.analyticsSummaryColors.text || undefined} />
+              <RingStat pct={extryPct} label="Extry Goal" sub="Staytus" color={theme.analyticsSummaryColors.extry || C.blue} textColor={theme.analyticsSummaryColors.text || undefined} />
+              <RingStat pct={overallPct} label="Goal" color={theme.analyticsSummaryColors.overall || dashTheme.text || C.dark} textColor={theme.analyticsSummaryColors.text || undefined} />
               <div style={{ position: "relative" }}>
                 <ProfileButton user={fbUser} open={profileOpen} onToggle={() => setProfileOpen((v) => !v)} />
                 <ProfilePopup
@@ -8776,6 +8870,7 @@ function BTLDashboardInner() {
               onWidgetThemeChange={setWidgetTheme} onWidgetThemeReset={resetWidgetTheme}
               onWidgetSizePreset={setWidgetSizePreset}
               onAnalyticsSummaryChange={setAnalyticsSummaryMetrics} onAnalyticsSummaryReset={resetAnalyticsSummaryMetrics}
+              onAnalyticsSummaryColorChange={setAnalyticsSummaryColor} onAnalyticsSummaryColorReset={resetAnalyticsSummaryColors}
               onAnalyticsColorChange={setAnalyticsColor} onAnalyticsColorReset={resetAnalyticsColors}
               onMoneyColorChange={setMoneyColor} onMoneyColorReset={resetMoneyColors}
               onApplyPanelPreset={applyPanelPreset} onResetPanelPreset={resetPanelPreset}
