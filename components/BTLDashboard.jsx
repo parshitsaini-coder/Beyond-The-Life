@@ -2398,7 +2398,28 @@ function truncateToWidth(ctx, text, maxWidth) {
    the Life Score ring + stat row that were already here. Canvas height
    is computed dynamically off however many goals exist today, so the
    card never crops the list. Still pure Canvas 2D — no new npm installs. */
-function generateShareCard(state, lifeScore, userName) {
+/* Loads a remote image (e.g. a Google account photo) as a promise, for
+   drawing into the share-card canvas below. crossOrigin is set so a
+   CORS-friendly source (Google profile photos allow this) doesn't taint
+   the canvas and block toDataURL(); any failure (no photo, blocked CORS,
+   network error) just rejects so the caller can skip the avatar instead
+   of breaking the whole card. */
+function loadImageForCanvas(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+/* Same layout as before, now returns a Promise<dataURL> instead of the
+   dataURL directly — the Google account photo (when available) is drawn
+   as a circular avatar next to the "BYOUND THE LIFE" eyebrow before the
+   canvas is finalized, so callers await/​.then() instead of calling this
+   synchronously. */
+async function generateShareCard(state, lifeScore, userName, userPhoto) {
   const dailyGoals = state.dailyGoals || [];
   const extryGoals = state.extryGoals || [];
   const allGoals = [...dailyGoals, ...extryGoals];
@@ -2441,6 +2462,28 @@ function generateShareCard(state, lifeScore, userName) {
 
   ctx.textAlign = "center";
 
+  // account photo avatar (top-left, next to the brand eyebrow) — only
+  // drawn when a photo URL is available and it actually loads; any
+  // failure is swallowed so a broken/blocked photo never breaks the card.
+  if (userPhoto) {
+    try {
+      const avatarImg = await loadImageForCanvas(userPhoto);
+      const avatarR = 42, avatarX = 110, avatarY = 90;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(avatarX, avatarY, avatarR, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+      ctx.drawImage(avatarImg, avatarX - avatarR, avatarY - avatarR, avatarR * 2, avatarR * 2);
+      ctx.restore();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = lifeScore.color;
+      ctx.beginPath();
+      ctx.arc(avatarX, avatarY, avatarR, 0, Math.PI * 2);
+      ctx.stroke();
+    } catch (e) { /* CORS-blocked, no photo, or failed to load — skip the avatar */ }
+  }
+
   // small brand eyebrow
   ctx.font = "800 20px Inter, sans-serif";
   ctx.fillStyle = lifeScore.color;
@@ -2450,7 +2493,7 @@ function generateShareCard(state, lifeScore, userName) {
   const name = (userName || "").trim();
   ctx.fillStyle = C.dark;
   ctx.font = "900 46px Inter, sans-serif";
-  ctx.fillText(name ? `${name}'s Journey` : "My Journey", W / 2, 118);
+  ctx.fillText(name || "My Journey", W / 2, 118);
 
   ctx.font = "600 20px Inter, sans-serif";
   ctx.fillStyle = "#a39c86";
@@ -2641,7 +2684,7 @@ function generateShareCard(state, lifeScore, userName) {
    above the card, a shimmering skeleton while the canvas renders, and
    a Copy-to-clipboard button alongside Download/Share (only shown when
    the browser actually supports it). */
-function ShareJourneyModal({ state, lifeScore, userName, onClose }) {
+function ShareJourneyModal({ state, lifeScore, userName, userPhoto, onClose }) {
   const [imgUrl, setImgUrl] = useState(null);
   const [copied, setCopied] = useState(false);
   const allGoals = [...(state.dailyGoals || []), ...(state.extryGoals || [])];
@@ -2650,11 +2693,19 @@ function ShareJourneyModal({ state, lifeScore, userName, onClose }) {
 
   useEffect(() => {
     // tiny delay so the modal's spring entrance doesn't jank against the
-    // (synchronous) canvas draw
-    const t = setTimeout(() => setImgUrl(generateShareCard(state, lifeScore, userName)), 150);
-    return () => clearTimeout(t);
+    // canvas draw; generateShareCard is async now (awaits the account
+    // photo before finishing), so we .then() instead of calling it
+    // synchronously — `cancelled` guards against setting state after
+    // the modal has already closed/re-rendered.
+    let cancelled = false;
+    const t = setTimeout(() => {
+      generateShareCard(state, lifeScore, userName, userPhoto).then((url) => {
+        if (!cancelled) setImgUrl(url);
+      });
+    }, 150);
+    return () => { cancelled = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, lifeScore, userName]);
+  }, [state, lifeScore, userName, userPhoto]);
 
   const download = () => {
     if (!imgUrl) return;
@@ -3598,7 +3649,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
 
         <DeepAnalyticsGrid state={state} ac={ac} />
       </div>
-      {showShare && <ShareJourneyModal state={state} lifeScore={lifeScore} userName={user?.displayName || state.lifeStory?.profile?.name || ""} onClose={() => setShowShare(false)} />}
+      {showShare && <ShareJourneyModal state={state} lifeScore={lifeScore} userName={user?.displayName || state.lifeStory?.profile?.name || ""} userPhoto={user?.photoURL || ""} onClose={() => setShowShare(false)} />}
     </div>
   );
 }
@@ -8765,9 +8816,9 @@ function BTLDashboardInner() {
                   ₹{state.totalEarnLife.toFixed(0)}
                 </span>
               </Oval>
-              <Oval title="Coming soon" style={{ cursor: "not-allowed", justifyContent: "flex-start", background: hexToRgba("#c0392b", 0.16), borderColor: "#c0392b", color: "#c0392b" }}>
+              <Oval title="Coming soon" style={{ cursor: "not-allowed", justifyContent: "flex-start", background: hexToRgba("#8b0000", 0.16), borderColor: "#8b0000", color: "#8b0000" }}>
                 Total Spend Money life :-&nbsp;
-                <span style={{ fontWeight: 900, color: "#c0392b", background: "#c0392b30", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>
+                <span style={{ fontWeight: 900, color: "#8b0000", background: "#8b000030", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>
                   ₹{(state.totalSpendLife || 0).toFixed(0)}
                 </span>
               </Oval>
@@ -8904,6 +8955,7 @@ function BTLDashboardInner() {
           <ShareJourneyModal
             state={state} lifeScore={headerLifeScore}
             userName={fbUser?.displayName || state.lifeStory?.profile?.name || ""}
+            userPhoto={fbUser?.photoURL || ""}
             onClose={() => setShowShare(false)}
           />
         )}
