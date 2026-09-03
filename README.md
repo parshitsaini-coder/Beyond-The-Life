@@ -1,26 +1,61 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🫧 New — Liquid cursor background (this update)
+## 💧 New — Liquid effect redesigned as "Ripple" (this update)
 
-The whole dashboard's background now reacts to the mouse: 4 soft, blurred
-blobs (`LiquidCursorBackground`) trail the cursor with staggered
-`framer-motion` springs (different stiffness/damping per blob), so they
-lag behind by different amounts and stretch/merge into each other like a
-liquid whenever you move the mouse — the classic "goo" look, done with a
-plain SVG `feGaussianBlur` + `feColorMatrix` filter (`#btl-liquid-goo`),
-no images or WebGL.
+Per feedback, replaced the metaball/blob visual style with a simpler,
+more classic effect: a water ripple.
 
-- Sits at `zIndex: -1`, behind everything (below the existing static
-  background blobs), `pointer-events: none` throughout, so it never
-  blocks clicks/drags on widgets.
-- Mouse position is read from a `mousemove` listener on the dashboard's
-  own root panel div (not the blob layer itself, since that's
-  pointer-events:none) — works anywhere across the whole dashboard, not
-  just one widget.
-- Fades in on first mouse movement and fades out on `mouseleave` (e.g.
-  cursor leaves the panel), so it doesn't sit static/frozen mid-screen.
-- Pure `framer-motion` (`useMotionValue` + `useSpring`) + inline SVG
-  filter — no new npm installs.
+- **3 concentric rings expand from the exact click point** and fade out
+  over about 1.6–2 seconds (`btlRippleExpand`), slightly staggered so
+  they don't pop in perfectly synced — like a stone dropped in water.
+- Same trigger/lifecycle as before: click-only (no hover/cursor
+  reaction), fully removed from the DOM afterward, nothing visible again
+  until the next click, multiple clicks can have several ripples alive
+  at once.
+- Same **Setting → Liquid** color pickers as before still control the 3
+  ring colors — no change needed there, `state.liquidColors` is reused
+  as-is.
+- The previous SVG "goo" filter and blob-morph CSS were removed since
+  they're specific to the old blob style; rings are plain CSS
+  `border` + `transform: scale()` + `opacity`, so this version is also
+  lighter-weight.
+
+## 🌊 New — "Liquid Glass" background is now a click-triggered burst, with customizable colors (previous iteration, blob style — superseded above)
+
+Reworked from the previous mouse-follow version based on feedback: the
+background no longer reacts to the cursor moving around at all — it now
+only appears for a few seconds right when you click.
+
+- **Click anywhere on the dashboard** — `handleDashboardClick` reads the
+  exact click position (relative to the dashboard panel) and drops a
+  `liquidBursts` entry there. No response to hover/mousemove at all
+  anymore, only an actual click.
+- **~4 second lifespan, then completely gone** — each burst's 3 blobs
+  play a single (non-looping) `btlLiquidBurstMorph` + `btlLiquidBurstFade`
+  animation: pop in, organically morph via the shared SVG "goo" filter so
+  they visibly bridge into one liquid shape, then fade to fully
+  transparent. A matching `setTimeout(4200ms)` removes the burst from
+  React state right after, so nothing lingers, nothing renders, and
+  nothing costs any CPU between clicks — you have to click again to see
+  it. Clicking several times quickly stacks multiple independent bursts,
+  each tracked and cleaned up by its own id/timer.
+- **Setting → Liquid (new tab, next to Theme/Alarm)** — 3 color swatches
+  (native `<input type="color">` pickers) controlling the burst's 3 blob
+  colors, plus a **Reset to default colors** button. Saved as
+  `state.liquidColors: [hex, hex, hex]` — same per-user Firestore
+  document as everything else, so it persists and syncs like the rest of
+  the app's settings.
+- No new dependencies; the old continuous `useMotionValue`/`useSpring`
+  cursor-following wiring was removed entirely along with the always-on
+  ambient blobs from the previous version of this feature.
+
+## 🌊 Superseded — Full mouse-follow "Liquid Glass" dashboard background (previous iteration of this update, replaced above)
+
+The very first pass at this feature made the background continuously
+track the mouse cursor around the dashboard with springy "liquid" blobs.
+Per feedback this wasn't the desired behavior (too busy, always
+animating) — it's been fully replaced by the click-burst version above.
+Kept here only as history of what changed and why.
 
 ## ⏰ New — "Analog Clock & Alarm" widget (earlier update)
 
