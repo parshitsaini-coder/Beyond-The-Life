@@ -20,6 +20,7 @@ import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
 import { ensurePublicProfile, useIncomingFriendRequestCount } from "@/lib/friendsStorage";
 import FriendCelebration from "@/components/FriendCelebration";
 import BTLLoadingScreen from "@/components/BTLLoadingScreen";
+import LiquidBackground from "@/components/LiquidBackground";
 
 /* ============================================================
    BEYOND THE LIFE (BTL)  —  personal life-goals dashboard
@@ -926,9 +927,6 @@ function makeDefaultState() {
     // Which of the 4 built-in ALARM_RINGTONES (see below) plays when an
     // alarm fires — changeable from Setting → Alarm.
     clockRingtone: "classic",
-    // Click-triggered "Liquid Glass" background burst (this update) —
-    // which colors the burst blobs use. Changeable from Setting → Liquid.
-    liquidColors: ["#fca311", "#98c1d9", "#e07a5f"],
     layout: defaultLayout(),
     theme: defaultTheme(),
   };
@@ -976,7 +974,6 @@ async function loadState(user) {
     s.widgetLastCompletedDate = s.widgetLastCompletedDate || {};
     s.clockAlarms = Array.isArray(s.clockAlarms) ? s.clockAlarms : [];
     s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === s.clockRingtone) ? s.clockRingtone : "classic";
-    s.liquidColors = (Array.isArray(s.liquidColors) && s.liquidColors.length === 3) ? s.liquidColors : ["#fca311", "#98c1d9", "#e07a5f"];
   }
   const withLayout = ensureLayoutDefaults(s);
   return { ...withLayout, theme: normalizeTheme(withLayout.theme) };
@@ -2939,8 +2936,8 @@ function MoodBtn({ active, onClick, children, title }) {
 }
 
 /* ---------------- SETTINGS PANEL CONTENT (rendered inside the glass modal) ---------------- */
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onSetClockRingtone, onSetLiquidColor, onResetLiquidColors }) {
-  const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | "alarm" | "liquid" | null
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onSetClockRingtone }) {
+  const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | "alarm" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
   const [editVal, setEditVal] = useState("");
@@ -3005,7 +3002,6 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
         <Oval onClick={() => setMode("lifeRules")} style={{ cursor: "pointer", background: mode === "lifeRules" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "lifeRules" ? "#fff" : C.text }}>Add Rule</Oval>
         <Oval onClick={() => setMode(mode === "theme" ? null : "theme")} style={{ cursor: "pointer", background: mode === "theme" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "theme" ? "#fff" : C.text }}><Palette size={11} style={{ marginRight: 4 }} />Theme</Oval>
         <Oval onClick={() => setMode(mode === "alarm" ? null : "alarm")} style={{ cursor: "pointer", background: mode === "alarm" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "alarm" ? "#fff" : C.text }}><AlarmClock size={11} style={{ marginRight: 4 }} />Alarm</Oval>
-        <Oval onClick={() => setMode(mode === "liquid" ? null : "liquid")} style={{ cursor: "pointer", background: mode === "liquid" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "liquid" ? "#fff" : C.text }}><Sparkles size={11} style={{ marginRight: 4 }} />Liquid</Oval>
         <div style={{ flex: 1 }} />
         <motion.span whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onClose} title="Close" style={{
           borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
@@ -3072,45 +3068,6 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
                 );
               })}
             </div>
-          </div>
-        ) : mode === "liquid" ? (
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, marginBottom: 4, display: "flex", alignItems: "center", gap: 5 }}>
-              <Sparkles size={14} /> Liquid Ripple Click Effect
-            </div>
-            <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 12, maxWidth: 420 }}>
-              Click anywhere on the dashboard background to send out 3 ripple
-              rings from that spot — like a stone dropped in water — which
-              expand and fade out in about 2 seconds. Pick the 3 ring colors
-              below.
-            </div>
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", maxWidth: 420 }}>
-              {(state.liquidColors || ["#fca311", "#98c1d9", "#e07a5f"]).map((hex, i) => (
-                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                  <label style={{
-                    width: 44, height: 44, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.8)",
-                    boxShadow: "0 2px 8px rgba(37,36,34,0.18)", background: hex, cursor: "pointer",
-                    display: "block", position: "relative", overflow: "hidden",
-                  }}>
-                    <input
-                      type="color" value={hex}
-                      onChange={(e) => onSetLiquidColor(i, e.target.value)}
-                      style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%" }}
-                    />
-                  </label>
-                  <span style={{ fontSize: 9, color: "#8a8579", fontWeight: 700 }}>Blob {i + 1}</span>
-                </div>
-              ))}
-            </div>
-            <motion.button
-              whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-              onClick={onResetLiquidColors}
-              style={{
-                marginTop: 14, border: `1px solid rgba(64,61,57,0.2)`, background: "rgba(255,255,255,0.5)",
-                color: C.dark, borderRadius: 8, padding: "6px 12px", fontSize: 10, fontWeight: 800, cursor: "pointer",
-                display: "flex", alignItems: "center", gap: 5,
-              }}
-            ><RotateCcw size={11} /> Reset to default colors</motion.button>
           </div>
         ) : (
           <>
@@ -9139,35 +9096,7 @@ function BTLDashboardInner() {
   const incomingFriendReqCount = useIncomingFriendRequestCount(fbUser?.uid);
   const fileRef = useRef(null);
   const loaded = useRef(false);
-
-  /* ---- Liquid "Ripple" click-burst background (this update) ----
-     Redesigned per feedback from the metaball/blob look to a classic
-     water-ripple: a click anywhere on the dashboard drops 3 concentric
-     rings at that exact spot, which expand outward and fade — like a
-     stone dropped in water — then are gone completely until the next
-     click. Multiple quick clicks can have several ripples alive at
-     once, each tracked by its own id/timeout so they clean themselves
-     up independently. */
-  const dashboardRef = useRef(null);
-  const [liquidBursts, setLiquidBursts] = useState([]); // { id, xPct, yPct }[]
-  const liquidBurstTimers = useRef({});
-  useEffect(() => () => {
-    Object.values(liquidBurstTimers.current).forEach(clearTimeout);
-  }, []);
-  const handleDashboardClick = useCallback((e) => {
-    const el = dashboardRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const xPct = ((e.clientX - rect.left) / rect.width) * 100;
-    const yPct = ((e.clientY - rect.top) / rect.height) * 100;
-    setLiquidBursts((prev) => [...prev, { id, xPct, yPct }]);
-    liquidBurstTimers.current[id] = setTimeout(() => {
-      setLiquidBursts((prev) => prev.filter((b) => b.id !== id));
-      delete liquidBurstTimers.current[id];
-    }, 2300); // slightly longer than the last ring's expand animation so it fully finishes
-  }, []);
+  const dashboardRootRef = useRef(null); // outer panel — LiquidBackground listens here for ripple clicks
 
   useEffect(() => {
     if (!fbUser) return;
@@ -9399,14 +9328,6 @@ function BTLDashboardInner() {
     s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === ringtoneId) ? ringtoneId : "classic";
     return s;
   });
-  // Click-triggered Liquid Glass burst color (this update) — Setting → Liquid
-  const setLiquidColor = (index, hex) => update((s) => {
-    const next = Array.isArray(s.liquidColors) && s.liquidColors.length === 3 ? [...s.liquidColors] : ["#fca311", "#98c1d9", "#e07a5f"];
-    next[index] = hex;
-    s.liquidColors = next;
-    return s;
-  });
-  const resetLiquidColors = () => update((s) => { s.liquidColors = ["#fca311", "#98c1d9", "#e07a5f"]; return s; });
 
   const addPlain = (listKey, text) => update((s) => { s[listKey] = [...s[listKey], text]; return s; });
   const removePlain = (listKey, idx) => update((s) => { s[listKey] = s[listKey].filter((_, i) => i !== idx); return s; });
@@ -9640,69 +9561,27 @@ function BTLDashboardInner() {
 
   return (
     <DashboardThemeCtx.Provider value={dashTheme}>
-    <div ref={dashboardRef} onClick={handleDashboardClick} style={{
+    <div ref={dashboardRootRef} style={{
       fontFamily: "Inter, system-ui, sans-serif", background: dashTheme.bg, color: dashTheme.text,
       height: "100%", maxHeight: "100%", borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
       border: `1px solid #ece7d8`, fontSize: 11, boxSizing: "border-box",
-      display: "flex", flexDirection: "column", zIndex: 0, // zIndex:0 (not auto) makes this div its OWN stacking
-      // context, so the zIndex:-1 liquid-glass burst blobs below are
-      // contained inside it (painted above ITS OWN background) instead of
-      // escaping to the nearest ancestor stacking context and disappearing
-      // behind the rest of the page.
+      display: "flex", flexDirection: "column",
       zoom: "80%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "70%" for smaller, "90%" for bigger.
     }}>
-      {/* ---- Liquid "Ripple" click-burst background (this update) ----
-          No ambient/always-on animation — clicking anywhere on the
-          dashboard (handleDashboardClick, tracked in liquidBursts) drops
-          3 concentric rings at that exact spot that expand outward and
-          fade, like a stone dropped in water, then unmount completely —
-          nothing is visible again until the next click. Colors come from
-          `state.liquidColors` (Setting → Liquid). Purely decorative:
-          z-index -1, pointer-events none, clipped by this panel's own
-          overflow:hidden. */}
-      <div style={{ position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none", overflow: "hidden" }}>
-        <AnimatePresence>
-          {liquidBursts.map((b) => {
-            const colors = (state.liquidColors && state.liquidColors.length === 3) ? state.liquidColors : ["#fca311", "#98c1d9", "#e07a5f"];
-            return (
-              <motion.div
-                key={b.id}
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                style={{ position: "absolute", left: `${b.xPct}%`, top: `${b.yPct}%`, width: 0, height: 0 }}
-              >
-                {colors.map((c, i) => (
-                  <div
-                    key={i}
-                    className="btl-ripple-ring"
-                    style={{
-                      position: "absolute", width: 24, height: 24, left: -12, top: -12,
-                      borderRadius: "50%", border: `3px solid ${c}`,
-                      animationDelay: `${i * 0.22}s`,
-                    }}
-                  />
-                ))}
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
-      </div>
+      {/* ---- Liquid Background (this update) ---- replaces the old 3
+          static blob circles with a full animated liquid system: a
+          slow-shifting liquid gradient mesh, 4 goo-merged morphing
+          blobs, parallax wave bands along the bottom, a canvas particle
+          -fluid layer that drifts and loosely follows the cursor, and
+          an expanding ripple ring on every click/tap anywhere on the
+          dashboard. Still purely decorative — z-index -1, pointer-
+          events: none, clipped by this panel's own overflow:hidden —
+          and still exactly what the glass cards' blur needs behind
+          them to read as frosted glass rather than flat color. Backs
+          off automatically on prefers-reduced-motion and on touch
+          devices (see components/LiquidBackground.jsx). */}
+      <LiquidBackground containerRef={dashboardRootRef} dark={hexLuminance(dashTheme.bg) < 0.5} />
       <style>{`
-        /* ---- Liquid "Ripple" click-burst animation (this update) ----
-           Runs ONCE (no infinite loop) per ring: starts as a small solid
-           circle right at the click point, then scales outward while its
-           border thins and fades to transparent — the classic water-drop
-           ripple. The 3 rings (one per configured color) are staggered
-           slightly (animationDelay above) so they don't expand in a
-           perfectly flat sync, closer to real overlapping ripples. */
-        @keyframes btlRippleExpand {
-          0% { transform: scale(0.4); opacity: 0.9; border-width: 6px; }
-          70% { opacity: 0.5; }
-          100% { transform: scale(16); opacity: 0; border-width: 0.5px; }
-        }
-        .btl-ripple-ring {
-          animation: btlRippleExpand 1.6s cubic-bezier(0.16, 0.84, 0.44, 1) forwards;
-        }
         .btl-scroll::-webkit-scrollbar { width: 6px; }
         .btl-scroll::-webkit-scrollbar-thumb { background: #ddd6c4; border-radius: 4px; }
         .btl-check { transition: transform 120ms ease; }
@@ -9917,7 +9796,6 @@ function BTLDashboardInner() {
               onMoneyColorChange={setMoneyColor} onMoneyColorReset={resetMoneyColors}
               onApplyPanelPreset={applyPanelPreset} onResetPanelPreset={resetPanelPreset}
               onSetClockRingtone={setClockRingtone}
-              onSetLiquidColor={setLiquidColor} onResetLiquidColors={resetLiquidColors}
             />
           </motion.div>
         )}
