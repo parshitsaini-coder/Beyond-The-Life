@@ -1940,6 +1940,65 @@ function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRec
 }
 
 /* ---------------- TODAY'S MOOD (compact — lives inside the Earn Money / Notes card) ---------------- */
+/* ---------------- FOCUS MODE ↔ TIME TABLE SYNC (this update) ----------------
+   A big highlighted "what's happening right now" banner at the top of Focus
+   Mode, sourced from the same state.timeTable data the Time Table widget
+   uses — so the current slot doesn't get lost the moment you step into
+   Focus Mode. Ticks its own clock every 30s, same self-contained pattern
+   as TimeTable itself, so nothing extra needs threading down from
+   Dashboard. Returns null (renders nothing) once nothing's left scheduled
+   for today, so it never sits there stale/empty. */
+function FocusModeNowBanner({ items, accent, fm }) {
+  const [nowStr, setNowStr] = useState(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  });
+  useEffect(() => {
+    const t = setInterval(() => {
+      const d = new Date();
+      setNowStr(`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`);
+    }, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const sorted = [...(items || [])].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+  const current = sorted.find((t) => !t.done && (t.time || "") >= nowStr);
+  if (!current) return null;
+  const cat = timeCatInfo(current.category);
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={current.id}
+        initial={{ opacity: 0, y: -8, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+        transition={{ type: "spring", stiffness: 380, damping: 28 }}
+        style={{
+          flexShrink: 0, marginBottom: 10, borderRadius: 12, padding: "10px 14px",
+          display: "flex", alignItems: "center", gap: 10,
+          background: `${accent}18`, border: `1.5px solid ${accent}55`,
+          position: "relative", overflow: "hidden",
+        }}
+      >
+        <motion.span
+          animate={{ scale: [1, 1.3, 1], opacity: [0.9, 0.4, 0.9] }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: "easeOut" }}
+          style={{ width: 9, height: 9, borderRadius: "50%", background: accent, flexShrink: 0 }}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 9, fontWeight: 900, color: accent, letterSpacing: 0.5, textTransform: "uppercase" }}>
+            Right now · {formatTime12(current.time)}
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: fm.text || C.dark, marginTop: 1 }}>
+            {cat.emoji} {current.text}
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 function MoodBtn({ active, onClick, children, title }) {
   return (
     <button title={title} onClick={onClick} className="btl-mood-btn" style={{
@@ -8507,11 +8566,19 @@ function BTLDashboardInner() {
               <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12, flexShrink: 0 }}>
                 FOCUS MODE — TODAY'S REMAINING GOALS
               </Oval>
-              <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
-                <GoalChecklist title="Daily Goals" items={state.dailyGoals.filter((g) => !g.done)} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} cardBg={theme.widgets.dailyGoals?.bg} />
-                <GoalChecklist title="Extry Goals" items={state.extryGoals.filter((g) => !g.done)} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} cardBg={theme.widgets.extryGoals?.bg} />
+              <FocusModeNowBanner items={state.timeTable} accent={C.accent} fm={fm} />
+              <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0, flexWrap: "wrap" }}>
+                <div style={{ flex: "1 1 240px", minWidth: 220, display: "flex" }}>
+                  <GoalChecklist title="Daily Goals" items={state.dailyGoals.filter((g) => !g.done)} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} cardBg={theme.widgets.dailyGoals?.bg} />
+                </div>
+                <div style={{ flex: "1 1 240px", minWidth: 220, display: "flex" }}>
+                  <GoalChecklist title="Extry Goals" items={state.extryGoals.filter((g) => !g.done)} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} cardBg={theme.widgets.extryGoals?.bg} />
+                </div>
+                <div style={{ flex: "1 1 240px", minWidth: 220, display: "flex" }}>
+                  <TimeTable items={(state.timeTable || []).filter((t) => !t.done)} onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem} onReschedule={rescheduleTimeItem} onToggleRecurring={toggleTimeRecurring} accent={C.accent} cardBg={theme.widgets.timeTable?.bg} streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}} />
+                </div>
               </div>
-              {state.dailyGoals.filter((g) => !g.done).length === 0 && state.extryGoals.filter((g) => !g.done).length === 0 && (
+              {state.dailyGoals.filter((g) => !g.done).length === 0 && state.extryGoals.filter((g) => !g.done).length === 0 && (state.timeTable || []).filter((t) => !t.done).length === 0 && (
                 <div style={{ textAlign: "center", padding: 20, color: fm.text || "#a39c86", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                   🎉 Sab kuch done! Focus Mode se bahar aane ke liye button dabao.
                 </div>
