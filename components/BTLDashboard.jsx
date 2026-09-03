@@ -9598,44 +9598,53 @@ function BTLDashboardInner() {
       zoom: "80%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "70%" for smaller, "90%" for bigger.
     }}>
       {/* ---- Liquid Glass animated background (this update) ----
-          Full-panel "liquid glass" wash: a handful of soft, blurred,
-          slow-morphing color blobs sit behind every card so the glass
-          cards' backdrop-blur always has something rich to frost, plus
-          one bigger blob that actively glides toward the mouse (via the
-          liquidX/Y springs above) so the whole background feels alive
-          and reacts to the cursor instead of just sitting static.
-          A shared SVG "goo" filter makes overlapping blobs melt into
-          each other rather than showing hard, separate circles — that
-          merge is what reads as "liquid" rather than plain floating
-          blurred dots. Purely decorative: z-index -1, pointer-events
-          none, clipped by this panel's own overflow:hidden. */}
+          True "metaball" liquid effect — matches the reference screenshot
+          (solid organic blobs that visibly bridge/merge into each other,
+          not a soft blurry glow). The trick: the blobs themselves are
+          drawn fully OPAQUE and only pushed through the SVG goo filter
+          (blur + a steep alpha threshold) — a threshold needs a hard
+          edge to bite into, a fading radial-gradient blob (the old
+          version) never produced a visible bridge. Color/transparency
+          for the "glass" tint is applied afterwards via CSS `opacity`
+          on the whole already-filtered group, which doesn't undo the
+          crisp merge. One blob glides toward the mouse (liquidX/Y
+          springs above) so when it drifts near an ambient blob you see
+          them visibly fuse — the core "liquid" behavior. Purely
+          decorative: z-index -1, pointer-events none, clipped by this
+          panel's own overflow:hidden. */}
       <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
         <filter id="btl-liquid-goo">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="16" result="btl-goo-blur" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation="22" result="btl-goo-blur" />
           <feColorMatrix in="btl-goo-blur" mode="matrix"
-            values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9" result="btl-goo-sharp" />
-          <feBlend in="SourceGraphic" in2="btl-goo-sharp" />
+            values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 32 -14" result="btl-goo-sharp" />
+          <feComposite in="SourceGraphic" in2="btl-goo-sharp" operator="atop" />
         </filter>
       </svg>
       <div style={{ position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: "-10%", filter: "url(#btl-liquid-goo)" }}>
-          {/* Ambient blobs — slow drift + shape morph, always present */}
-          <div className="btl-liquid-blob btl-liquid-blob-a" style={{ position: "absolute", top: "-14%", left: "-8%", width: 340, height: 340, background: "radial-gradient(circle, rgba(252,163,17,0.46), transparent 70%)" }} />
-          <div className="btl-liquid-blob btl-liquid-blob-b" style={{ position: "absolute", bottom: "-18%", right: "-10%", width: 400, height: 400, background: "radial-gradient(circle, rgba(152,193,217,0.46), transparent 70%)" }} />
-          <div className="btl-liquid-blob btl-liquid-blob-c" style={{ position: "absolute", top: "40%", left: "44%", width: 300, height: 300, background: "radial-gradient(circle, rgba(224,122,95,0.34), transparent 70%)" }} />
-          {/* Cursor-follower blobs — springy, laggy, glide toward the mouse */}
+        <div style={{ position: "absolute", inset: "-10%", filter: "url(#btl-liquid-goo)", opacity: 0.55, mixBlendMode: "multiply" }}>
+          {/* Ambient blobs — fully opaque so the goo threshold has a hard
+              edge to work with; slow drift + shape morph, always present */}
+          <div className="btl-liquid-blob btl-liquid-blob-a" style={{ position: "absolute", top: "-10%", left: "-6%", width: 260, height: 260, background: "#fca311" }} />
+          <div className="btl-liquid-blob btl-liquid-blob-b" style={{ position: "absolute", bottom: "-14%", right: "-6%", width: 300, height: 300, background: "#98c1d9" }} />
+          <div className="btl-liquid-blob btl-liquid-blob-c" style={{ position: "absolute", top: "36%", left: "46%", width: 220, height: 220, background: "#e07a5f" }} />
+          <div className="btl-liquid-blob btl-liquid-blob-a" style={{ position: "absolute", top: "58%", left: "12%", width: 170, height: 170, background: "#98c1d9", animationDelay: "-4s" }} />
+          <div className="btl-liquid-blob btl-liquid-blob-b" style={{ position: "absolute", top: "8%", right: "22%", width: 190, height: 190, background: "#fca311", animationDelay: "-7s" }} />
+          {/* Cursor-follower blobs — springy, laggy, glide toward the
+              mouse and visibly fuse with whichever ambient blob they pass
+              near, since all of these share the same goo filter group */}
           <motion.div className="btl-liquid-blob" style={{
-            position: "absolute", width: 260, height: 260, left: liquidTrailLeft, top: liquidTrailTop,
-            x: "-50%", y: "-50%", background: "radial-gradient(circle, rgba(152,193,217,0.42), transparent 72%)",
+            position: "absolute", width: 150, height: 150, left: liquidTrailLeft, top: liquidTrailTop,
+            x: "-50%", y: "-50%", background: "#98c1d9",
           }} />
           <motion.div className="btl-liquid-blob" style={{
-            position: "absolute", width: 380, height: 380, left: liquidLeft, top: liquidTop,
-            x: "-50%", y: "-50%", background: "radial-gradient(circle, rgba(252,163,17,0.52), rgba(224,122,95,0.3) 45%, transparent 72%)",
+            position: "absolute", width: 230, height: 230, left: liquidLeft, top: liquidTop,
+            x: "-50%", y: "-50%", background: "#fca311",
           }} />
         </div>
-        {/* Fine frosted grain on top of the blobs — softens hard gradient
-            edges so it reads as glass haze rather than colored spotlights. */}
-        <div style={{ position: "absolute", inset: 0, backdropFilter: "blur(24px) saturate(160%)", WebkitBackdropFilter: "blur(24px) saturate(160%)" }} />
+        {/* Soft ambient color wash on top — separate from the goo group,
+            gives the merged blobs a hazy glass tint without blunting the
+            crisp bridge shapes above. */}
+        <div style={{ position: "absolute", inset: 0, backdropFilter: "blur(20px) saturate(170%)", WebkitBackdropFilter: "blur(20px) saturate(170%)" }} />
       </div>
       <style>{`
         /* ---- Liquid Glass background animation (this update) ---- */
