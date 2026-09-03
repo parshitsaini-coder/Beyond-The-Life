@@ -1849,14 +1849,102 @@ function TimeCheckBurst() {
   );
 }
 
+/* ---------------- TIME TABLE: animated vertical status rail (this update) ----------------
+   Upgrades the old plain drag-grip icon + flat category dot into a real
+   connected timeline down the left edge of the list: a vertical line
+   runs through every row (each row contributes its own top-half +
+   bottom-half segment, so consecutive rows join into one continuous
+   line without any manual position math), with a status dot per row —
+     - done      → filled green, a checkmark draws in with a little pop
+     - now       → the live slot: pulsing glow + a radiating ring that
+                   expands and fades on loop, plus a soft "breathing"
+                   shimmer on the line segment just below it (time
+                   visibly flowing forward from "now")
+     - overdue   → soft red pulse (missed, still calling for attention)
+     - future    → a plain hollow outline, line continues as a faint
+                   dashed track
+   The line itself is solid/colored through everything already passed
+   (done rows + the live "now" row) and fades to a dashed line for
+   what's still ahead, so the rail reads as "how far into the day you
+   are" at a single glance — not just per-row status. It's also still
+   the drag-to-reschedule handle (pointerdown anywhere on the rail
+   starts the drag, same as the old grip icon did). Pure framer-motion
+   + CSS — no new npm installs, matches the rest of this app's motion
+   language. */
+function TimeTableRailDot({ status, accent, isCelebrating }) {
+  const STATUS_COLOR = { done: "#4a9d5f", now: accent, overdue: "#e07a5f", future: "#c9c2ac" };
+  const color = STATUS_COLOR[status] || STATUS_COLOR.future;
+  const filled = status === "done" || status === "now" || status === "overdue";
+  return (
+    <div style={{ position: "relative", width: 11, height: 11, flexShrink: 0 }}>
+      {status === "now" && (
+        <motion.span
+          style={{ position: "absolute", inset: -5, borderRadius: "50%", border: `2px solid ${accent}`, pointerEvents: "none" }}
+          animate={{ scale: [1, 2.1, 2.1], opacity: [0.55, 0, 0] }}
+          transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
+        />
+      )}
+      <motion.span
+        style={{
+          position: "absolute", inset: 0, borderRadius: "50%",
+          background: filled ? color : "#fff",
+          border: `2px solid ${color}`,
+          boxShadow: status === "now" ? `0 0 8px ${hexToRgba(accent, 0.65)}` : status === "overdue" ? `0 0 6px ${hexToRgba("#e07a5f", 0.45)}` : "none",
+        }}
+        animate={
+          status === "now" ? { scale: [1, 1.22, 1] }
+          : isCelebrating ? { scale: [1, 1.5, 1] }
+          : status === "overdue" ? { scale: [1, 1.12, 1] }
+          : { scale: 1 }
+        }
+        transition={{
+          duration: status === "now" ? 1.6 : status === "overdue" ? 1.4 : 0.35,
+          repeat: (status === "now" || status === "overdue") ? Infinity : 0,
+          ease: "easeInOut",
+        }}
+      />
+      {status === "done" && (
+        <svg width="11" height="11" viewBox="0 0 11 11" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+          <motion.path
+            d="M2.6 5.7 L4.5 7.6 L8.4 3.4" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+            initial={{ pathLength: 0, opacity: 0 }} animate={{ pathLength: 1, opacity: 1 }} transition={{ duration: 0.3, delay: 0.05 }}
+          />
+        </svg>
+      )}
+    </div>
+  );
+}
+function TimeTableRail({ status, isFirst, isLast, accent, isCelebrating, onPointerDown }) {
+  const passed = status === "done" || status === "now" || status === "overdue";
+  const solidColor = status === "done" ? "#4a9d5f" : status === "now" ? accent : status === "overdue" ? "#e07a5f" : "#ddd6c4";
+  const dashed = "repeating-linear-gradient(180deg, #ddd6c4 0 3px, transparent 3px 6px)";
+  const segBase = { width: 2, flex: 1, borderRadius: 2 };
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      title="Drag to reschedule"
+      style={{ position: "relative", width: 18, alignSelf: "stretch", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", cursor: "grab", touchAction: "none" }}
+    >
+      <div style={{ ...segBase, background: isFirst ? "transparent" : passed ? solidColor : dashed, opacity: isFirst ? 0 : passed ? 0.85 : 0.6 }} />
+      <TimeTableRailDot status={status} accent={accent} isCelebrating={isCelebrating} />
+      <motion.div
+        style={{ ...segBase, background: isLast ? "transparent" : status === "done" ? "#4a9d5f" : status === "now" ? accent : dashed, opacity: isLast ? 0 : (status === "done" || status === "now") ? 0.85 : 0.6 }}
+        animate={status === "now" ? { opacity: [0.35, 0.9, 0.35] } : {}}
+        transition={{ duration: 1.6, repeat: status === "now" ? Infinity : 0, ease: "easeInOut" }}
+      />
+    </div>
+  );
+}
+
 /* Single row of the Time Table — split out from the main component so each
    row can own its own useDragControls() (Reorder.Item needs one drag
    controller per row; hooks can't be created inside a .map()). Dragging the
    grip handle up/down reorders the row, and TimeTable's onReorder below
    turns that new position into a real new "HH:MM" via midpointTime(). */
-function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, accent, cardBg, itemFontSize, itemFontFamily, itemColorOverride, itemWeight, onToggle, onRemove, onToggleRecurring }) {
+function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast, accent, cardBg, itemFontSize, itemFontFamily, itemColorOverride, itemWeight, onToggle, onRemove, onToggleRecurring }) {
   const dragControls = useDragControls();
   const cat = timeCatInfo(t.category);
+  const status = t.done ? "done" : isUpcoming ? "now" : isOverdue ? "overdue" : "future";
   return (
     <Reorder.Item
       value={t}
@@ -1864,9 +1952,17 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, accent, cardBg,
       dragControls={dragControls}
       layout
       initial={{ opacity: 0, y: -10, height: 0 }}
-      animate={{ opacity: 1, y: 0, height: "auto" }}
+      animate={{
+        opacity: 1, y: 0, height: "auto",
+        boxShadow: isUpcoming && !t.done
+          ? [`0 0 0 0 ${hexToRgba(accent, 0)}`, `0 0 10px 1px ${hexToRgba(accent, 0.25)}`, `0 0 0 0 ${hexToRgba(accent, 0)}`]
+          : "0 0 0 0 rgba(0,0,0,0)",
+      }}
       exit={{ opacity: 0, x: 80, height: 0, transition: { duration: 0.22, ease: "easeIn" } }}
-      transition={{ type: "spring", stiffness: 480, damping: 32 }}
+      transition={{
+        height: { type: "spring", stiffness: 480, damping: 32 }, opacity: { duration: 0.3 }, y: { type: "spring", stiffness: 480, damping: 32 },
+        boxShadow: { duration: 2.2, repeat: isUpcoming && !t.done ? Infinity : 0, ease: "easeInOut" },
+      }}
       whileDrag={{ scale: 1.02, boxShadow: "0 8px 22px rgba(37,36,34,0.16)", cursor: "grabbing", zIndex: 5 }}
       style={{
         borderBottom: "1px solid #f0ece0",
@@ -1879,13 +1975,10 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, accent, cardBg,
         display: "flex", alignItems: "center", gap: 5, padding: "6px 4px 6px 2px", position: "relative",
         color: t.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
       }}>
-        <span
+        <TimeTableRail
+          status={status} isFirst={isFirst} isLast={isLast} accent={accent} isCelebrating={isCelebrating}
           onPointerDown={(e) => dragControls.start(e)}
-          title="Drag to reschedule"
-          style={{ display: "flex", alignItems: "center", touchAction: "none", cursor: "grab", flexShrink: 0, color: "#c9c2ac" }}
-        >
-          <GripVertical size={12} />
-        </span>
+        />
         <motion.input
           type="checkbox" checked={t.done} onChange={() => onToggle(t.id, t.done)}
           className="btl-check" style={{ accentColor: accent, width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
@@ -2072,13 +2165,14 @@ function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRec
         )}
         <Reorder.Group axis="y" values={sorted} onReorder={handleReorder} style={{ listStyle: "none", margin: 0, padding: 0 }}>
           <AnimatePresence initial={false}>
-            {sorted.map((t) => (
+            {sorted.map((t, i) => (
               <TimeTableRow
                 key={t.id}
                 t={t}
                 isUpcoming={t.id === upcomingId}
                 isOverdue={!t.done && t.id !== upcomingId && (t.time || "") < nowStr}
                 isCelebrating={celebrateId === t.id}
+                isFirst={i === 0} isLast={i === sorted.length - 1}
                 accent={accent} cardBg={cardBg}
                 itemFontSize={itemFontSize} itemFontFamily={itemFontFamily}
                 itemColorOverride={itemColorOverride} itemWeight={itemWeight}
