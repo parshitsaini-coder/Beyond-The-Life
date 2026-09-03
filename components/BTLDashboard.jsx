@@ -187,16 +187,26 @@ function hexToRgba(hex, alpha) {
   const b = parseInt(safe.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
+/* ---- Glass recipe tuned to match the app's own reference (this update) ----
+   The "Start your Life Story" popup (LifeStoryProfileSetup, below) already
+   nails the exact frosted look we want everywhere else: high blur (24px)
+   + strong saturate boost, a bright semi-opaque white EDGE highlight
+   (not just a faint tinted border) to sell the "glass rim", and a big
+   soft lifted shadow so the card visibly floats instead of just sitting
+   as a slightly-see-through flat patch. The old recipe here (16px blur,
+   a near-invisible border, a small shadow) read as "muted flat color"
+   rather than glass once it sat over a real page background — this
+   brings every widget/panel in line with that reference. */
 function glassCardStyle(cardBg) {
   const isDark = hexLuminance(cardBg || "#fffdf7") < 0.5;
   return {
-    background: hexToRgba(cardBg || "#fffdf7", 0.55),
-    backdropFilter: "blur(16px) saturate(150%)",
-    WebkitBackdropFilter: "blur(16px) saturate(150%)",
-    border: `1px solid ${isDark ? "rgba(255,255,255,0.14)" : "rgba(64,61,57,0.12)"}`,
+    background: hexToRgba(cardBg || "#fffdf7", isDark ? 0.5 : 0.62),
+    backdropFilter: "blur(24px) saturate(190%)",
+    WebkitBackdropFilter: "blur(24px) saturate(190%)",
+    border: `1px solid ${isDark ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.85)"}`,
     boxShadow: isDark
-      ? "0 8px 28px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06)"
-      : "0 8px 28px rgba(64,61,57,0.10), inset 0 1px 0 rgba(255,255,255,0.55)",
+      ? "0 20px 50px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.10)"
+      : "0 20px 50px rgba(37,36,34,0.22), inset 0 1px 0 rgba(255,255,255,0.65)",
   };
 }
 

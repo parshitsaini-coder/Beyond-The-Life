@@ -1,6 +1,28 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🥂 New — full "Glass" Panel Theme + glassmorphism extended to every panel/widget (this update)
+## 🪟 Fix — glass cards looked like flat/muted solid colors, not glass (this update)
+
+Picking the new Glass preset (or any preset really) still rendered widgets
+as a fairly flat, opaque-looking color patch instead of true frosted
+glass — compare to the app's own `LifeStoryProfileSetup` "Start your Life
+Story" popup, which already nailed the look. The difference was the
+recipe, not the concept:
+
+- `glassCardStyle()` (used by every widget/panel, see previous update) now
+  matches that popup's exact recipe: **stronger blur** (16px → 24px) with
+  a bigger **saturate boost** (150% → 190%), a **bright semi-opaque white
+  edge highlight** border instead of a barely-there tinted one (this is
+  the single biggest tell for "glass" vs. "muted color" — it's the rim
+  light every real glass/frosted surface catches), and a **much bigger,
+  softer lifted shadow** (8px/28px → 20px/50px) so the card visibly
+  floats above the page instead of reading as a slightly-transparent flat
+  fill sitting flush with the background.
+- No other change needed — this one shared helper feeds every widget,
+  the full-screen Analytics/Money/Focus Mode panels, and the Friend
+  Celebration cards from the previous update, so all of them pick up the
+  fix together.
+
+## 🥂 New — full "Glass" Panel Theme + glassmorphism extended to every panel/widget (earlier update)
 
 Previously, the frosted-glass ("Glassmorphism 2.0") treatment only applied
 to 4 widgets — Daily Goals, Extry Goals, Time Table, Calendar. Everything
