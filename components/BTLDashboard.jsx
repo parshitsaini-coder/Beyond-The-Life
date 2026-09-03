@@ -609,6 +609,250 @@ const TIME_CATEGORIES = [
 ];
 const timeCatInfo = (key) => TIME_CATEGORIES.find((c) => c.key === key) || TIME_CATEGORIES[TIME_CATEGORIES.length - 1];
 
+/* ---------------- CUSTOM CATEGORY DROPDOWN (this update) ----------------
+   Replaces the native <select> on the Time Table "add item" row — a plain
+   OS-chrome popup with no room for the category's own emoji/color or any
+   motion. Same portal + viewport-aware-flip + outside-click/scroll/resize
+   pattern as EmojiPickerPortal above, so it behaves identically (never
+   gets clipped by a widget's overflow:hidden, never gets stranded). */
+function CategoryPickerPanel({ anchorRect, categories, value, onPick, onClose }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const handleDismiss = () => onClose();
+    document.addEventListener("mousedown", handleClick);
+    window.addEventListener("scroll", handleDismiss, true);
+    window.addEventListener("resize", handleDismiss);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      window.removeEventListener("scroll", handleDismiss, true);
+      window.removeEventListener("resize", handleDismiss);
+    };
+  }, [onClose]);
+
+  if (!anchorRect || typeof document === "undefined") return null;
+
+  const PANEL_W = 150;
+  const PANEL_H = Math.min(260, categories.length * 34 + 10);
+  const GAP = 6;
+  const vw = window.innerWidth, vh = window.innerHeight;
+
+  let left = anchorRect.left;
+  if (left + PANEL_W > vw - 8) left = vw - PANEL_W - 8;
+  if (left < 8) left = 8;
+  const spaceBelow = vh - anchorRect.bottom;
+  const openUp = spaceBelow < PANEL_H + GAP && anchorRect.top > PANEL_H + GAP;
+  const top = openUp ? Math.max(8, anchorRect.top - PANEL_H - GAP) : anchorRect.bottom + GAP;
+
+  return createPortal(
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, scale: 0.94, y: openUp ? 6 : -6 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.94, y: openUp ? 4 : -4 }}
+      transition={{ type: "spring", stiffness: 440, damping: 30 }}
+      style={{
+        position: "fixed", top, left, width: PANEL_W, maxHeight: PANEL_H, overflowY: "auto", zIndex: 9999,
+        borderRadius: 12, padding: 5,
+        background: "rgba(255,253,247,0.94)", backdropFilter: "blur(18px) saturate(190%)", WebkitBackdropFilter: "blur(18px) saturate(190%)",
+        border: "1px solid rgba(255,255,255,0.65)", boxShadow: "0 16px 38px rgba(37,36,34,0.24)",
+      }}
+      className="btl-scroll"
+    >
+      {categories.map((c) => (
+        <motion.div
+          key={c.key}
+          onClick={() => { onPick(c.key); onClose(); }}
+          whileHover={{ x: 2, backgroundColor: hexToRgba(c.color, 0.14) }}
+          style={{
+            display: "flex", alignItems: "center", gap: 7, fontSize: 11, fontWeight: 700, padding: "7px 8px",
+            borderRadius: 8, cursor: "pointer", color: C.text,
+            background: c.key === value ? hexToRgba(c.color, 0.16) : "transparent",
+          }}
+        >
+          <span style={{ fontSize: 13, lineHeight: 1 }}>{c.emoji}</span>
+          <span style={{ flex: 1 }}>{c.label}</span>
+          {c.key === value && <CheckCircle2 size={13} color={c.color} />}
+        </motion.div>
+      ))}
+    </motion.div>,
+    document.body
+  );
+}
+
+function CategoryDropdown({ value, onChange, categories, accent }) {
+  const [anchor, setAnchor] = useState(null); // DOMRect | null — open state doubles as "is anchor set"
+  const current = categories.find((c) => c.key === value) || categories[categories.length - 1];
+
+  return (
+    <>
+      <motion.button
+        type="button"
+        onClick={(e) => setAnchor(anchor ? null : e.currentTarget.getBoundingClientRect())}
+        whileHover={{ scale: 1.03 }}
+        whileTap={{ scale: 0.96 }}
+        style={{
+          display: "flex", alignItems: "center", gap: 5, fontSize: 9, fontWeight: 700, padding: "5px 8px",
+          borderRadius: 7, border: `1px solid ${anchor ? accent : "#ddd6c4"}`, background: "#fff", cursor: "pointer",
+          color: C.text, whiteSpace: "nowrap", flexShrink: 0,
+        }}
+      >
+        <span style={{ fontSize: 11, lineHeight: 1 }}>{current.emoji}</span>
+        <span>{current.label}</span>
+        <motion.span animate={{ rotate: anchor ? 180 : 0 }} transition={{ duration: 0.18 }} style={{ display: "inline-flex", opacity: 0.55 }}>
+          <ChevronDown size={11} />
+        </motion.span>
+      </motion.button>
+      <AnimatePresence>
+        {anchor && (
+          <CategoryPickerPanel
+            anchorRect={anchor} categories={categories} value={value}
+            onPick={onChange} onClose={() => setAnchor(null)}
+          />
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+/* ---------------- CUSTOM TIME PICKER (this update) ----------------
+   Replaces the native <input type="time"> on the same row — Chrome/Edge
+   render that as a bare unstyled text box with a tiny grey clock glyph,
+   totally off-brand next to the rest of the app. This is a small glass
+   popover with scrollable hour/minute wheels + an AM/PM toggle; it still
+   writes back the exact same "HH:MM" 24h string the rest of the app
+   already stores in state.timeTable, so nothing downstream changes. */
+function TimeWheelColumn({ items, value, onSelect, accent, fmt }) {
+  const listRef = useRef(null);
+  useEffect(() => {
+    const el = listRef.current?.querySelector(`[data-v="${value}"]`);
+    if (el) el.scrollIntoView({ block: "center" });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div ref={listRef} className="btl-scroll" style={{ width: 42, maxHeight: 160, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+      {items.map((n) => (
+        <motion.div
+          key={n}
+          data-v={n}
+          onClick={() => onSelect(n)}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.92 }}
+          style={{
+            textAlign: "center", fontSize: 12, fontWeight: 800, padding: "5px 0", borderRadius: 7, cursor: "pointer",
+            background: n === value ? hexToRgba(accent, 0.18) : "transparent",
+            color: n === value ? accent : C.text,
+          }}
+        >{fmt(n)}</motion.div>
+      ))}
+    </div>
+  );
+}
+
+function TimePickerPanel({ anchorRect, value, onPick, onClose, accent }) {
+  const ref = useRef(null);
+  const [hh24, mm] = (value || "09:00").split(":").map(Number);
+  const hh12 = hh24 % 12 === 0 ? 12 : hh24 % 12;
+  const isPM = hh24 >= 12;
+  const commit = (h12, m, pm) => {
+    let h24 = h12 % 12; if (pm) h24 += 12;
+    onPick(`${String(h24).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+  };
+
+  useEffect(() => {
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    const handleDismiss = () => onClose();
+    document.addEventListener("mousedown", handleClick);
+    window.addEventListener("scroll", handleDismiss, true);
+    window.addEventListener("resize", handleDismiss);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      window.removeEventListener("scroll", handleDismiss, true);
+      window.removeEventListener("resize", handleDismiss);
+    };
+  }, [onClose]);
+
+  if (!anchorRect || typeof document === "undefined") return null;
+
+  const PANEL_W = 176;
+  const PANEL_H = 196;
+  const GAP = 6;
+  const vw = window.innerWidth, vh = window.innerHeight;
+
+  let left = anchorRect.left;
+  if (left + PANEL_W > vw - 8) left = vw - PANEL_W - 8;
+  if (left < 8) left = 8;
+  const spaceBelow = vh - anchorRect.bottom;
+  const openUp = spaceBelow < PANEL_H + GAP && anchorRect.top > PANEL_H + GAP;
+  const top = openUp ? Math.max(8, anchorRect.top - PANEL_H - GAP) : anchorRect.bottom + GAP;
+
+  return createPortal(
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, scale: 0.94, y: openUp ? 6 : -6 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.94, y: openUp ? 4 : -4 }}
+      transition={{ type: "spring", stiffness: 440, damping: 30 }}
+      style={{
+        position: "fixed", top, left, width: PANEL_W, zIndex: 9999,
+        borderRadius: 12, padding: 8, display: "flex", gap: 6,
+        background: "rgba(255,253,247,0.94)", backdropFilter: "blur(18px) saturate(190%)", WebkitBackdropFilter: "blur(18px) saturate(190%)",
+        border: "1px solid rgba(255,255,255,0.65)", boxShadow: "0 16px 38px rgba(37,36,34,0.24)",
+      }}
+    >
+      <TimeWheelColumn items={Array.from({ length: 12 }, (_, i) => i + 1)} value={hh12} onSelect={(h) => commit(h, mm, isPM)} accent={accent} fmt={(n) => String(n).padStart(2, "0")} />
+      <TimeWheelColumn items={Array.from({ length: 60 }, (_, i) => i)} value={mm} onSelect={(m) => commit(hh12, m, isPM)} accent={accent} fmt={(n) => String(n).padStart(2, "0")} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, justifyContent: "center", flexShrink: 0 }}>
+        {["AM", "PM"].map((p) => (
+          <motion.button
+            key={p} type="button"
+            whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.92 }}
+            onClick={() => commit(hh12, mm, p === "PM")}
+            style={{
+              border: "none", borderRadius: 7, padding: "6px 10px", fontSize: 10, fontWeight: 800, cursor: "pointer",
+              background: (p === "PM") === isPM ? accent : "rgba(0,0,0,0.06)",
+              color: (p === "PM") === isPM ? "#fff" : C.text,
+            }}
+          >{p}</motion.button>
+        ))}
+      </div>
+    </motion.div>,
+    document.body
+  );
+}
+
+function TimePicker({ value, onChange, accent }) {
+  const [anchor, setAnchor] = useState(null);
+  const [hh24, mm] = (value || "09:00").split(":").map(Number);
+  const hh12 = hh24 % 12 === 0 ? 12 : hh24 % 12;
+  const isPM = hh24 >= 12;
+
+  return (
+    <>
+      <motion.button
+        type="button"
+        onClick={(e) => setAnchor(anchor ? null : e.currentTarget.getBoundingClientRect())}
+        whileHover={{ scale: 1.03 }}
+        whileTap={{ scale: 0.96 }}
+        style={{
+          display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 700, padding: "5px 8px",
+          borderRadius: 7, border: `1px solid ${anchor ? accent : "#ddd6c4"}`, background: "#fff", cursor: "pointer",
+          color: C.text, width: 88, flexShrink: 0,
+        }}
+      >
+        <Clock size={11} style={{ opacity: 0.5, flexShrink: 0 }} />
+        <span>{String(hh12).padStart(2, "0")}:{String(mm).padStart(2, "0")} {isPM ? "PM" : "AM"}</span>
+      </motion.button>
+      <AnimatePresence>
+        {anchor && (
+          <TimePickerPanel anchorRect={anchor} value={value} onPick={onChange} onClose={() => setAnchor(null)} accent={accent} />
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
 function ensureTimeItemDefaults(t) {
   return {
     id: t.id,
@@ -2576,16 +2820,8 @@ function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRec
       </div>
 
       <div style={{ marginTop: 6, flexShrink: 0, display: "flex", gap: 4, flexWrap: "wrap" }}>
-        <select
-          value={category} onChange={(e) => setCategory(e.target.value)}
-          style={{ fontSize: 9, padding: "5px 2px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", flexShrink: 0, background: "#fff" }}
-        >
-          {TIME_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.emoji} {c.label}</option>)}
-        </select>
-        <input
-          type="time" value={time} onChange={(e) => setTime(e.target.value)}
-          style={{ fontSize: 10, padding: "5px 4px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", width: 84, flexShrink: 0 }}
-        />
+        <CategoryDropdown value={category} onChange={setCategory} categories={TIME_CATEGORIES} accent={accent} />
+        <TimePicker value={time} onChange={setTime} accent={accent} />
         <input
           value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
