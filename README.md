@@ -1,25 +1,6 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🖱️ New — mouse-reactive header icon buttons (this update)
-
-The 4 circular header icons (**Focus Mode**, **Share Journey**, **Setting**,
-**Friend Celebration** — `GlowIconButton`) now react to the cursor instead of
-just sitting there with a static pulse:
-
-- **Cursor-chasing spotlight** — a soft radial-gradient glow tracks the
-  pointer's exact position inside each button (two `useSpring`-smoothed
-  motion values), so the glow visibly follows the mouse instead of a flat
-  hover tint.
-- **Icon wiggle** — the icon itself does a quick spring rotate + scale
-  (`0° → -14° → 10° → 0°`) on hover, on top of the button's existing
-  lift/scale.
-- Fully gated behind `useReducedMotion()` — with reduced motion on, both the
-  spotlight and the wiggle are skipped entirely, only the plain lift/tap
-  feedback remains.
-- No new dependencies — built with `framer-motion`'s `useMotionValue` /
-  `useSpring` / `useMotionTemplate`, already in use elsewhere in the file.
-
-## ⏰ New — "Analog Clock & Alarm" widget (earlier update)
+## ⏰ New — "Analog Clock & Alarm" widget (this update)
 
 A new widget — add it from **Setting → Layout → Add widget → Analog
 Clock & Alarm** (or it's already in the default layout on a fresh

@@ -13,7 +13,7 @@ import {
   AlarmClock, Volume2, Play,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
-import { motion, AnimatePresence, Reorder, animate, useDragControls, useMotionValue, useSpring, useMotionTemplate, useReducedMotion } from "framer-motion";
+import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
 import { createPortal } from "react-dom";
 import { useAuth, signOutUser, signInWithGoogle } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
@@ -1014,39 +1014,14 @@ function Oval({ children, style, onClick, ...rest }) {
 function GlowIconButton({ icon: Icon, label, active, color, onClick, filled }) {
   const bg = active || filled ? color : "#fff";
   const fg = active || filled ? "#fff" : color;
-  const reduce = useReducedMotion();
-
-  // Mouse-tracking spotlight: springs chase the cursor's position inside the
-  // button so the glow visibly "reaches toward" the pointer instead of just
-  // sitting there — decorative delight, gated to fine pointers + hover.
-  const mx = useMotionValue(50);
-  const my = useMotionValue(50);
-  const sx = useSpring(mx, { stiffness: 300, damping: 22, mass: 0.4 });
-  const sy = useSpring(my, { stiffness: 300, damping: 22, mass: 0.4 });
-  const spotlight = useMotionTemplate`radial-gradient(circle at ${sx}% ${sy}%, ${color}55, transparent 70%)`;
-
-  const [hovered, setHovered] = useState(false);
-
-  const handleMouseMove = (e) => {
-    if (reduce) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    mx.set(((e.clientX - rect.left) / rect.width) * 100);
-    my.set(((e.clientY - rect.top) / rect.height) * 100);
-  };
-  const resetSpotlight = () => { mx.set(50); my.set(50); setHovered(false); };
-
   return (
     <motion.button
       onClick={onClick}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={resetSpotlight}
       title={label}
       aria-label={label}
-      whileHover={reduce ? undefined : { y: -3, scale: 1.1 }}
+      whileHover={{ y: -3, scale: 1.08 }}
       whileTap={{ scale: 0.88 }}
       transition={{ type: "spring", stiffness: 420, damping: 20 }}
-      className="btl-glow-icon-btn"
       style={{
         position: "relative", width: 34, height: 34, borderRadius: "50%",
         border: `1.5px solid ${color}`, background: bg, color: fg,
@@ -1054,34 +1029,13 @@ function GlowIconButton({ icon: Icon, label, active, color, onClick, filled }) {
         cursor: "pointer", flexShrink: 0, padding: 0,
       }}
     >
-      {/* idle ambient pulse — subtle, always on */}
       <motion.span
         aria-hidden
-        animate={reduce ? undefined : { boxShadow: [`0 0 0px 0px ${color}00`, `0 0 9px 2px ${color}66`, `0 0 0px 0px ${color}00`] }}
+        animate={{ boxShadow: [`0 0 0px 0px ${color}00`, `0 0 9px 2px ${color}66`, `0 0 0px 0px ${color}00`] }}
         transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
         style={{ position: "absolute", inset: -3, borderRadius: "50%", pointerEvents: "none" }}
       />
-      {/* mouse-tracking spotlight — chases the cursor, fine pointers only.
-          Own overflow:hidden wrapper so it stays a circle without clipping
-          the ambient pulse above, which intentionally spills outside. */}
-      {!reduce && (
-        <span aria-hidden style={{ position: "absolute", inset: 0, borderRadius: "50%", overflow: "hidden", pointerEvents: "none" }}>
-          <motion.span
-            animate={{ opacity: hovered ? 1 : 0 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
-            className="btl-glow-icon-spotlight"
-            style={{ position: "absolute", inset: 0, background: spotlight }}
-          />
-        </span>
-      )}
-      <motion.span
-        aria-hidden
-        animate={hovered && !reduce ? { rotate: [0, -14, 10, 0], scale: 1.12 } : { rotate: 0, scale: 1 }}
-        transition={{ duration: 0.45, ease: [0.23, 1, 0.32, 1] }}
-        style={{ display: "flex" }}
-      >
-        <Icon size={15} />
-      </motion.span>
+      <Icon size={15} />
     </motion.button>
   );
 }
