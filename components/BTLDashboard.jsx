@@ -518,6 +518,13 @@ function makeDefaultState() {
                          // -- powers the Memories modal: per-day photos, notes & the exact goals finished that day
     streak: 0,
     lastCompletedDate: null,
+    // Per-widget streaks & history (this update) — same idea as the global
+    // streak/completionHistory above, but tracked independently per checklist
+    // widget so "Time Table" or "Extry Goals" can each show their own 🔥 N and
+    // their own 8-week heatmap instead of only the combined daily+extry one.
+    widgetStreaks: { dailyGoals: 0, extryGoals: 0, timeTable: 0 },
+    widgetLastCompletedDate: {}, // { dailyGoals: "2026-08-30", ... }
+    widgetHistory: { dailyGoals: {}, extryGoals: {}, timeTable: {} }, // { dailyGoals: { "2026-08-30": 62.5 }, ... }
     layout: defaultLayout(),
     theme: defaultTheme(),
   };
@@ -558,7 +565,12 @@ function resizeImageDataUrl(file, maxDim = 480, quality = 0.72) {
    had to change. */
 async function loadState(user) {
   const s = await loadStateFromFirestore(user, makeDefaultState, ensureGoalDefaults);
-  if (s) s.timeTable = (s.timeTable || []).map(ensureTimeItemDefaults);
+  if (s) {
+    s.timeTable = (s.timeTable || []).map(ensureTimeItemDefaults);
+    s.widgetStreaks = { dailyGoals: 0, extryGoals: 0, timeTable: 0, ...(s.widgetStreaks || {}) };
+    s.widgetHistory = { dailyGoals: {}, extryGoals: {}, timeTable: {}, ...(s.widgetHistory || {}) };
+    s.widgetLastCompletedDate = s.widgetLastCompletedDate || {};
+  }
   const withLayout = ensureLayoutDefaults(s);
   return { ...withLayout, theme: normalizeTheme(withLayout.theme) };
 }
@@ -1283,7 +1295,7 @@ function EmojiPickerPortal({ anchorRect, onPick, onClose }) {
   );
 }
 
-function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent, textStyle, cardBg }) {
+function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent, textStyle, cardBg, streak = 0, history = {} }) {
   const ts = normalizeTextStyle(textStyle);
   const itemFontSize = Math.round(11 * ts.scale);
   const subFontSize = Math.round(10 * ts.scale);
@@ -1300,6 +1312,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
   const [showOptions, setShowOptions] = useState(false);
   const [picker, setPicker] = useState(null); // { id: "new" | goal id, rect: DOMRect } | null
   const [celebrateId, setCelebrateId] = useState(null); // goal id currently flashing "done" celebration
+  const [showHeat, setShowHeat] = useState(false);
 
   const handleToggle = (id, wasDone) => {
     onToggle(id);
@@ -1317,7 +1330,10 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
-      <Oval style={{ display: "block", margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, flexShrink: 0 }}>{title}</Oval>
+      <ChecklistHeader title={title} streak={streak} accent={accent} showHeat={showHeat} onToggleHeat={() => setShowHeat((v) => !v)} />
+      <AnimatePresence initial={false}>
+        {showHeat && <WidgetHeatmapPanel history={history} accent={accent} />}
+      </AnimatePresence>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: cardBg || "#fff" }} className="btl-scroll">
         <AnimatePresence initial={false}>
           {items.map((g) => {
@@ -1577,7 +1593,7 @@ function TimeCheckBurst() {
   );
 }
 
-function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg }) {
+function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg, streak = 0, history = {} }) {
   const ts = normalizeTextStyle(textStyle);
   const itemFontSize = Math.round(11 * ts.scale);
   const itemFontFamily = ts.font ? fontStackFor(ts.font) : undefined;
@@ -1587,6 +1603,7 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
   const [time, setTime] = useState("09:00");
   const [text, setText] = useState("");
   const [celebrateId, setCelebrateId] = useState(null);
+  const [showHeat, setShowHeat] = useState(false);
   const [nowStr, setNowStr] = useState(() => {
     const d = new Date();
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -1620,9 +1637,10 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
-      <Oval style={{ display: "flex", gap: 4, margin: "0 auto 6px", background: C.dark, color: C.bg, borderColor: C.dark, flexShrink: 0 }}>
-        <Clock size={12} /> Time Table
-      </Oval>
+      <ChecklistHeader title={<><Clock size={11} style={{ marginRight: 3, verticalAlign: -1 }} />Time Table</>} streak={streak} accent={accent} showHeat={showHeat} onToggleHeat={() => setShowHeat((v) => !v)} />
+      <AnimatePresence initial={false}>
+        {showHeat && <WidgetHeatmapPanel history={history} accent={accent} />}
+      </AnimatePresence>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: cardBg || "#fff" }} className="btl-scroll">
         {sorted.length === 0 && (
           <div style={{ padding: "16px 10px", fontSize: 10, color: "#a39c86", textAlign: "center" }}>
@@ -2293,9 +2311,9 @@ function ShareJourneyModal({ state, lifeScore, userName, onClose }) {
   );
 }
 
-function Heatmap({ completionHistory, accentColor }) {
+function Heatmap({ completionHistory, accentColor, weeks = 12, cellSize = 10 }) {
   const accent = accentColor || C.accent;
-  const WEEKS = 12;
+  const WEEKS = weeks;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const start = new Date(today);
@@ -2333,7 +2351,7 @@ function Heatmap({ completionHistory, accentColor }) {
               const pct = completionHistory[iso];
               return (
                 <div key={di} title={`${iso}${pct !== undefined ? `: ${Math.round(pct)}%` : ""}`} style={{
-                  width: 10, height: 10, borderRadius: 2,
+                  width: cellSize, height: cellSize, borderRadius: 2,
                   background: isFuture ? "transparent" : colorFor(pct),
                   border: isFuture ? "1px dashed #ece7d8" : "none",
                 }} />
@@ -2350,6 +2368,80 @@ function Heatmap({ completionHistory, accentColor }) {
         More
       </div>
     </div>
+  );
+}
+
+/* ---------------- PER-WIDGET STREAK CHIP + MINI HEATMAP (this update) ----------------
+   Small "🔥 N" badge that sits beside a checklist widget's title Oval, plus an
+   optional toggle to reveal a compact 8-week consistency heatmap right inside
+   that widget's card. Both are driven by the new state.widgetStreaks /
+   state.widgetHistory maps (one entry per checklist widget: dailyGoals,
+   extryGoals, timeTable) so each list gets its own independent streak instead
+   of only the combined one that already existed in the header. */
+function StreakChip({ streak, accent }) {
+  const prev = useRef(streak);
+  const bumped = streak > prev.current;
+  useEffect(() => { prev.current = streak; }, [streak]);
+  if (!streak) return null;
+  return (
+    <motion.span
+      key={streak}
+      initial={bumped ? { scale: 0.3, opacity: 0, y: -4 } : false}
+      animate={{ scale: 1, opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 500, damping: 18 }}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 2, fontSize: 9, fontWeight: 900,
+        color: accent, background: "rgba(0,0,0,0.05)", borderRadius: 999, padding: "2px 6px",
+        whiteSpace: "nowrap",
+      }}
+      title={`${streak}-day streak on this list`}
+    >
+      <Flame size={9} /> {streak}
+    </motion.span>
+  );
+}
+
+/* Header row shared by GoalChecklist + TimeTable: centered Oval title, with the
+   streak chip and a heatmap-toggle button pinned to the right so the title stays
+   visually centered regardless of whether a widget has an active streak yet. */
+function ChecklistHeader({ title, streak, accent, showHeat, onToggleHeat }) {
+  return (
+    <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 6, flexShrink: 0, minHeight: 22 }}>
+      <Oval style={{ display: "block", margin: 0, background: C.dark, color: C.bg, borderColor: C.dark }}>{title}</Oval>
+      <div style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", gap: 4 }}>
+        <StreakChip streak={streak} accent={accent} />
+        <motion.button
+          onClick={onToggleHeat}
+          whileHover={{ scale: 1.12 }}
+          whileTap={{ scale: 0.88 }}
+          title="Show consistency heatmap"
+          style={{
+            border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
+            width: 18, height: 18, borderRadius: 6,
+            background: showHeat ? accent : "rgba(0,0,0,0.05)", color: showHeat ? "#fff" : "#8a8579",
+          }}
+        >
+          <BarChart3 size={10} />
+        </motion.button>
+      </div>
+    </div>
+  );
+}
+
+function WidgetHeatmapPanel({ history, accent }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+      style={{ overflow: "hidden", flexShrink: 0 }}
+    >
+      <div style={{ marginBottom: 6, padding: "6px 6px 4px", background: "rgba(0,0,0,0.03)", borderRadius: 6 }}>
+        <div style={{ fontSize: 8, fontWeight: 800, color: "#a39c86", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.4 }}>
+          Last 8 weeks — daily % complete
+        </div>
+        <Heatmap completionHistory={history || {}} accentColor={accent} weeks={8} cellSize={8} />
+      </div>
+    </motion.div>
   );
 }
 
@@ -7622,6 +7714,28 @@ function BTLDashboardInner() {
     return next;
   }
 
+  // Generic per-widget version of recordCompletionHistory/checkFullCompletion
+  // above — same math (today's % done, +1 streak the first time a list hits
+  // 100% in a day), just keyed by widget id instead of hardcoded to the
+  // combined daily+extry pair. No milestone confetti here on purpose: that
+  // banner stays reserved for the original combined streak so three widgets
+  // don't each fire their own popup.
+  function recordWidgetProgress(s, key, items) {
+    if (!items || !items.length) return s;
+    const done = items.filter((it) => it.done).length;
+    const pct = (done / items.length) * 100;
+    const day = todayISO();
+    s.widgetHistory = { ...(s.widgetHistory || {}), [key]: { ...((s.widgetHistory || {})[key] || {}), [day]: pct } };
+    const allDone = items.every((it) => it.done);
+    const lastMap = s.widgetLastCompletedDate || {};
+    if (allDone && lastMap[key] !== day) {
+      s.widgetLastCompletedDate = { ...lastMap, [key]: day };
+      const streaks = s.widgetStreaks || {};
+      s.widgetStreaks = { ...streaks, [key]: (streaks[key] || 0) + 1 };
+    }
+    return s;
+  }
+
   const recordCompletionHistory = (s) => {
     const total = s.dailyGoals.length + s.extryGoals.length;
     const doneDaily = s.dailyGoals.filter((g) => g.done);
@@ -7648,6 +7762,7 @@ function BTLDashboardInner() {
   const toggleGoal = (listKey) => (id) => update((s) => {
     s[listKey] = s[listKey].map((g) => g.id === id ? { ...g, done: !g.done } : g);
     recordCompletionHistory(s);
+    recordWidgetProgress(s, listKey, s[listKey]);
     return checkFullCompletion(s);
   });
   const addGoal = (listKey) => (text, meta = {}) => update((s) => {
@@ -7677,6 +7792,7 @@ function BTLDashboardInner() {
 
   const toggleTimeItem = (id) => update((s) => {
     s.timeTable = (s.timeTable || []).map((t) => t.id === id ? { ...t, done: !t.done } : t);
+    recordWidgetProgress(s, "timeTable", s.timeTable);
     return s;
   });
   const addTimeItem = (time, text) => update((s) => {
@@ -7897,9 +8013,9 @@ function BTLDashboardInner() {
   const widgetsMap = {
     bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} textStyle={state.layout.textStyles?.bigGoals} cardBg={theme.widgets.bigGoals?.bg} />,
     lifeRules: <TextList title="Life Rules" items={state.lifeRules} textStyle={state.layout.textStyles?.lifeRules} cardBg={theme.widgets.lifeRules?.bg} />,
-    dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyles?.dailyGoals} cardBg={theme.widgets.dailyGoals?.bg} />,
-    extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} cardBg={theme.widgets.extryGoals?.bg} />,
-    timeTable: <TimeTable items={state.timeTable || []} onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem} accent={C.accent} textStyle={state.layout.textStyles?.timeTable} cardBg={theme.widgets.timeTable?.bg} />,
+    dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyles?.dailyGoals} cardBg={theme.widgets.dailyGoals?.bg} streak={state.widgetStreaks?.dailyGoals || 0} history={state.widgetHistory?.dailyGoals || {}} />,
+    extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} cardBg={theme.widgets.extryGoals?.bg} streak={state.widgetStreaks?.extryGoals || 0} history={state.widgetHistory?.extryGoals || {}} />,
+    timeTable: <TimeTable items={state.timeTable || []} onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem} accent={C.accent} textStyle={state.layout.textStyles?.timeTable} cardBg={theme.widgets.timeTable?.bg} streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}} />,
     earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} onImageDrop={processImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} cardBg={theme.widgets.earnMoney?.bg} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} metrics={theme.analyticsSummary.metrics} />,
     calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} textStyle={state.layout.textStyles?.calendar} />,
