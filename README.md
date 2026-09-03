@@ -1,6 +1,28 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## ⏰ New — "Analog Clock & Alarm" widget (this update)
+## 🫧 New — Liquid cursor background (this update)
+
+The whole dashboard's background now reacts to the mouse: 4 soft, blurred
+blobs (`LiquidCursorBackground`) trail the cursor with staggered
+`framer-motion` springs (different stiffness/damping per blob), so they
+lag behind by different amounts and stretch/merge into each other like a
+liquid whenever you move the mouse — the classic "goo" look, done with a
+plain SVG `feGaussianBlur` + `feColorMatrix` filter (`#btl-liquid-goo`),
+no images or WebGL.
+
+- Sits at `zIndex: -1`, behind everything (below the existing static
+  background blobs), `pointer-events: none` throughout, so it never
+  blocks clicks/drags on widgets.
+- Mouse position is read from a `mousemove` listener on the dashboard's
+  own root panel div (not the blob layer itself, since that's
+  pointer-events:none) — works anywhere across the whole dashboard, not
+  just one widget.
+- Fades in on first mouse movement and fades out on `mouseleave` (e.g.
+  cursor leaves the panel), so it doesn't sit static/frozen mid-screen.
+- Pure `framer-motion` (`useMotionValue` + `useSpring`) + inline SVG
+  filter — no new npm installs.
+
+## ⏰ New — "Analog Clock & Alarm" widget (earlier update)
 
 A new widget — add it from **Setting → Layout → Add widget → Analog
 Clock & Alarm** (or it's already in the default layout on a fresh

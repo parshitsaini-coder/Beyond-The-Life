@@ -13,7 +13,7 @@ import {
   AlarmClock, Volume2, Play,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
-import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
+import { motion, AnimatePresence, Reorder, animate, useDragControls, useMotionValue, useSpring } from "framer-motion";
 import { createPortal } from "react-dom";
 import { useAuth, signOutUser, signInWithGoogle } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
@@ -9076,6 +9076,78 @@ function LifeStoryTab({ state, update, onClose }) {
   );
 }
 
+/* ---------------- LIQUID CURSOR BACKGROUND (this update) ----------------
+   A goo-filtered field of trailing blobs that lags behind the mouse with
+   staggered spring physics, so the blobs stretch/merge into each other
+   like liquid whenever the cursor moves — purely decorative, sits in the
+   same z-index:-1 layer as the existing background blobs, pointer-events
+   none throughout so it never intercepts clicks/drags. Mouse position is
+   read from a mousemove listener on the panel root (passed in as
+   `targetRef`) rather than on this div itself, since this div has
+   pointer-events:none and would never receive the event. */
+function LiquidCursorBackground({ targetRef, accent = "#fca311", accent2 = "#98c1d9" }) {
+  const mx = useMotionValue(null);
+  const my = useMotionValue(null);
+  const blobSprings = [
+    { stiffness: 220, damping: 26, size: 150 },
+    { stiffness: 120, damping: 24, size: 190 },
+    { stiffness: 70, damping: 22, size: 230 },
+    { stiffness: 40, damping: 20, size: 170 },
+  ].map((cfg) => ({
+    x: useSpring(mx, { stiffness: cfg.stiffness, damping: cfg.damping }),
+    y: useSpring(my, { stiffness: cfg.stiffness, damping: cfg.damping }),
+    size: cfg.size,
+  }));
+  const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    const el = targetRef.current;
+    if (!el) return;
+    const handleMove = (e) => {
+      const rect = el.getBoundingClientRect();
+      mx.set(e.clientX - rect.left);
+      my.set(e.clientY - rect.top);
+      setActive(true);
+    };
+    const handleLeave = () => setActive(false);
+    el.addEventListener("mousemove", handleMove);
+    el.addEventListener("mouseleave", handleLeave);
+    return () => {
+      el.removeEventListener("mousemove", handleMove);
+      el.removeEventListener("mouseleave", handleLeave);
+    };
+  }, [targetRef, mx, my]);
+
+  return (
+    <div style={{ position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none", overflow: "hidden" }}>
+      <svg width="0" height="0" style={{ position: "absolute" }}>
+        <defs>
+          <filter id="btl-liquid-goo">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur" />
+            <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9" result="goo" />
+          </filter>
+        </defs>
+      </svg>
+      <motion.div
+        style={{ position: "absolute", inset: 0, filter: "url(#btl-liquid-goo)" }}
+        animate={{ opacity: active ? 1 : 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+      >
+        {blobSprings.map((b, i) => (
+          <motion.div
+            key={i}
+            style={{
+              position: "absolute", width: b.size, height: b.size, borderRadius: "50%",
+              left: b.x, top: b.y, x: "-50%", y: "-50%",
+              background: `radial-gradient(circle, ${i % 2 === 0 ? accent : accent2}${i === 0 ? "70" : "40"}, transparent 72%)`,
+            }}
+          />
+        ))}
+      </motion.div>
+    </div>
+  );
+}
+
 function BTLDashboardInner() {
   const { user: fbUser } = useAuth();
   const [state, setState] = useState(null);
@@ -9095,6 +9167,7 @@ function BTLDashboardInner() {
   const incomingFriendReqCount = useIncomingFriendRequestCount(fbUser?.uid);
   const fileRef = useRef(null);
   const loaded = useRef(false);
+  const panelRef = useRef(null); // panel root — LiquidCursorBackground listens for mousemove on this
 
   useEffect(() => {
     if (!fbUser) return;
@@ -9559,13 +9632,17 @@ function BTLDashboardInner() {
 
   return (
     <DashboardThemeCtx.Provider value={dashTheme}>
-    <div style={{
+    <div ref={panelRef} style={{
       fontFamily: "Inter, system-ui, sans-serif", background: dashTheme.bg, color: dashTheme.text,
       height: "100%", maxHeight: "100%", borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
       border: `1px solid #ece7d8`, fontSize: 11, boxSizing: "border-box",
       display: "flex", flexDirection: "column",
       zoom: "80%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "70%" for smaller, "90%" for bigger.
     }}>
+      {/* ---- Liquid cursor background (this update) — goo-filtered blobs
+          that trail the mouse across the whole dashboard, sitting behind
+          the existing static background blobs below. */}
+      <LiquidCursorBackground targetRef={panelRef} accent={C.accent} accent2={C.blue} />
       {/* ---- Background blobs (this update) ---- the glass cards' blur
           was invisible before because they sat on a flat single-color
           background — a blur needs varied color behind it to actually
