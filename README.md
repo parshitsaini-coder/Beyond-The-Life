@@ -1,6 +1,28 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 💰 Fix — "Total Earn/Spend Money life" pills washed out on light backgrounds (this update)
+## 🌍 New — "Earthquake" jitter on checkbox tick (this update)
+
+Ticking a checkbox (Daily Goals, Extry Goals, or Time Table) previously
+only triggered a color flash / scale pop. Now the whole row around the
+checkbox — the checkbox itself, the Time Table rail/line, and the
+item's words — briefly "quakes": a fast, decaying left-right/up-down
+jitter with a touch of rotation, scoped to roughly the area circled in
+the reference screenshot around the checkbox.
+
+- New shared `quakeAnimate(isCelebrating)` helper (next to `GoalChecklist`)
+  returns a `framer-motion` keyframe `animate` object — 6-step decaying
+  x/y/rotate jitter over ~0.45s — with the peak displacement derived
+  from `QUAKE_UNIT` (14px, the checkbox's own width/height) so the shake
+  reads as scaled to the checkbox, not an arbitrary wobble.
+- Wired into the same `isCelebrating` flag both checklist types already
+  use for their "just completed" flash/burst, so it fires automatically
+  right when a box is ticked — no new state, no new Firestore fields.
+- `GoalChecklist`'s draggable row content (`Daily Goals` / `Extry Goals`)
+  and `TimeTableRow`'s content row (checkbox + rail + time + text) both
+  now render as `motion.div` with this `animate` applied, so the quake
+  sweeps through everything sitting in that row together.
+
+## 💰 Fix — "Total Earn/Spend Money life" pills washed out on light backgrounds (earlier update)
 
 The two header pills next to the logo (**Total Earn Money life** /
 **Total Spend Money life**) used `opacity: 0.55` for their "coming soon"

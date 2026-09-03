@@ -1431,6 +1431,27 @@ function EmojiPickerPortal({ anchorRect, onPick, onClose }) {
   );
 }
 
+/* ---------------- Checkbox-tick "earthquake" jitter (this update) ----------------
+   When a checkbox is ticked, the row around it — checkbox, dot/rail, and
+   the item's words — should visibly "quake" for a beat instead of just
+   fading in a flash. Amplitude is derived from the checkbox's own size
+   (14px) so the shake reads as coming from that exact spot, not an
+   arbitrary wobble. Shared by GoalChecklist (Daily/Extry Goals) and
+   TimeTable, since both already drive their per-row "just completed"
+   state through the same `isCelebrating` flag. Settles out (decaying
+   amplitude) rather than stopping abruptly. */
+const QUAKE_UNIT = 14; // matches the checkbox's width/height
+function quakeAnimate(isCelebrating) {
+  if (!isCelebrating) return { x: 0, y: 0, rotate: 0 };
+  const a = QUAKE_UNIT * 0.26; // ~3.6px peak displacement, scaled to checkbox size
+  return {
+    x: [0, -a, a * 0.85, -a * 0.6, a * 0.35, -a * 0.15, 0],
+    y: [0, a * 0.4, -a * 0.3, a * 0.2, -a * 0.1, a * 0.05, 0],
+    rotate: [0, -1.1, 1, -0.6, 0.3, -0.1, 0],
+    transition: { duration: 0.45, ease: "easeInOut", times: [0, 0.18, 0.36, 0.54, 0.7, 0.85, 1] },
+  };
+}
+
 function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent, textStyle, cardBg, streak = 0, history = {} }) {
   const ts = normalizeTextStyle(textStyle);
   const itemFontSize = Math.round(11 * ts.scale);
@@ -1577,6 +1598,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                     if (!g.done && offset > 60) handleToggle(g.id, g.done);
                     else if (g.done && offset < -60) handleToggle(g.id, g.done);
                   }}
+                  animate={quakeAnimate(isCelebrating)}
                   style={{
                     display: "flex", alignItems: "center", gap: 6, padding: "6px 4px 6px 6px", position: "relative", zIndex: 1,
                     color: g.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
@@ -1971,10 +1993,12 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
       }}
     >
       <AnimatePresence>{isCelebrating && <TimeCheckBurst />}</AnimatePresence>
-      <div style={{
-        display: "flex", alignItems: "center", gap: 5, padding: "6px 4px 6px 2px", position: "relative",
-        color: t.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
-      }}>
+      <motion.div
+        animate={quakeAnimate(isCelebrating)}
+        style={{
+          display: "flex", alignItems: "center", gap: 5, padding: "6px 4px 6px 2px", position: "relative",
+          color: t.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
+        }}>
         <TimeTableRail
           status={status} isFirst={isFirst} isLast={isLast} accent={accent} isCelebrating={isCelebrating}
           onPointerDown={(e) => dragControls.start(e)}
@@ -2029,7 +2053,7 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
         >
           <Trash2 size={11} style={{ color: "#d8d2bf", cursor: "pointer" }} onClick={() => onRemove(t.id)} />
         </motion.span>
-      </div>
+      </motion.div>
     </Reorder.Item>
   );
 }
