@@ -44,8 +44,14 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
    dashboards — like a desktop app, drag a widget's bottom-right corner
    to resize it to any size you want (not locked to 3 fixed presets).
    Each widget's size lives in state.layout.sizes[id] as { w, h }:
-     - w = column span out of a GRID_COLS-column grid (integer, snapped
-       while dragging so widgets always stay aligned to the grid)
+     - w = width as a percentage of the grid's own width (1–100, whole
+       numbers), clamped to MIN_WIDGET_W..GRID_COLS. This is a fine,
+       100-unit grid (`repeat(GRID_COLS, 1fr)`), so horizontal resize
+       feels just as free-form/continuous as vertical resize does —
+       every drag pixel moves the width by roughly 1%, not in big
+       fixed-fraction jumps — while still staying responsive (widths
+       are always a % of the container, so they reflow correctly on
+       any screen size).
      - h = height in px (free-form, clamped between MIN_WIDGET_H and
        MAX_WIDGET_H)
    Order is just an array of ids; dragging in the Layout editor
@@ -62,7 +68,10 @@ const WIDGETS = [
   { id: "analyticsSummary", label: "Analytics Summary" },
   { id: "calendar", label: "Calendar" },
 ];
-const GRID_COLS = 6;          // grid columns widget widths snap to
+const GRID_COLS = 100;        // fine-grained width grid (1–100 = % of container) — free-form, continuous horizontal resize
+const OLD_GRID_COLS = 6;      // pre-update width resolution, kept only so normalizeSize can rescale old saved layouts
+const MIN_WIDGET_W = 15;      // % — minimum free-form width, so a widget can't be dragged down to an unusable sliver
+const DEFAULT_WIDGET_W = 50;  // % — fallback width (equivalent to the old default of "3 / 6 columns")
 const MIN_WIDGET_H = 120;     // px — minimum free-form height
 const MAX_WIDGET_H = 1200;    // px — maximum free-form height (raised so widgets can be stretched much taller)
 const GRID_GAP = 12;          // px — gap between widgets, both axes
@@ -80,8 +89,9 @@ function rowSpanForHeight(h) {
   return Math.max(1, Math.ceil((h + GRID_GAP) / (ROW_UNIT + GRID_GAP)));
 }
 /* Legacy "sm" | "md" | "lg" strings from before free-form resize —
-   kept only so ensureLayoutDefaults can migrate old saved layouts. */
-const LEGACY_SIZE_SPAN = { sm: 2, md: 3, lg: 6 };
+   kept only so ensureLayoutDefaults can migrate old saved layouts.
+   Values are already expressed on the current 1–100 (%) width scale. */
+const LEGACY_SIZE_SPAN = { sm: 33, md: 50, lg: 100 };
 const LEGACY_SIZE_HEIGHT = { sm: 150, md: 215, lg: 260 };
 
 /* ---- Text style controls (Customize Layout → Text Style) ----
@@ -312,9 +322,9 @@ const WIDGET_COLOR_OPTIONS = [
   { id: "#252422", label: "Dark", swatch: "#252422" },
 ];
 const WIDGET_SIZE_PRESETS = {
-  sm: { w: 2, h: 150 },
-  md: { w: 3, h: 215 },
-  lg: { w: 6, h: 320 },
+  sm: { w: 33, h: 150 },
+  md: { w: 50, h: 215 },
+  lg: { w: 100, h: 320 },
 };
 /* ---- One-click Panel Theme presets (this update) ----
    6 ready-made color patterns. Clicking one applies its bg + text pair
@@ -457,9 +467,9 @@ const DashboardThemeCtx = createContext({ bg: C.bg, text: C.text });
 const DEFAULT_LAYOUT = {
   order: WIDGETS.map((w) => w.id),
   sizes: {
-    bigGoals: { w: 3, h: 172 }, lifeRules: { w: 3, h: 172 }, dailyGoals: { w: 3, h: 215 }, extryGoals: { w: 3, h: 215 },
-    timeTable: { w: 3, h: 260 },
-    earnMoney: { w: 3, h: 240 }, analyticsSummary: { w: 6, h: 260 }, calendar: { w: 3, h: 300 },
+    bigGoals: { w: 50, h: 172 }, lifeRules: { w: 50, h: 172 }, dailyGoals: { w: 50, h: 215 }, extryGoals: { w: 50, h: 215 },
+    timeTable: { w: 50, h: 260 },
+    earnMoney: { w: 50, h: 240 }, analyticsSummary: { w: 100, h: 260 }, calendar: { w: 50, h: 300 },
   },
   pinned: { analyticsSummary: false },
   hidden: {},
@@ -478,17 +488,26 @@ function defaultLayout() {
    - accepts old "sm"|"md"|"lg" strings (pre-free-form-resize saves)
      and maps them through the legacy tables above
    - accepts { w, h } objects and clamps/rounds them into range, so a
-     corrupted or hand-edited value can never break the grid layout */
+     corrupted or hand-edited value can never break the grid layout
+   - migrates old free-form saves too: before this update, `w` was a
+     1–6 column span (out of a 6-column grid). Since the new free-form
+     width scale's minimum (MIN_WIDGET_W) is well above 6, any stored
+     value that small is unambiguously in the old scale — it gets
+     rescaled onto the new 1–100 (%) scale instead of collapsing every
+     existing widget down to a razor-thin sliver. */
 function normalizeSize(size) {
   if (typeof size === "string") {
-    return { w: LEGACY_SIZE_SPAN[size] || 3, h: LEGACY_SIZE_HEIGHT[size] || 215 };
+    return { w: LEGACY_SIZE_SPAN[size] || DEFAULT_WIDGET_W, h: LEGACY_SIZE_HEIGHT[size] || 215 };
   }
   if (size && typeof size === "object") {
-    const w = Math.min(GRID_COLS, Math.max(1, Math.round(Number(size.w) || 3)));
+    let rawW = Number(size.w);
+    if (!Number.isFinite(rawW) || rawW <= 0) rawW = DEFAULT_WIDGET_W;
+    if (rawW <= OLD_GRID_COLS) rawW = (rawW / OLD_GRID_COLS) * GRID_COLS; // migrate pre-update column span → %
+    const w = Math.min(GRID_COLS, Math.max(MIN_WIDGET_W, Math.round(rawW)));
     const h = Math.min(MAX_WIDGET_H, Math.max(MIN_WIDGET_H, Math.round(Number(size.h) || 215)));
     return { w, h };
   }
-  return { w: 3, h: 215 };
+  return { w: DEFAULT_WIDGET_W, h: 215 };
 }
 /* Backfills missing fields on load — handles old saved states that
    predate this feature (string sizes get migrated to { w, h } via
@@ -5617,15 +5636,21 @@ function MoveHandle({ onPointerDown, onPointerMove, onPointerUp, dragging }) {
 
 /* ---------------- SINGLE RESIZABLE WIDGET TILE ----------------
    Wraps one widget in the grid. While `editable` (Layout tab), shows:
-   - a corner ResizeHandle (bottom-right) you can drag: width snaps
-     to the nearest grid column (out of GRID_COLS), height is
-     free-form px clamped between MIN_WIDGET_H and MAX_WIDGET_H.
+   - a corner ResizeHandle (bottom-right) you can drag: width is
+     free-form (1%–100% of the grid, clamped to a MIN_WIDGET_W floor),
+     height is free-form px clamped between MIN_WIDGET_H and
+     MAX_WIDGET_H — both axes now resize continuously, one drag-pixel
+     at a time, and everything else reflows around the change.
    - a MoveHandle (top-left) you can drag-and-drop directly onto
      another widget to reorder them (in addition to the reorder list
      above, in case the person would rather drag the actual widgets).
    Resize is live (the tile visibly grows/shrinks as you drag, other
    widgets reflow around it) and only commits to state.layout on
    pointerup, via onResize(id, {w,h}) / onDropOnto(draggedId, overId). */
+/* NOTE on ResizableWidgetTile: width now resizes exactly like height —
+   continuously, one drag-pixel at a time — because GRID_COLS is a fine
+   100-unit (%) grid instead of a coarse 6-column one. See handleResizeMove
+   below and the GRID_COLS/MIN_WIDGET_W comments above. */
 function ResizableWidgetTile({ id, index, size, editable, gridRef, onResize, onDropOnto, children }) {
   const [liveSize, setLiveSize] = useState(null);  // live resize preview, null = not resizing
   const [dragPos, setDragPos] = useState(null);     // live reorder drag offset {x,y}, null = not dragging
@@ -5654,9 +5679,13 @@ function ResizableWidgetTile({ id, index, size, editable, gridRef, onResize, onD
     if (!d || e.pointerId !== d.pointerId) return;
     const deltaX = e.clientX - d.startX;
     const deltaY = e.clientY - d.startY;
-    // Snap width to the nearest 1/GRID_COLS of the grid's pixel width.
+    // Width follows the pointer continuously — GRID_COLS=100 means each
+    // grid unit is ~1% of the container's width, so this reads as smooth,
+    // free-form resizing (same feel as height) rather than snapping in
+    // big fixed jumps. Only clamped to a sane minimum so a widget can't
+    // be dragged down to an unusably thin sliver.
     const rawFraction = d.startW / GRID_COLS + deltaX / d.containerWidth;
-    const w = Math.min(GRID_COLS, Math.max(1, Math.round(rawFraction * GRID_COLS)));
+    const w = Math.min(GRID_COLS, Math.max(MIN_WIDGET_W, Math.round(rawFraction * GRID_COLS)));
     // Height stays free-form (px), just clamped to a sane range.
     const h = Math.min(MAX_WIDGET_H, Math.max(MIN_WIDGET_H, Math.round(d.startH + deltaY)));
     setLiveSize({ w, h });
@@ -5898,7 +5927,7 @@ function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
                 <span style={{
                   border: "1px solid #ddd6c4", background: "#fff", color: "#8a8579", borderRadius: 999,
                   padding: "3px 9px", fontSize: 9, fontWeight: 700, minWidth: 56, textAlign: "center",
-                }}>{size.w}/{GRID_COLS} col · {size.h}px</span>
+                }}>{size.w}% wide · {size.h}px tall</span>
               </Reorder.Item>
             );
           })}
@@ -5918,7 +5947,7 @@ function LayoutEditor({ layout, widgets, onChange, onReset, onClose }) {
         <div style={{ fontSize: 10, color: "#8a8579", margin: "16px 0 8px", lineHeight: 1.4, display: "flex", alignItems: "center", gap: 5 }}>
           <Maximize2 size={11} style={{ flexShrink: 0 }} />
           Drag the <Move size={10} style={{ verticalAlign: -1 }} /> top-left grip and drop a widget onto another one to
-          reorder them, or drag the ⋰ bottom-right corner to resize freely — width snaps to the grid, height is free-form (120–500px).
+          reorder them, or drag the ⋰ bottom-right corner to resize freely in any direction — both width (15%–100%) and height (120–1200px) are free-form, and every other widget reflows around it automatically.
         </div>
         <WidgetGrid layout={layout} widgets={widgets} editable onResize={onWidgetResize} onReorder={(newOrder) => onChange((l) => ({ ...l, order: newOrder }))} />
       </div>
