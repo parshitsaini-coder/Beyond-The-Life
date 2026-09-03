@@ -1953,58 +1953,47 @@ function AnalogClockWidget({ alarms = [], ringtoneId, onSetAlarm, onRemoveAlarm,
   const [justSet, setJustSet] = useState(null); // "HH:MM" (24h) confirmation flash
   const svgRef = useRef(null);
 
-  // ---- Real-time tick, hardened against the two things that make analog
-  // clocks in web apps look "stuck": (1) browsers throttle/suspend a plain
-  // setInterval on a backgrounded tab, so switching back showed a frozen
-  // hand until it "caught up" — fixed by re-syncing to the real Date the
-  // instant the tab/window becomes visible/focused again, in addition to
-  // the normal tick. (2) drifting a bit late/early per tick over time —
-  // fixed by scheduling each next tick from the actual ms-until-next-second
-  // (via requestAnimationFrame + Date.now()) instead of a fixed 1000ms
-  // setInterval, so the hands stay locked to the real system clock. ----
+  // ---- Real-time tick: a plain 1s interval updates `now`, which every
+  // hand's position is computed straight from on each render (see below).
+  // Also force an immediate resync when the tab/window regains focus, since
+  // a backgrounded tab's timers get throttled and can lag behind briefly. */
   useEffect(() => {
-    let rafId = null;
-    let timeoutId = null;
-
-    const tick = () => {
-      setNow(new Date());
-      const msIntoSecond = Date.now() % 1000;
-      timeoutId = setTimeout(() => { rafId = requestAnimationFrame(tick); }, 1000 - msIntoSecond);
-    };
-    tick();
-
+    const id = setInterval(() => setNow(new Date()), 1000);
     const resync = () => { if (document.visibilityState === "visible") setNow(new Date()); };
     document.addEventListener("visibilitychange", resync);
     window.addEventListener("focus", resync);
-
     return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (rafId) cancelAnimationFrame(rafId);
+      clearInterval(id);
       document.removeEventListener("visibilitychange", resync);
       window.removeEventListener("focus", resync);
     };
   }, []);
 
   const sec = now.getSeconds(), min = now.getMinutes(), hr = now.getHours();
-  // ---- Continuously-increasing angles (never wrap back to 0) so a
-  // motion.line "animate" never spins backward through the whole dial —
-  // e.g. seconds going 59 -> 0 used to jump 354deg -> 0deg, which
-  // framer-motion animated as a full reverse sweep instead of one tiny
-  // forward tick. Each hand's ref tracks its own running total and only
-  // ever adds forward (mod-360-aware) delta, so the visible motion is
-  // always a small forward nudge, same as a real watch. ----
-  const secRef = useRef(0), minRef = useRef(0), hrRef = useRef(0);
-  const advance = (ref, rawAngle) => {
-    const prevMod = ((ref.current % 360) + 360) % 360;
-    let delta = rawAngle - prevMod;
-    if (delta < -1) delta += 360; // went backward past 0 -> unwrap forward instead
-    ref.current += delta;
-    return ref.current;
-  };
-  const secAngle = advance(secRef, sec * 6);
-  const minAngle = advance(minRef, min * 6 + sec * 0.1);
-  const hrAngle = advance(hrRef, (hr % 12) * 30 + min * 0.5);
+  const secAngle = sec * 6;
+  const minAngle = min * 6 + sec * 0.1;
+  const hrAngle = (hr % 12) * 30 + min * 0.5;
   const CX = 100, CY = 100, R = 88;
+
+  // ---- Hand endpoints computed directly, in plain trig, from `now` on
+  // every render — no framer-motion "animate"/rotate + CSS transform-origin
+  // in between. That indirection was the actual freeze: it hands control of
+  // the on-screen position to a separate animation-state object that only
+  // *starts* moving when framer-motion's own effect notices the target
+  // changed, and a re-render elsewhere (Firestore autosave, drag state,
+  // etc.) landing at the wrong moment could leave that animation never
+  // kicked off, so the needle just sat at its last position while the
+  // digital readout kept ticking. Plotting (x,y) straight from the angle
+  // every render removes that middle-man entirely — the hand is always
+  // exactly where `now` says it should be, full stop. */
+  const handPoint = (angleDeg, r) => {
+    const rad = (angleDeg * Math.PI) / 180;
+    return { x: CX + Math.sin(rad) * r, y: CY - Math.cos(rad) * r };
+  };
+  const hrTip = handPoint(hrAngle, 42);
+  const minTip = handPoint(minAngle, 62);
+  const secTip = handPoint(secAngle, 76);
+  const secTail = handPoint(secAngle + 180, 14);
 
   const angleFromEvent = (e) => {
     if (!svgRef.current) return null;
@@ -2087,12 +2076,9 @@ function AnalogClockWidget({ alarms = [], ringtoneId, onSetAlarm, onRemoveAlarm,
             const x = CX + Math.sin(rad) * r1, y = CY - Math.cos(rad) * r1;
             return <circle key={a.id} cx={x} cy={y} r="4" fill={accent} stroke="#fff" strokeWidth="1" />;
           })}
-          <motion.line x1={CX} y1={CY} x2={CX} y2={CY - 42} stroke={textColor} strokeWidth="4.5" strokeLinecap="round"
-            style={{ originX: "100px", originY: "100px" }} animate={{ rotate: hrAngle }} transition={{ type: "tween", duration: 0.25 }} />
-          <motion.line x1={CX} y1={CY} x2={CX} y2={CY - 62} stroke={textColor} strokeWidth="3" strokeLinecap="round"
-            style={{ originX: "100px", originY: "100px" }} animate={{ rotate: minAngle }} transition={{ type: "tween", duration: 0.25 }} />
-          <motion.line x1={CX} y1={CY + 14} x2={CX} y2={CY - 76} stroke={accent} strokeWidth="1.4" strokeLinecap="round"
-            style={{ originX: "100px", originY: "100px" }} animate={{ rotate: secAngle }} transition={{ type: "tween", duration: 0.2 }} />
+          <line x1={CX} y1={CY} x2={hrTip.x} y2={hrTip.y} stroke={textColor} strokeWidth="4.5" strokeLinecap="round" />
+          <line x1={CX} y1={CY} x2={minTip.x} y2={minTip.y} stroke={textColor} strokeWidth="3" strokeLinecap="round" />
+          <line x1={secTail.x} y1={secTail.y} x2={secTip.x} y2={secTip.y} stroke={accent} strokeWidth="1.4" strokeLinecap="round" />
           <circle cx={CX} cy={CY} r="4.5" fill={accent} stroke={textColor} strokeWidth="1" />
         </svg>
 
