@@ -8524,6 +8524,19 @@ function BTLDashboardInner() {
       display: "flex", flexDirection: "column",
       zoom: "80%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "70%" for smaller, "90%" for bigger.
     }}>
+      {/* ---- Background blobs (this update) ---- the glass cards' blur
+          was invisible before because they sat on a flat single-color
+          background — a blur needs varied color behind it to actually
+          show. These are just soft, absolutely-positioned radial-gradient
+          circles at z-index -1 (so they render behind every card, never
+          intercept clicks, and stay clipped by this panel's own
+          overflow:hidden) that give the glass cards something real to
+          frost. Purely decorative — no state, no new dependencies. */}
+      <div style={{ position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: "-12%", left: "-6%", width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle, rgba(252,163,17,0.32), transparent 70%)", filter: "blur(6px)" }} />
+        <div style={{ position: "absolute", bottom: "-16%", right: "-8%", width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle, rgba(152,193,217,0.32), transparent 70%)", filter: "blur(6px)" }} />
+        <div style={{ position: "absolute", top: "38%", left: "42%", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(224,122,95,0.22), transparent 70%)", filter: "blur(6px)" }} />
+      </div>
       <style>{`
         .btl-scroll::-webkit-scrollbar { width: 6px; }
         .btl-scroll::-webkit-scrollbar-thumb { background: #ddd6c4; border-radius: 4px; }
