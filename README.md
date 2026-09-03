@@ -1,26 +1,34 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🫧 New — Liquid cursor background (this update)
+## 🌊 New — Full mouse-follow "Liquid Glass" dashboard background (this update)
 
-The whole dashboard's background now reacts to the mouse: 4 soft, blurred
-blobs (`LiquidCursorBackground`) trail the cursor with staggered
-`framer-motion` springs (different stiffness/damping per blob), so they
-lag behind by different amounts and stretch/merge into each other like a
-liquid whenever you move the mouse — the classic "goo" look, done with a
-plain SVG `feGaussianBlur` + `feColorMatrix` filter (`#btl-liquid-goo`),
-no images or WebGL.
+The whole dashboard background is now an animated, morphing liquid-glass
+wash instead of 3 static blurred circles — and it reacts to the cursor.
 
-- Sits at `zIndex: -1`, behind everything (below the existing static
-  background blobs), `pointer-events: none` throughout, so it never
-  blocks clicks/drags on widgets.
-- Mouse position is read from a `mousemove` listener on the dashboard's
-  own root panel div (not the blob layer itself, since that's
-  pointer-events:none) — works anywhere across the whole dashboard, not
-  just one widget.
-- Fades in on first mouse movement and fades out on `mouseleave` (e.g.
-  cursor leaves the panel), so it doesn't sit static/frozen mid-screen.
-- Pure `framer-motion` (`useMotionValue` + `useSpring`) + inline SVG
-  filter — no new npm installs.
+- **Cursor-follower blobs** — two blobs (one tight/fast, one bigger/lazier)
+  glide toward the mouse using `framer-motion` springs (`useMotionValue` +
+  `useSpring`) on the dashboard panel's mouse position. The lazier spring
+  trails slightly behind the faster one, so the blob "stretches" toward
+  wherever the cursor is heading rather than snapping straight to it —
+  that lag is what reads as liquid instead of a plain glow-on-cursor.
+- **Ambient blobs keep drifting** even with the mouse still — 3 background
+  blobs continuously morph their `border-radius` (`btlLiquidMorph`
+  keyframes) and drift (`btlLiquidFloatA/B/C`) on independent, offset
+  durations so the surface never looks frozen.
+- **SVG "goo" filter** (`feGaussianBlur` + `feColorMatrix`) wraps every
+  blob so overlapping ones melt into one another instead of showing hard,
+  separate circles — the classic liquid-blob merge effect — followed by a
+  `backdrop-filter: blur(38px) saturate(150%)` haze layer on top so it
+  reads as frosted glass, not colored spotlights.
+- Mouse position is tracked relative to the dashboard panel itself
+  (`dashboardRef.getBoundingClientRect()`), not the window, so it tracks
+  correctly regardless of the panel's `zoom: 80%` or where it sits on the
+  page.
+- Zero new dependencies (pure `framer-motion` + inline SVG/CSS, same as
+  the rest of the app's motion work); purely decorative — still
+  `pointer-events: none` and sits at `zIndex: -1` behind every widget, so
+  it never intercepts clicks and every existing glass card still has rich
+  color behind it to frost.
 
 ## ⏰ New — "Analog Clock & Alarm" widget (earlier update)
 

@@ -13,7 +13,7 @@ import {
   AlarmClock, Volume2, Play,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
-import { motion, AnimatePresence, Reorder, animate, useDragControls, useMotionValue, useSpring } from "framer-motion";
+import { motion, AnimatePresence, Reorder, animate, useDragControls, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { createPortal } from "react-dom";
 import { useAuth, signOutUser, signInWithGoogle } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
@@ -9076,78 +9076,6 @@ function LifeStoryTab({ state, update, onClose }) {
   );
 }
 
-/* ---------------- LIQUID CURSOR BACKGROUND (this update) ----------------
-   A goo-filtered field of trailing blobs that lags behind the mouse with
-   staggered spring physics, so the blobs stretch/merge into each other
-   like liquid whenever the cursor moves — purely decorative, sits in the
-   same z-index:-1 layer as the existing background blobs, pointer-events
-   none throughout so it never intercepts clicks/drags. Mouse position is
-   read from a mousemove listener on the panel root (passed in as
-   `targetRef`) rather than on this div itself, since this div has
-   pointer-events:none and would never receive the event. */
-function LiquidCursorBackground({ targetRef, accent = "#fca311", accent2 = "#98c1d9" }) {
-  const mx = useMotionValue(null);
-  const my = useMotionValue(null);
-  const blobSprings = [
-    { stiffness: 220, damping: 26, size: 150 },
-    { stiffness: 120, damping: 24, size: 190 },
-    { stiffness: 70, damping: 22, size: 230 },
-    { stiffness: 40, damping: 20, size: 170 },
-  ].map((cfg) => ({
-    x: useSpring(mx, { stiffness: cfg.stiffness, damping: cfg.damping }),
-    y: useSpring(my, { stiffness: cfg.stiffness, damping: cfg.damping }),
-    size: cfg.size,
-  }));
-  const [active, setActive] = useState(false);
-
-  useEffect(() => {
-    const el = targetRef.current;
-    if (!el) return;
-    const handleMove = (e) => {
-      const rect = el.getBoundingClientRect();
-      mx.set(e.clientX - rect.left);
-      my.set(e.clientY - rect.top);
-      setActive(true);
-    };
-    const handleLeave = () => setActive(false);
-    el.addEventListener("mousemove", handleMove);
-    el.addEventListener("mouseleave", handleLeave);
-    return () => {
-      el.removeEventListener("mousemove", handleMove);
-      el.removeEventListener("mouseleave", handleLeave);
-    };
-  }, [targetRef, mx, my]);
-
-  return (
-    <div style={{ position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none", overflow: "hidden" }}>
-      <svg width="0" height="0" style={{ position: "absolute" }}>
-        <defs>
-          <filter id="btl-liquid-goo">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur" />
-            <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9" result="goo" />
-          </filter>
-        </defs>
-      </svg>
-      <motion.div
-        style={{ position: "absolute", inset: 0, filter: "url(#btl-liquid-goo)" }}
-        animate={{ opacity: active ? 1 : 0 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-      >
-        {blobSprings.map((b, i) => (
-          <motion.div
-            key={i}
-            style={{
-              position: "absolute", width: b.size, height: b.size, borderRadius: "50%",
-              left: b.x, top: b.y, x: "-50%", y: "-50%",
-              background: `radial-gradient(circle, ${i % 2 === 0 ? accent : accent2}${i === 0 ? "70" : "40"}, transparent 72%)`,
-            }}
-          />
-        ))}
-      </motion.div>
-    </div>
-  );
-}
-
 function BTLDashboardInner() {
   const { user: fbUser } = useAuth();
   const [state, setState] = useState(null);
@@ -9167,7 +9095,33 @@ function BTLDashboardInner() {
   const incomingFriendReqCount = useIncomingFriendRequestCount(fbUser?.uid);
   const fileRef = useRef(null);
   const loaded = useRef(false);
-  const panelRef = useRef(null); // panel root — LiquidCursorBackground listens for mousemove on this
+
+  /* ---- Liquid Glass mouse-follow background (this update) ----
+     Raw cursor position (0..1 fraction of the dashboard panel) feeds a
+     springy, laggy follower so the big "liquid" blob glides toward the
+     cursor instead of snapping to it — that lag/overshoot is what reads
+     as "liquid" rather than a cheap glow-on-cursor effect. */
+  const dashboardRef = useRef(null);
+  const rawMouseX = useMotionValue(0.5);
+  const rawMouseY = useMotionValue(0.5);
+  const liquidX = useSpring(rawMouseX, { stiffness: 55, damping: 18, mass: 1.1 });
+  const liquidY = useSpring(rawMouseY, { stiffness: 55, damping: 18, mass: 1.1 });
+  // A second, lazier spring trailing slightly behind the first gives the
+  // blob a soft "stretch" between where it is and where it's headed.
+  const liquidTrailX = useSpring(rawMouseX, { stiffness: 26, damping: 20, mass: 1.4 });
+  const liquidTrailY = useSpring(rawMouseY, { stiffness: 26, damping: 20, mass: 1.4 });
+  const liquidLeft = useTransform(liquidX, (v) => `${v * 100}%`);
+  const liquidTop = useTransform(liquidY, (v) => `${v * 100}%`);
+  const liquidTrailLeft = useTransform(liquidTrailX, (v) => `${v * 100}%`);
+  const liquidTrailTop = useTransform(liquidTrailY, (v) => `${v * 100}%`);
+  const handleDashboardMouseMove = useCallback((e) => {
+    const el = dashboardRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    rawMouseX.set((e.clientX - rect.left) / rect.width);
+    rawMouseY.set((e.clientY - rect.top) / rect.height);
+  }, [rawMouseX, rawMouseY]);
 
   useEffect(() => {
     if (!fbUser) return;
@@ -9632,31 +9586,68 @@ function BTLDashboardInner() {
 
   return (
     <DashboardThemeCtx.Provider value={dashTheme}>
-    <div ref={panelRef} style={{
+    <div ref={dashboardRef} onMouseMove={handleDashboardMouseMove} style={{
       fontFamily: "Inter, system-ui, sans-serif", background: dashTheme.bg, color: dashTheme.text,
       height: "100%", maxHeight: "100%", borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
       border: `1px solid #ece7d8`, fontSize: 11, boxSizing: "border-box",
       display: "flex", flexDirection: "column",
       zoom: "80%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "70%" for smaller, "90%" for bigger.
     }}>
-      {/* ---- Liquid cursor background (this update) — goo-filtered blobs
-          that trail the mouse across the whole dashboard, sitting behind
-          the existing static background blobs below. */}
-      <LiquidCursorBackground targetRef={panelRef} accent={C.accent} accent2={C.blue} />
-      {/* ---- Background blobs (this update) ---- the glass cards' blur
-          was invisible before because they sat on a flat single-color
-          background — a blur needs varied color behind it to actually
-          show. These are just soft, absolutely-positioned radial-gradient
-          circles at z-index -1 (so they render behind every card, never
-          intercept clicks, and stay clipped by this panel's own
-          overflow:hidden) that give the glass cards something real to
-          frost. Purely decorative — no state, no new dependencies. */}
+      {/* ---- Liquid Glass animated background (this update) ----
+          Full-panel "liquid glass" wash: a handful of soft, blurred,
+          slow-morphing color blobs sit behind every card so the glass
+          cards' backdrop-blur always has something rich to frost, plus
+          one bigger blob that actively glides toward the mouse (via the
+          liquidX/Y springs above) so the whole background feels alive
+          and reacts to the cursor instead of just sitting static.
+          A shared SVG "goo" filter makes overlapping blobs melt into
+          each other rather than showing hard, separate circles — that
+          merge is what reads as "liquid" rather than plain floating
+          blurred dots. Purely decorative: z-index -1, pointer-events
+          none, clipped by this panel's own overflow:hidden. */}
+      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
+        <filter id="btl-liquid-goo">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="16" result="btl-goo-blur" />
+          <feColorMatrix in="btl-goo-blur" mode="matrix"
+            values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9" result="btl-goo-sharp" />
+          <feBlend in="SourceGraphic" in2="btl-goo-sharp" />
+        </filter>
+      </svg>
       <div style={{ position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: "-12%", left: "-6%", width: 320, height: 320, borderRadius: "50%", background: "radial-gradient(circle, rgba(252,163,17,0.32), transparent 70%)", filter: "blur(6px)" }} />
-        <div style={{ position: "absolute", bottom: "-16%", right: "-8%", width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle, rgba(152,193,217,0.32), transparent 70%)", filter: "blur(6px)" }} />
-        <div style={{ position: "absolute", top: "38%", left: "42%", width: 300, height: 300, borderRadius: "50%", background: "radial-gradient(circle, rgba(224,122,95,0.22), transparent 70%)", filter: "blur(6px)" }} />
+        <div style={{ position: "absolute", inset: "-10%", filter: "url(#btl-liquid-goo)" }}>
+          {/* Ambient blobs — slow drift + shape morph, always present */}
+          <div className="btl-liquid-blob btl-liquid-blob-a" style={{ position: "absolute", top: "-14%", left: "-8%", width: 340, height: 340, background: "radial-gradient(circle, rgba(252,163,17,0.34), transparent 70%)" }} />
+          <div className="btl-liquid-blob btl-liquid-blob-b" style={{ position: "absolute", bottom: "-18%", right: "-10%", width: 400, height: 400, background: "radial-gradient(circle, rgba(152,193,217,0.34), transparent 70%)" }} />
+          <div className="btl-liquid-blob btl-liquid-blob-c" style={{ position: "absolute", top: "40%", left: "44%", width: 300, height: 300, background: "radial-gradient(circle, rgba(224,122,95,0.24), transparent 70%)" }} />
+          {/* Cursor-follower blobs — springy, laggy, glide toward the mouse */}
+          <motion.div className="btl-liquid-blob" style={{
+            position: "absolute", width: 260, height: 260, left: liquidTrailLeft, top: liquidTrailTop,
+            x: "-50%", y: "-50%", background: "radial-gradient(circle, rgba(152,193,217,0.30), transparent 72%)",
+          }} />
+          <motion.div className="btl-liquid-blob" style={{
+            position: "absolute", width: 380, height: 380, left: liquidLeft, top: liquidTop,
+            x: "-50%", y: "-50%", background: "radial-gradient(circle, rgba(252,163,17,0.4), rgba(224,122,95,0.22) 45%, transparent 72%)",
+          }} />
+        </div>
+        {/* Fine frosted grain on top of the blobs — softens hard gradient
+            edges so it reads as glass haze rather than colored spotlights. */}
+        <div style={{ position: "absolute", inset: 0, backdropFilter: "blur(38px) saturate(150%)", WebkitBackdropFilter: "blur(38px) saturate(150%)" }} />
       </div>
       <style>{`
+        /* ---- Liquid Glass background animation (this update) ---- */
+        @keyframes btlLiquidMorph {
+          0%, 100% { border-radius: 42% 58% 65% 35% / 45% 45% 55% 55%; }
+          25% { border-radius: 58% 42% 35% 65% / 55% 65% 35% 45%; }
+          50% { border-radius: 50% 50% 50% 50% / 60% 40% 60% 40%; }
+          75% { border-radius: 65% 35% 55% 45% / 40% 60% 40% 60%; }
+        }
+        @keyframes btlLiquidFloatA { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(32px, -26px) scale(1.08); } }
+        @keyframes btlLiquidFloatB { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-28px, 22px) scale(0.94); } }
+        @keyframes btlLiquidFloatC { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(20px, 28px) scale(1.06); } }
+        .btl-liquid-blob { animation: btlLiquidMorph 9s ease-in-out infinite; }
+        .btl-liquid-blob-a { animation: btlLiquidMorph 12s ease-in-out infinite, btlLiquidFloatA 15s ease-in-out infinite; }
+        .btl-liquid-blob-b { animation: btlLiquidMorph 13s ease-in-out infinite reverse, btlLiquidFloatB 18s ease-in-out infinite; }
+        .btl-liquid-blob-c { animation: btlLiquidMorph 10s ease-in-out infinite, btlLiquidFloatC 16s ease-in-out infinite; }
         .btl-scroll::-webkit-scrollbar { width: 6px; }
         .btl-scroll::-webkit-scrollbar-thumb { background: #ddd6c4; border-radius: 4px; }
         .btl-check { transition: transform 120ms ease; }
