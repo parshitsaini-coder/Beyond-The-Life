@@ -9,7 +9,7 @@ import {
   ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft,
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
   Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn,
-  Users, Clock, PieChart as PieChartIcon, Bell, BellOff,
+  Users, Clock, PieChart as PieChartIcon, Bell, BellOff, Square,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -201,13 +201,13 @@ function hexToRgba(hex, alpha) {
    a near-invisible border, a small shadow) read as "muted flat color"
    rather than glass once it sat over a real page background — this
    brings every widget/panel in line with that reference. */
-function glassCardStyle(cardBg) {
+function glassCardStyle(cardBg, borderColor) {
   const isDark = hexLuminance(cardBg || "#fffdf7") < 0.5;
   return {
     background: hexToRgba(cardBg || "#fffdf7", isDark ? 0.5 : 0.62),
     backdropFilter: "blur(24px) saturate(190%)",
     WebkitBackdropFilter: "blur(24px) saturate(190%)",
-    border: `1px solid ${isDark ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.85)"}`,
+    border: `1px solid ${borderColor || (isDark ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.85)")}`,
     boxShadow: isDark
       ? "0 20px 50px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.10)"
       : "0 20px 50px rgba(37,36,34,0.22), inset 0 1px 0 rgba(255,255,255,0.65)",
@@ -347,6 +347,7 @@ export function normalizeScopeTheme(t) {
   return {
     bg: typeof src.bg === "string" ? src.bg : "",
     text: typeof src.text === "string" ? src.text : "",
+    border: typeof src.border === "string" ? src.border : "",
     font: typeof src.font === "string" ? src.font : "",
     bold: !!src.bold,
     scale: Math.round(scale * 100) / 100,
@@ -3436,7 +3437,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
       display: "flex", flexDirection: "column", height: "100%",
       color: at.text || undefined, fontFamily: atFontFamily, fontWeight: at.bold ? 600 : undefined,
       zoom: at.scale !== 1 ? at.scale : undefined,
-      ...glassCardStyle(at.bg),
+      ...glassCardStyle(at.bg, at.border),
     }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
@@ -4114,7 +4115,7 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
       borderRadius: 10, display: "flex", flexDirection: "column", height: "100%", position: "relative",
       color: mt.text || undefined, fontFamily: mtFontFamily, fontWeight: mt.bold ? 600 : undefined,
       zoom: mt.scale !== 1 ? mt.scale : undefined,
-      ...glassCardStyle(mt.bg),
+      ...glassCardStyle(mt.bg, mt.border),
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${hexLuminance(mt.bg || "#fffdf7") < 0.5 ? "rgba(255,255,255,0.14)" : "rgba(64,61,57,0.12)"}`, background: "transparent", borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 6 }}>
         <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
@@ -6118,7 +6119,7 @@ function ColorSwatchRow({ icon, label, options, value, onChange, defaultSwatchHe
    and (for Analytics / Focus Mode) text size / bold / font too. */
 function ScopeThemeEditor({ title, icon, value, onChange, onReset, includeTextControls }) {
   const v = normalizeScopeTheme(value);
-  const isDefault = !v.bg && !v.text && (!includeTextControls || (!v.font && !v.bold && v.scale === 1));
+  const isDefault = !v.bg && !v.text && !v.border && (!includeTextControls || (!v.font && !v.bold && v.scale === 1));
   const previewFamily = v.font ? fontStackFor(v.font) : "Inter, system-ui, sans-serif";
   const scalePct = Math.round(v.scale * 100);
 
@@ -6146,10 +6147,10 @@ function ScopeThemeEditor({ title, icon, value, onChange, onReset, includeTextCo
       <div style={{ padding: "10px 10px 12px" }}>
         {/* live preview */}
         <motion.div
-          key={`${title}-${v.bg}-${v.text}-${v.font}-${v.bold}-${scalePct}`}
+          key={`${title}-${v.bg}-${v.text}-${v.border}-${v.font}-${v.bold}-${scalePct}`}
           initial={{ opacity: 0.4 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}
           style={{
-            border: "1px solid #ece7d8", borderRadius: 8, padding: "10px 12px", marginBottom: 12,
+            border: `1px solid ${v.border || "#ece7d8"}`, borderRadius: 8, padding: "10px 12px", marginBottom: 12,
             background: v.bg || "#fff",
           }}
         >
@@ -6165,6 +6166,7 @@ function ScopeThemeEditor({ title, icon, value, onChange, onReset, includeTextCo
         </motion.div>
 
         <ColorSwatchRow icon={<Palette size={10} />} label="Background color" options={BG_COLOR_OPTIONS} value={v.bg} onChange={(bg) => onChange({ bg })} defaultSwatchHex="#ffffff" />
+        <ColorSwatchRow icon={<Square size={10} />} label="Border color (panel edge)" options={TEXT_COLOR_OPTIONS} value={v.border} onChange={(border) => onChange({ border })} />
         <ColorSwatchRow icon={<Baseline size={10} />} label="Text color" options={TEXT_COLOR_OPTIONS} value={v.text} onChange={(text) => onChange({ text })} />
 
         {includeTextControls && (
@@ -8725,7 +8727,7 @@ function BTLDashboardInner() {
               fontFamily: fmFontFamily, fontWeight: fm.bold ? 600 : undefined,
               zoom: fm.scale !== 1 ? fm.scale : undefined,
               borderRadius: fm.bg ? 10 : 0, padding: fm.bg ? 10 : 0, boxSizing: "border-box",
-              ...(fm.bg ? glassCardStyle(fm.bg) : null),
+              ...(fm.bg ? glassCardStyle(fm.bg, fm.border) : null),
             }}>
               {/* ---------- FOCUS MODE ---------- */}
               <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12, flexShrink: 0 }}>
