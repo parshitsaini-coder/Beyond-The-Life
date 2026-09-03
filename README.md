@@ -1,34 +1,41 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🌊 New — Full mouse-follow "Liquid Glass" dashboard background (this update)
+## 🌊 New — "Liquid Glass" background is now a click-triggered burst, with customizable colors (this update)
 
-The whole dashboard background is now an animated, morphing liquid-glass
-wash instead of 3 static blurred circles — and it reacts to the cursor.
+Reworked from the previous mouse-follow version based on feedback: the
+background no longer reacts to the cursor moving around at all — it now
+only appears for a few seconds right when you click.
 
-- **Cursor-follower blobs** — two blobs (one tight/fast, one bigger/lazier)
-  glide toward the mouse using `framer-motion` springs (`useMotionValue` +
-  `useSpring`) on the dashboard panel's mouse position. The lazier spring
-  trails slightly behind the faster one, so the blob "stretches" toward
-  wherever the cursor is heading rather than snapping straight to it —
-  that lag is what reads as liquid instead of a plain glow-on-cursor.
-- **Ambient blobs keep drifting** even with the mouse still — 3 background
-  blobs continuously morph their `border-radius` (`btlLiquidMorph`
-  keyframes) and drift (`btlLiquidFloatA/B/C`) on independent, offset
-  durations so the surface never looks frozen.
-- **SVG "goo" filter** (`feGaussianBlur` + `feColorMatrix`) wraps every
-  blob so overlapping ones melt into one another instead of showing hard,
-  separate circles — the classic liquid-blob merge effect — followed by a
-  `backdrop-filter: blur(38px) saturate(150%)` haze layer on top so it
-  reads as frosted glass, not colored spotlights.
-- Mouse position is tracked relative to the dashboard panel itself
-  (`dashboardRef.getBoundingClientRect()`), not the window, so it tracks
-  correctly regardless of the panel's `zoom: 80%` or where it sits on the
-  page.
-- Zero new dependencies (pure `framer-motion` + inline SVG/CSS, same as
-  the rest of the app's motion work); purely decorative — still
-  `pointer-events: none` and sits at `zIndex: -1` behind every widget, so
-  it never intercepts clicks and every existing glass card still has rich
-  color behind it to frost.
+- **Click anywhere on the dashboard** — `handleDashboardClick` reads the
+  exact click position (relative to the dashboard panel) and drops a
+  `liquidBursts` entry there. No response to hover/mousemove at all
+  anymore, only an actual click.
+- **~4 second lifespan, then completely gone** — each burst's 3 blobs
+  play a single (non-looping) `btlLiquidBurstMorph` + `btlLiquidBurstFade`
+  animation: pop in, organically morph via the shared SVG "goo" filter so
+  they visibly bridge into one liquid shape, then fade to fully
+  transparent. A matching `setTimeout(4200ms)` removes the burst from
+  React state right after, so nothing lingers, nothing renders, and
+  nothing costs any CPU between clicks — you have to click again to see
+  it. Clicking several times quickly stacks multiple independent bursts,
+  each tracked and cleaned up by its own id/timer.
+- **Setting → Liquid (new tab, next to Theme/Alarm)** — 3 color swatches
+  (native `<input type="color">` pickers) controlling the burst's 3 blob
+  colors, plus a **Reset to default colors** button. Saved as
+  `state.liquidColors: [hex, hex, hex]` — same per-user Firestore
+  document as everything else, so it persists and syncs like the rest of
+  the app's settings.
+- No new dependencies; the old continuous `useMotionValue`/`useSpring`
+  cursor-following wiring was removed entirely along with the always-on
+  ambient blobs from the previous version of this feature.
+
+## 🌊 Superseded — Full mouse-follow "Liquid Glass" dashboard background (previous iteration of this update, replaced above)
+
+The very first pass at this feature made the background continuously
+track the mouse cursor around the dashboard with springy "liquid" blobs.
+Per feedback this wasn't the desired behavior (too busy, always
+animating) — it's been fully replaced by the click-burst version above.
+Kept here only as history of what changed and why.
 
 ## ⏰ New — "Analog Clock & Alarm" widget (earlier update)
 

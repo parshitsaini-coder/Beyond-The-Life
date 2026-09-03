@@ -13,7 +13,7 @@ import {
   AlarmClock, Volume2, Play,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
-import { motion, AnimatePresence, Reorder, animate, useDragControls, useMotionValue, useSpring, useTransform } from "framer-motion";
+import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
 import { createPortal } from "react-dom";
 import { useAuth, signOutUser, signInWithGoogle } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
@@ -926,6 +926,9 @@ function makeDefaultState() {
     // Which of the 4 built-in ALARM_RINGTONES (see below) plays when an
     // alarm fires — changeable from Setting → Alarm.
     clockRingtone: "classic",
+    // Click-triggered "Liquid Glass" background burst (this update) —
+    // which colors the burst blobs use. Changeable from Setting → Liquid.
+    liquidColors: ["#fca311", "#98c1d9", "#e07a5f"],
     layout: defaultLayout(),
     theme: defaultTheme(),
   };
@@ -973,6 +976,7 @@ async function loadState(user) {
     s.widgetLastCompletedDate = s.widgetLastCompletedDate || {};
     s.clockAlarms = Array.isArray(s.clockAlarms) ? s.clockAlarms : [];
     s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === s.clockRingtone) ? s.clockRingtone : "classic";
+    s.liquidColors = (Array.isArray(s.liquidColors) && s.liquidColors.length === 3) ? s.liquidColors : ["#fca311", "#98c1d9", "#e07a5f"];
   }
   const withLayout = ensureLayoutDefaults(s);
   return { ...withLayout, theme: normalizeTheme(withLayout.theme) };
@@ -2935,8 +2939,8 @@ function MoodBtn({ active, onClick, children, title }) {
 }
 
 /* ---------------- SETTINGS PANEL CONTENT (rendered inside the glass modal) ---------------- */
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onSetClockRingtone }) {
-  const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | "alarm" | null
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onSetClockRingtone, onSetLiquidColor, onResetLiquidColors }) {
+  const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | "alarm" | "liquid" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
   const [editVal, setEditVal] = useState("");
@@ -3001,6 +3005,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
         <Oval onClick={() => setMode("lifeRules")} style={{ cursor: "pointer", background: mode === "lifeRules" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "lifeRules" ? "#fff" : C.text }}>Add Rule</Oval>
         <Oval onClick={() => setMode(mode === "theme" ? null : "theme")} style={{ cursor: "pointer", background: mode === "theme" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "theme" ? "#fff" : C.text }}><Palette size={11} style={{ marginRight: 4 }} />Theme</Oval>
         <Oval onClick={() => setMode(mode === "alarm" ? null : "alarm")} style={{ cursor: "pointer", background: mode === "alarm" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "alarm" ? "#fff" : C.text }}><AlarmClock size={11} style={{ marginRight: 4 }} />Alarm</Oval>
+        <Oval onClick={() => setMode(mode === "liquid" ? null : "liquid")} style={{ cursor: "pointer", background: mode === "liquid" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "liquid" ? "#fff" : C.text }}><Sparkles size={11} style={{ marginRight: 4 }} />Liquid</Oval>
         <div style={{ flex: 1 }} />
         <motion.span whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onClose} title="Close" style={{
           borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
@@ -3067,6 +3072,44 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
                 );
               })}
             </div>
+          </div>
+        ) : mode === "liquid" ? (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, marginBottom: 4, display: "flex", alignItems: "center", gap: 5 }}>
+              <Sparkles size={14} /> Liquid Glass Click Effect
+            </div>
+            <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 12, maxWidth: 420 }}>
+              Click anywhere on the dashboard background to trigger a burst of
+              liquid blobs that fades out over ~4 seconds. Pick the 3 colors
+              it uses below.
+            </div>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", maxWidth: 420 }}>
+              {(state.liquidColors || ["#fca311", "#98c1d9", "#e07a5f"]).map((hex, i) => (
+                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                  <label style={{
+                    width: 44, height: 44, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.8)",
+                    boxShadow: "0 2px 8px rgba(37,36,34,0.18)", background: hex, cursor: "pointer",
+                    display: "block", position: "relative", overflow: "hidden",
+                  }}>
+                    <input
+                      type="color" value={hex}
+                      onChange={(e) => onSetLiquidColor(i, e.target.value)}
+                      style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%", height: "100%" }}
+                    />
+                  </label>
+                  <span style={{ fontSize: 9, color: "#8a8579", fontWeight: 700 }}>Blob {i + 1}</span>
+                </div>
+              ))}
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+              onClick={onResetLiquidColors}
+              style={{
+                marginTop: 14, border: `1px solid rgba(64,61,57,0.2)`, background: "rgba(255,255,255,0.5)",
+                color: C.dark, borderRadius: 8, padding: "6px 12px", fontSize: 10, fontWeight: 800, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 5,
+              }}
+            ><RotateCcw size={11} /> Reset to default colors</motion.button>
           </div>
         ) : (
           <>
@@ -9096,32 +9139,33 @@ function BTLDashboardInner() {
   const fileRef = useRef(null);
   const loaded = useRef(false);
 
-  /* ---- Liquid Glass mouse-follow background (this update) ----
-     Raw cursor position (0..1 fraction of the dashboard panel) feeds a
-     springy, laggy follower so the big "liquid" blob glides toward the
-     cursor instead of snapping to it — that lag/overshoot is what reads
-     as "liquid" rather than a cheap glow-on-cursor effect. */
+  /* ---- Liquid Glass click-burst background (this update) ----
+     No longer follows the cursor around continuously — a click anywhere
+     on the dashboard drops a short-lived "burst" of liquid blobs at that
+     exact spot, which fades out over ~4s and then is gone completely
+     until the next click. Multiple quick clicks can have several bursts
+     alive at once, each tracked by its own id/timeout so they clean
+     themselves up independently. */
   const dashboardRef = useRef(null);
-  const rawMouseX = useMotionValue(0.5);
-  const rawMouseY = useMotionValue(0.5);
-  const liquidX = useSpring(rawMouseX, { stiffness: 55, damping: 18, mass: 1.1 });
-  const liquidY = useSpring(rawMouseY, { stiffness: 55, damping: 18, mass: 1.1 });
-  // A second, lazier spring trailing slightly behind the first gives the
-  // blob a soft "stretch" between where it is and where it's headed.
-  const liquidTrailX = useSpring(rawMouseX, { stiffness: 26, damping: 20, mass: 1.4 });
-  const liquidTrailY = useSpring(rawMouseY, { stiffness: 26, damping: 20, mass: 1.4 });
-  const liquidLeft = useTransform(liquidX, (v) => `${v * 100}%`);
-  const liquidTop = useTransform(liquidY, (v) => `${v * 100}%`);
-  const liquidTrailLeft = useTransform(liquidTrailX, (v) => `${v * 100}%`);
-  const liquidTrailTop = useTransform(liquidTrailY, (v) => `${v * 100}%`);
-  const handleDashboardMouseMove = useCallback((e) => {
+  const [liquidBursts, setLiquidBursts] = useState([]); // { id, xPct, yPct }[]
+  const liquidBurstTimers = useRef({});
+  useEffect(() => () => {
+    Object.values(liquidBurstTimers.current).forEach(clearTimeout);
+  }, []);
+  const handleDashboardClick = useCallback((e) => {
     const el = dashboardRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
-    rawMouseX.set((e.clientX - rect.left) / rect.width);
-    rawMouseY.set((e.clientY - rect.top) / rect.height);
-  }, [rawMouseX, rawMouseY]);
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+    const yPct = ((e.clientY - rect.top) / rect.height) * 100;
+    setLiquidBursts((prev) => [...prev, { id, xPct, yPct }]);
+    liquidBurstTimers.current[id] = setTimeout(() => {
+      setLiquidBursts((prev) => prev.filter((b) => b.id !== id));
+      delete liquidBurstTimers.current[id];
+    }, 4200); // slightly longer than the 4s CSS fade so it fully finishes
+  }, []);
 
   useEffect(() => {
     if (!fbUser) return;
@@ -9353,6 +9397,14 @@ function BTLDashboardInner() {
     s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === ringtoneId) ? ringtoneId : "classic";
     return s;
   });
+  // Click-triggered Liquid Glass burst color (this update) — Setting → Liquid
+  const setLiquidColor = (index, hex) => update((s) => {
+    const next = Array.isArray(s.liquidColors) && s.liquidColors.length === 3 ? [...s.liquidColors] : ["#fca311", "#98c1d9", "#e07a5f"];
+    next[index] = hex;
+    s.liquidColors = next;
+    return s;
+  });
+  const resetLiquidColors = () => update((s) => { s.liquidColors = ["#fca311", "#98c1d9", "#e07a5f"]; return s; });
 
   const addPlain = (listKey, text) => update((s) => { s[listKey] = [...s[listKey], text]; return s; });
   const removePlain = (listKey, idx) => update((s) => { s[listKey] = s[listKey].filter((_, i) => i !== idx); return s; });
@@ -9586,81 +9638,83 @@ function BTLDashboardInner() {
 
   return (
     <DashboardThemeCtx.Provider value={dashTheme}>
-    <div ref={dashboardRef} onMouseMove={handleDashboardMouseMove} style={{
+    <div ref={dashboardRef} onClick={handleDashboardClick} style={{
       fontFamily: "Inter, system-ui, sans-serif", background: dashTheme.bg, color: dashTheme.text,
       height: "100%", maxHeight: "100%", borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
       border: `1px solid #ece7d8`, fontSize: 11, boxSizing: "border-box",
       display: "flex", flexDirection: "column", zIndex: 0, // zIndex:0 (not auto) makes this div its OWN stacking
-      // context, so the zIndex:-1 liquid-glass blobs below are contained
-      // inside it (painted above ITS OWN background) instead of escaping
-      // to the nearest ancestor stacking context and disappearing behind
-      // the rest of the page — without this the blobs render invisible.
+      // context, so the zIndex:-1 liquid-glass burst blobs below are
+      // contained inside it (painted above ITS OWN background) instead of
+      // escaping to the nearest ancestor stacking context and disappearing
+      // behind the rest of the page.
       zoom: "80%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "70%" for smaller, "90%" for bigger.
     }}>
-      {/* ---- Liquid Glass animated background (this update) ----
-          True "metaball" liquid effect — matches the reference screenshot
-          (solid organic blobs that visibly bridge/merge into each other,
-          not a soft blurry glow). The trick: the blobs themselves are
-          drawn fully OPAQUE and only pushed through the SVG goo filter
-          (blur + a steep alpha threshold) — a threshold needs a hard
-          edge to bite into, a fading radial-gradient blob (the old
-          version) never produced a visible bridge. Color/transparency
-          for the "glass" tint is applied afterwards via CSS `opacity`
-          on the whole already-filtered group, which doesn't undo the
-          crisp merge. One blob glides toward the mouse (liquidX/Y
-          springs above) so when it drifts near an ambient blob you see
-          them visibly fuse — the core "liquid" behavior. Purely
-          decorative: z-index -1, pointer-events none, clipped by this
-          panel's own overflow:hidden. */}
+      {/* ---- Liquid Glass click-burst background (this update) ----
+          No ambient/always-on animation anymore — clicking anywhere on
+          the dashboard (handleDashboardClick, tracked in liquidBursts)
+          drops a short-lived group of solid, opaque blobs at that exact
+          spot. They're pushed through the shared SVG "goo" filter (blur +
+          a steep alpha threshold) so the 3 blobs in a burst visibly
+          bridge/merge into one liquid blob rather than showing as 3 hard
+          separate circles, then the whole burst fades to nothing over 4s
+          (`btlLiquidBurstFade`) and unmounts — nothing is visible again
+          until the next click. Colors come from `state.liquidColors`
+          (Setting → Liquid). Purely decorative: z-index -1, pointer-
+          events none, clipped by this panel's own overflow:hidden. */}
       <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
         <filter id="btl-liquid-goo">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="22" result="btl-goo-blur" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation="18" result="btl-goo-blur" />
           <feColorMatrix in="btl-goo-blur" mode="matrix"
             values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 32 -14" result="btl-goo-sharp" />
           <feComposite in="SourceGraphic" in2="btl-goo-sharp" operator="atop" />
         </filter>
       </svg>
       <div style={{ position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: "-10%", filter: "url(#btl-liquid-goo)", opacity: 0.55, mixBlendMode: "multiply" }}>
-          {/* Ambient blobs — fully opaque so the goo threshold has a hard
-              edge to work with; slow drift + shape morph, always present */}
-          <div className="btl-liquid-blob btl-liquid-blob-a" style={{ position: "absolute", top: "-10%", left: "-6%", width: 260, height: 260, background: "#fca311" }} />
-          <div className="btl-liquid-blob btl-liquid-blob-b" style={{ position: "absolute", bottom: "-14%", right: "-6%", width: 300, height: 300, background: "#98c1d9" }} />
-          <div className="btl-liquid-blob btl-liquid-blob-c" style={{ position: "absolute", top: "36%", left: "46%", width: 220, height: 220, background: "#e07a5f" }} />
-          <div className="btl-liquid-blob btl-liquid-blob-a" style={{ position: "absolute", top: "58%", left: "12%", width: 170, height: 170, background: "#98c1d9", animationDelay: "-4s" }} />
-          <div className="btl-liquid-blob btl-liquid-blob-b" style={{ position: "absolute", top: "8%", right: "22%", width: 190, height: 190, background: "#fca311", animationDelay: "-7s" }} />
-          {/* Cursor-follower blobs — springy, laggy, glide toward the
-              mouse and visibly fuse with whichever ambient blob they pass
-              near, since all of these share the same goo filter group */}
-          <motion.div className="btl-liquid-blob" style={{
-            position: "absolute", width: 150, height: 150, left: liquidTrailLeft, top: liquidTrailTop,
-            x: "-50%", y: "-50%", background: "#98c1d9",
-          }} />
-          <motion.div className="btl-liquid-blob" style={{
-            position: "absolute", width: 230, height: 230, left: liquidLeft, top: liquidTop,
-            x: "-50%", y: "-50%", background: "#fca311",
-          }} />
-        </div>
-        {/* Soft ambient color wash on top — separate from the goo group,
-            gives the merged blobs a hazy glass tint without blunting the
-            crisp bridge shapes above. */}
-        <div style={{ position: "absolute", inset: 0, backdropFilter: "blur(20px) saturate(170%)", WebkitBackdropFilter: "blur(20px) saturate(170%)" }} />
+        <AnimatePresence>
+          {liquidBursts.map((b) => {
+            const colors = (state.liquidColors && state.liquidColors.length === 3) ? state.liquidColors : ["#fca311", "#98c1d9", "#e07a5f"];
+            return (
+              <motion.div
+                key={b.id}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="btl-liquid-burst"
+                style={{ position: "absolute", left: `${b.xPct}%`, top: `${b.yPct}%`, width: 0, height: 0, filter: "url(#btl-liquid-goo)" }}
+              >
+                <div className="btl-liquid-blob" style={{ position: "absolute", width: 160, height: 160, left: -80, top: -80, background: colors[0] }} />
+                <div className="btl-liquid-blob btl-liquid-blob-b" style={{ position: "absolute", width: 130, height: 130, left: -30, top: -110, background: colors[1] }} />
+                <div className="btl-liquid-blob btl-liquid-blob-c" style={{ position: "absolute", width: 110, height: 110, left: 40, top: -30, background: colors[2] }} />
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
       <style>{`
-        /* ---- Liquid Glass background animation (this update) ---- */
-        @keyframes btlLiquidMorph {
-          0%, 100% { border-radius: 42% 58% 65% 35% / 45% 45% 55% 55%; }
-          25% { border-radius: 58% 42% 35% 65% / 55% 65% 35% 45%; }
-          50% { border-radius: 50% 50% 50% 50% / 60% 40% 60% 40%; }
-          75% { border-radius: 65% 35% 55% 45% / 40% 60% 40% 60%; }
+        /* ---- Liquid Glass click-burst animation (this update) ----
+           Runs ONCE (no infinite loop) over ~4s per burst: pops in with a
+           quick scale + organic border-radius morph, holds briefly, then
+           fades to fully transparent right as the burst is unmounted from
+           React state (see the 4200ms timeout in handleDashboardClick). */
+        @keyframes btlLiquidBurstMorph {
+          0% { border-radius: 50%; transform: scale(0.35); }
+          18% { border-radius: 46% 54% 60% 40% / 50% 42% 58% 50%; transform: scale(1.05); }
+          40% { border-radius: 58% 42% 38% 62% / 55% 62% 38% 45%; transform: scale(1); }
+          65% { border-radius: 50% 50% 50% 50% / 60% 40% 60% 40%; transform: scale(1.08); }
+          100% { border-radius: 62% 38% 55% 45% / 45% 58% 42% 55%; transform: scale(1.2); }
         }
-        @keyframes btlLiquidFloatA { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(32px, -26px) scale(1.08); } }
-        @keyframes btlLiquidFloatB { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-28px, 22px) scale(0.94); } }
-        @keyframes btlLiquidFloatC { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(20px, 28px) scale(1.06); } }
-        .btl-liquid-blob { animation: btlLiquidMorph 9s ease-in-out infinite; }
-        .btl-liquid-blob-a { animation: btlLiquidMorph 12s ease-in-out infinite, btlLiquidFloatA 15s ease-in-out infinite; }
-        .btl-liquid-blob-b { animation: btlLiquidMorph 13s ease-in-out infinite reverse, btlLiquidFloatB 18s ease-in-out infinite; }
-        .btl-liquid-blob-c { animation: btlLiquidMorph 10s ease-in-out infinite, btlLiquidFloatC 16s ease-in-out infinite; }
+        @keyframes btlLiquidBurstFade {
+          0%, 45% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        .btl-liquid-blob {
+          border-radius: 50%;
+          animation: btlLiquidBurstMorph 4s cubic-bezier(0.22, 0.9, 0.34, 1) forwards,
+                     btlLiquidBurstFade 4s ease-in forwards;
+        }
+        /* Small per-blob delay so the 3 blobs in a burst don't pop in
+           perfectly in sync — reads more organic, like real liquid. */
+        .btl-liquid-blob-b { animation-delay: 60ms, 60ms; }
+        .btl-liquid-blob-c { animation-delay: 120ms, 120ms; }
         .btl-scroll::-webkit-scrollbar { width: 6px; }
         .btl-scroll::-webkit-scrollbar-thumb { background: #ddd6c4; border-radius: 4px; }
         .btl-check { transition: transform 120ms ease; }
@@ -9875,6 +9929,7 @@ function BTLDashboardInner() {
               onMoneyColorChange={setMoneyColor} onMoneyColorReset={resetMoneyColors}
               onApplyPanelPreset={applyPanelPreset} onResetPanelPreset={resetPanelPreset}
               onSetClockRingtone={setClockRingtone}
+              onSetLiquidColor={setLiquidColor} onResetLiquidColors={resetLiquidColors}
             />
           </motion.div>
         )}
