@@ -8450,6 +8450,17 @@ function BTLDashboardInner() {
   }, [state, fbUser]);
 
   const update = useCallback((fn) => setState((s) => fn({ ...s })), []);
+  // Shared "shine" trigger — the diagonal shine sweep used to fire on every
+  // single item you completed (any widget), not just the big daily+extry
+  // 100% milestone. Restored here as a small shared helper so every
+  // completion path below (Daily/Extry/Big Goals, Life Rules, Time Table)
+  // can call the exact same effect: a full-width shine sweeps across the
+  // whole dashboard, so the words in every widget sitting near the one you
+  // just filled catch that same glow/shine as it passes over them.
+  const triggerShine = () => {
+    setShine(true);
+    setTimeout(() => setShine(false), 1600);
+  };
 
   if (!state) {
     return <BTLLoadingScreen label="Loading BTL" bg={C.bg} dark={C.dark} accent={C.accent} />;
@@ -8469,8 +8480,7 @@ function BTLDashboardInner() {
     if (allDone && next.lastCompletedDate !== todayISO()) {
       next.lastCompletedDate = todayISO();
       next.streak = (next.streak || 0) + 1;
-      setShine(true);
-      setTimeout(() => setShine(false), 1600);
+      triggerShine();
       if (isMilestone(next.streak)) {
         setConfetti(true);
         setMilestoneStreak(next.streak);
@@ -8526,7 +8536,9 @@ function BTLDashboardInner() {
   };
 
   const toggleGoal = (listKey) => (id) => update((s) => {
+    const wasDone = !!s[listKey].find((g) => g.id === id)?.done;
     s[listKey] = s[listKey].map((g) => g.id === id ? { ...g, done: !g.done } : g);
+    if (!wasDone) triggerShine(); // marking something done (not un-checking) gives the nearby widgets their shine
     recordCompletionHistory(s);
     recordWidgetProgress(s, listKey, s[listKey]);
     return checkFullCompletion(s);
@@ -8557,7 +8569,9 @@ function BTLDashboardInner() {
   });
 
   const toggleTimeItem = (id) => update((s) => {
+    const wasDone = !!(s.timeTable || []).find((t) => t.id === id)?.done;
     s.timeTable = (s.timeTable || []).map((t) => t.id === id ? { ...t, done: !t.done } : t);
+    if (!wasDone) triggerShine();
     recordWidgetProgress(s, "timeTable", s.timeTable);
     return s;
   });
