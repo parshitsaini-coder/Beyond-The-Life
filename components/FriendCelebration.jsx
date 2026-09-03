@@ -247,7 +247,7 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
 
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", marginTop: 22, display: "flex", flexDirection: "column", gap: 22 }} className="btl-scroll">
         {/* invite */}
-        <div style={{ background: "rgba(255,255,255,0.08)", borderRadius: 16, padding: 16, border: "1px solid rgba(255,255,255,0.14)" }}>
+        <div style={{ background: "rgba(255,255,255,0.08)", backdropFilter: "blur(14px) saturate(150%)", WebkitBackdropFilter: "blur(14px) saturate(150%)", borderRadius: 16, padding: 16, border: "1px solid rgba(255,255,255,0.14)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
             <UserPlus size={15} color={C.accent} />
             <span style={{ fontSize: 13, fontWeight: 900, color: "#fff" }}>Invite a Friend</span>
@@ -377,7 +377,7 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 12, paddingBottom: 10 }}>
             {friendships.map((f) => (
               <motion.div key={f.id} whileHover={{ y: -4, scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={() => onSelectFriend(f)}
-                style={{ cursor: "pointer", background: "rgba(255,255,255,0.08)", borderRadius: 14, padding: "14px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, border: "1px solid rgba(255,255,255,0.12)" }}>
+                style={{ cursor: "pointer", background: "rgba(255,255,255,0.08)", backdropFilter: "blur(14px) saturate(150%)", WebkitBackdropFilter: "blur(14px) saturate(150%)", borderRadius: 14, padding: "14px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, border: "1px solid rgba(255,255,255,0.12)" }}>
                 <Avatar name={f.name} photoURL={f.photoURL} size={48} />
                 <div style={{ fontSize: Math.round(11 * ft.scale), fontWeight: ft.bold ? 900 : 800, color: ft.text, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", width: "100%" }}>{f.name}</div>
                 <div style={{ fontSize: 8.5, fontWeight: 700, color: C.accent, display: "flex", alignItems: "center", gap: 3 }}><Handshake size={10} /> Open</div>
@@ -420,7 +420,7 @@ function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dail
     <motion.div
       initial={{ opacity: 0, x: side === "me" ? -20 : 20 }} animate={{ opacity: 1, x: 0 }}
       transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 22 }}
-      style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${accent}44`, borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}
+      style={{ background: "rgba(255,255,255,0.06)", backdropFilter: "blur(16px) saturate(150%)", WebkitBackdropFilter: "blur(16px) saturate(150%)", border: `1px solid ${accent}44`, borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Avatar name={name} photoURL={photoURL} size={54} />

@@ -316,6 +316,15 @@ const PANEL_THEME_PRESETS = [
   { id: "midnight", label: "Midnight", bg: "#0f172a", text: "#e7ecf5", widgetBg: "#1b2436", swatch: "linear-gradient(135deg, #0f172a 50%, #3a4a6b 50%)" },
   { id: "charcoal", label: "Charcoal", bg: "#252422", text: "#f2ede0", widgetBg: "#33312d", swatch: "linear-gradient(135deg, #252422 50%, #6b675c 50%)" },
   { id: "mono", label: "Black & White", bg: "#000000", text: "#ffffff", widgetBg: "#141414", swatch: "linear-gradient(135deg, #000000 50%, #ffffff 50%)" },
+  /* "Glass" — the odd one out: instead of a flat tinted bg, this pairs a
+     deep indigo backdrop with a pure-white `widgetBg`. Every widget/panel
+     card already renders its cardBg through `glassCardStyle()` (see
+     below), so a white widgetBg here becomes true frosted white glass —
+     ~55% opacity + blur — floating over the indigo canvas, with
+     `autoTextColor`/`autoMutedColor` (unchanged) still doing their normal
+     job of picking readable text for whatever ends up behind it. No card
+     anywhere renders as a flat opaque fill under this preset. */
+  { id: "glass", label: "Glass", bg: "#2b2f52", text: "#f5f3ff", widgetBg: "#ffffff", swatch: "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.35) 45%, #2b2f52 100%)" },
 ];
 export function normalizeScopeTheme(t) {
   const src = t && typeof t === "object" ? t : {};
@@ -1270,7 +1279,7 @@ function TextList({ title, items, textStyle, cardBg }) {
         fontSize: titleFontSize, fontWeight: 900, fontFamily: itemFontFamily,
       }}>{title}</Oval>
       <div style={{
-        border: `1px solid ${C.text}`, borderRadius: 8, flex: 1, overflowY: "auto", background: cardBg || "#fff",
+        border: `1px solid ${C.text}`, borderRadius: 8, flex: 1, overflowY: "auto", ...glassCardStyle(cardBg),
       }} className="btl-scroll">
         {items.length === 0 && (
           <div style={{ padding: 10, fontSize: 12, color: autoMutedColor(cardBg), textAlign: "center" }}>
@@ -3408,14 +3417,16 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
 
   return (
     <div style={{
-      border: `1px solid ${C.text}`, borderRadius: 10, background: at.bg || "#fff",
+      borderRadius: 10,
       display: "flex", flexDirection: "column", height: "100%",
       color: at.text || undefined, fontFamily: atFontFamily, fontWeight: at.bold ? 600 : undefined,
       zoom: at.scale !== 1 ? at.scale : undefined,
+      ...glassCardStyle(at.bg),
     }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
-        borderBottom: `1px solid ${C.text}`, background: at.bg || C.bg, borderRadius: "10px 10px 0 0",
+        borderBottom: `1px solid ${hexLuminance(at.bg || "#fffdf7") < 0.5 ? "rgba(255,255,255,0.14)" : "rgba(64,61,57,0.12)"}`,
+        background: "transparent", borderRadius: "10px 10px 0 0",
       }}>
         <BarChart3 size={14} color={ac.header || C.dark} />
         <span style={{ fontSize: 13, fontWeight: 800, color: ac.header || C.dark }}>Analytics & Insights</span>
@@ -4085,11 +4096,12 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
 
   return (
     <div style={{
-      border: `1px solid ${C.text}`, borderRadius: 10, background: mt.bg || "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative",
+      borderRadius: 10, display: "flex", flexDirection: "column", height: "100%", position: "relative",
       color: mt.text || undefined, fontFamily: mtFontFamily, fontWeight: mt.bold ? 600 : undefined,
       zoom: mt.scale !== 1 ? mt.scale : undefined,
+      ...glassCardStyle(mt.bg),
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, background: mt.bg || C.bg, borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${hexLuminance(mt.bg || "#fffdf7") < 0.5 ? "rgba(255,255,255,0.14)" : "rgba(64,61,57,0.12)"}`, background: "transparent", borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 6 }}>
         <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
           <ArrowLeft size={15} color={C.dark} />
         </motion.div>
@@ -4375,7 +4387,7 @@ function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFil
   };
 
   return (
-    <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 7, background: cardBg || "#fff", width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box", display: "flex", flexDirection: "column" }} className="btl-scroll">
+    <div style={{ borderRadius: 8, padding: 7, width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box", display: "flex", flexDirection: "column", ...glassCardStyle(cardBg) }} className="btl-scroll">
       <div style={{ display: "flex", gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: tsWeight, fontSize: labelFontSize, marginBottom: 4, color: ts.color || "#4a7c59", fontFamily: tsFontFamily }}>Earn Money Today :-</div>
@@ -5425,7 +5437,7 @@ function AnalyticsSummaryWidget({ state, onOpen, cardBg, metrics }) {
   const activeIds = metrics && metrics.length ? metrics : ANALYTICS_SUMMARY_DEFAULT_METRICS;
   const activeMetrics = activeIds.map(analyticsSummaryMetricMeta).filter(Boolean);
   return (
-    <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 10, background: cardBg || "#fff", width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8, ...glassCardStyle(cardBg) }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: autoTextColor(cardBg), display: "flex", alignItems: "center", gap: 5 }}><BarChart3 size={13} /> Analytics Summary</span>
         <Oval className="btl-oval-btn" onClick={onOpen} style={{ cursor: "pointer", fontSize: 9, padding: "2px 9px" }}>Open full <ChevronRight size={11} style={{ marginLeft: 2 }} /></Oval>
@@ -8694,10 +8706,11 @@ function BTLDashboardInner() {
           {focusMode ? (
             <div style={{
               flex: 1, minHeight: 0, display: "flex", flexDirection: "column",
-              background: fm.bg || undefined, color: fm.text || undefined,
+              color: fm.text || undefined,
               fontFamily: fmFontFamily, fontWeight: fm.bold ? 600 : undefined,
               zoom: fm.scale !== 1 ? fm.scale : undefined,
               borderRadius: fm.bg ? 10 : 0, padding: fm.bg ? 10 : 0, boxSizing: "border-box",
+              ...(fm.bg ? glassCardStyle(fm.bg) : null),
             }}>
               {/* ---------- FOCUS MODE ---------- */}
               <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12, flexShrink: 0 }}>

@@ -1,6 +1,46 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## ✨ New — "system intelligence" micro-interactions on Daily Goals / Extry Goals (this update)
+## 🥂 New — full "Glass" Panel Theme + glassmorphism extended to every panel/widget (this update)
+
+Previously, the frosted-glass ("Glassmorphism 2.0") treatment only applied
+to 4 widgets — Daily Goals, Extry Goals, Time Table, Calendar. Everything
+else (Life Big Goals, Life Rules, Earn Money/Notes, Analytics Summary, the
+full Analytics screen, Money Management, and Focus Mode) still rendered as
+a flat, opaque color card.
+
+- **Every remaining panel/widget now renders through the same
+  `glassCardStyle(cardBg)` helper** — semi-transparent fill + `backdrop-filter:
+  blur(16px) saturate(150%)` + an auto light/dark border and shadow — so
+  **no widget or full-screen panel anywhere shows a flat opaque color
+  anymore**, on any Panel Theme preset (Ocean, Sunset, Forest, Berry,
+  Midnight, Charcoal, Black & White). Converted: `TextList` (Life Big
+  Goals / Life Rules), `EarnMoneyNotesCard`, `AnalyticsSummaryWidget`, the
+  full-screen `AnalyticsTab`, `MoneyManagementScreen`, and Focus Mode's
+  container (when it has a custom background). Their header strips now
+  sit transparently on top of that same blurred card instead of drawing a
+  second flat-colored bar.
+- **New 8th Panel Theme preset — "Glass"** — sits in the same one-click
+  **Panel Theme** row (Setting → 🎨 Theme) as the other 7. Instead of a
+  flat tinted background, it pairs a deep indigo canvas (`#2b2f52`) with a
+  pure-white `widgetBg` — since every card now renders through
+  `glassCardStyle`, that white becomes true frosted glass floating over
+  the indigo, the closest match in this stack to Apple's "Liquid Glass"
+  language. Like every other preset, picking it writes into the exact
+  same `bg`/`text`/`widgetBg` fields — no new theme schema.
+- **Text stays perfectly legible everywhere** — this reuses the existing
+  `autoTextColor`/`autoMutedColor` helpers unchanged (they already read
+  whatever `cardBg` a widget has and flip between light/dark text based on
+  its brightness), so every one of the newly-glassy cards keeps
+  auto-contrast text exactly like the original 4 always did — nothing
+  extra to configure, including under the new Glass preset itself.
+- Also added real `backdrop-filter` blur to Friend Celebration's Invite,
+  Your Friends, and VS-dashboard cards, which were already
+  semi-transparent (`rgba(255,255,255,…)`) but previously had no blur
+  behind them — they're now true frosted glass too, matching the chat
+  popup, which already had it.
+- Pure CSS — no new npm installs, no new Firestore fields.
+
+## ✨ New — "system intelligence" micro-interactions on Daily Goals / Extry Goals (earlier update)
 
 Two small but noticeable interactions on the **Daily Goals** and **Extry
 Goals** cards (both use the same `GoalChecklist` component):
