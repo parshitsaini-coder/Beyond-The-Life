@@ -1051,7 +1051,7 @@ function GlowIconButton({ icon: Icon, label, active, color, onClick, filled }) {
         position: "relative", width: 34, height: 34, borderRadius: "50%",
         border: `1.5px solid ${color}`, background: bg, color: fg,
         display: "flex", alignItems: "center", justifyContent: "center",
-        cursor: "pointer", flexShrink: 0, padding: 0, overflow: "hidden",
+        cursor: "pointer", flexShrink: 0, padding: 0,
       }}
     >
       {/* idle ambient pulse — subtle, always on */}
@@ -1061,15 +1061,18 @@ function GlowIconButton({ icon: Icon, label, active, color, onClick, filled }) {
         transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
         style={{ position: "absolute", inset: -3, borderRadius: "50%", pointerEvents: "none" }}
       />
-      {/* mouse-tracking spotlight — chases the cursor, fine pointers only */}
+      {/* mouse-tracking spotlight — chases the cursor, fine pointers only.
+          Own overflow:hidden wrapper so it stays a circle without clipping
+          the ambient pulse above, which intentionally spills outside. */}
       {!reduce && (
-        <motion.span
-          aria-hidden
-          animate={{ opacity: hovered ? 1 : 0 }}
-          transition={{ duration: 0.15, ease: "easeOut" }}
-          className="btl-glow-icon-spotlight"
-          style={{ position: "absolute", inset: 0, borderRadius: "50%", pointerEvents: "none", background: spotlight }}
-        />
+        <span aria-hidden style={{ position: "absolute", inset: 0, borderRadius: "50%", overflow: "hidden", pointerEvents: "none" }}>
+          <motion.span
+            animate={{ opacity: hovered ? 1 : 0 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="btl-glow-icon-spotlight"
+            style={{ position: "absolute", inset: 0, background: spotlight }}
+          />
+        </span>
       )}
       <motion.span
         aria-hidden
