@@ -1,6 +1,50 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🪟 Fix — glass cards looked like flat/muted solid colors, not glass (this update)
+## 💰 Fix — "Total Earn/Spend Money life" pills washed out on light backgrounds (this update)
+
+The two header pills next to the logo (**Total Earn Money life** /
+**Total Spend Money life**) used `opacity: 0.55` for their "coming soon"
+disabled look, on top of an `Oval` whose default background already
+matches the dashboard's own background color. On a light Panel Theme
+preset, that combination made the pill nearly disappear into the page —
+just a faint outline with washed-out green/red text (visible in the
+screenshot).
+
+- Both pills now get their own **fixed, always-visible tinted fill** —
+  a translucent green wash + solid green border for Earn, translucent red
+  wash + solid red border for Spend — instead of inheriting the page's
+  own background. This reads clearly on every Panel Theme preset, light
+  or dark, without needing per-preset special-casing.
+- Dropped the blanket `opacity: 0.55` that was also fading the ₹ amount
+  chip inside each pill; the `cursor: "not-allowed"` + "Coming soon"
+  tooltip already communicate that these aren't clickable yet, so the
+  numbers themselves stay fully legible.
+
+## 🎯 Fix — ring/circle percentage text going invisible on dark presets (earlier update)
+
+The Daily/Extry/Overall percentage rings inside the **Analytics Summary**
+widget (and its live preview in Setting → Theme → Analytics Summary) were
+reading their text color straight from the *global* dashboard theme
+(`DashboardThemeCtx`) instead of from whatever background that specific
+ring actually sits on. Under a dark/Glass preset, that global text color
+is light — fine on the real dark dashboard, but the Settings preview
+renders on a plain white/cream popup, so the percentage numbers came out
+near-white-on-white and effectively disappeared (visible in the
+screenshot: empty-looking Daily/Extry/Overall rings).
+
+- `RingStat` now accepts an explicit `textColor` override (falls back to
+  the dashboard context exactly as before if none is given, so the header
+  rings — Daily Goal / Extry Goal / Goal up top — are unaffected).
+- `AnalyticsSummaryMetric` now passes its already-computed, background-
+  aware `safeTextColor` into `RingStat` for the ring case, the same value
+  it already used for the streak/money metrics. Since that color is
+  computed from the metric's actual `cardBg` (via `autoTextColor`), it's
+  now correct in both places: dark and legible in the Settings preview
+  (no `cardBg` there → falls back to the app's default dark text), and
+  still auto-contrasted against whatever color the widget has on the real
+  dashboard.
+
+## 🪟 Fix — glass cards looked like flat/muted solid colors, not glass (earlier update)
 
 Picking the new Glass preset (or any preset really) still rendered widgets
 as a fairly flat, opaque-looking color patch instead of true frosted

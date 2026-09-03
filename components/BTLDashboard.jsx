@@ -129,6 +129,10 @@ const ANALYTICS_ELEMENT_COLOR_FIELDS = [
   { key: "moodLine", label: "Mood trend line", defaultHex: "#3d5a80" },
   { key: "earn", label: "\"Earned\" label & amount", defaultHex: "#4a7c59" },
   { key: "spend", label: "\"Spent\" label & amount", defaultHex: "#c0392b" },
+  { key: "chartAxis", label: "Chart grid & axis lines (Mood trend / Weekdays / Money velocity)", defaultHex: "#b3ac99" },
+  { key: "weekdayBest", label: "Best & toughest weekdays — best day bar", defaultHex: "#4a7c59" },
+  { key: "weekdayWorst", label: "Best & toughest weekdays — toughest day bar", defaultHex: "#e07a5f" },
+  { key: "weekdayOther", label: "Best & toughest weekdays — other day bars", defaultHex: "#fca311" },
 ];
 function normalizeAnalyticsColors(t) {
   const src = t && typeof t === "object" ? t : {};
@@ -245,6 +249,7 @@ const MONEY_ELEMENT_COLOR_FIELDS = [
   { key: "netLine", label: "Earn vs spend — Net trend line", defaultHex: "#fca311" },
   { key: "activityEarn", label: "Recent activity — earn rows", defaultHex: "#4a7c59" },
   { key: "activitySpend", label: "Recent activity — spend amounts", defaultHex: "#c0392b" },
+  { key: "chartAxis", label: "Chart grid & axis lines (Earn vs spend)", defaultHex: "#b3ac99" },
 ];
 function normalizeMoneyColors(t) {
   const src = t && typeof t === "object" ? t : {};
@@ -765,9 +770,9 @@ function SaveStatus({ status }) {
   );
 }
 
-function RingStat({ pct, size = 54, label, sub, color = C.accent }) {
+function RingStat({ pct, size = 54, label, sub, color = C.accent, textColor }) {
   const dt = useContext(DashboardThemeCtx);
-  const safeTextColor = dt.text || C.dark;
+  const safeTextColor = textColor || dt.text || C.dark;
   const r = (size - 8) / 2;
   const circ = 2 * Math.PI * r;
   const clamped = Math.min(100, Math.max(0, pct));
@@ -3178,13 +3183,13 @@ function DeepAnalyticsGrid({ state, ac }) {
             <div style={{ height: 130 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={weekdayStats.data} margin={{ top: 6, right: 8, left: -22, bottom: 0 }}>
-                  <CartesianGrid stroke="#f0ece0" vertical={false} />
-                  <XAxis dataKey="day" tick={{ fontSize: 9, fill: "#b3ac99" }} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: "#b3ac99" }} width={28} />
+                  <CartesianGrid stroke={ac.chartAxis || "#f0ece0"} vertical={false} />
+                  <XAxis dataKey="day" tick={{ fontSize: 9, fill: ac.chartAxis || "#b3ac99" }} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: ac.chartAxis || "#b3ac99" }} width={28} />
                   <Tooltip formatter={(v, n, p) => [`${v}%`, p.payload.n ? `${p.payload.n} day(s)` : "No data"]} contentStyle={{ fontSize: 10 }} />
                   <Bar dataKey="avg" radius={[6, 6, 0, 0]} isAnimationActive animationDuration={900}>
                     {weekdayStats.data.map((d, i) => (
-                      <Cell key={i} fill={i === weekdayStats.bestI ? "#4a7c59" : i === weekdayStats.worstI ? "#e07a5f" : tintHex(C.accent, 0.35)} />
+                      <Cell key={i} fill={i === weekdayStats.bestI ? (ac.weekdayBest || "#4a7c59") : i === weekdayStats.worstI ? (ac.weekdayWorst || "#e07a5f") : tintHex(ac.weekdayOther || C.accent, 0.35)} />
                     ))}
                   </Bar>
                 </ComposedChart>
@@ -3241,9 +3246,9 @@ function DeepAnalyticsGrid({ state, ac }) {
           <div style={{ height: 130 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={moneyVelocity.days} margin={{ top: 6, right: 8, left: -22, bottom: 0 }}>
-                <CartesianGrid stroke="#f0ece0" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 8, fill: "#b3ac99" }} interval={2} />
-                <YAxis tick={{ fontSize: 9, fill: "#b3ac99" }} width={30} />
+                <CartesianGrid stroke={ac.chartAxis || "#f0ece0"} vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 8, fill: ac.chartAxis || "#b3ac99" }} interval={2} />
+                <YAxis tick={{ fontSize: 9, fill: ac.chartAxis || "#b3ac99" }} width={30} />
                 <Tooltip contentStyle={{ fontSize: 10 }} />
                 <Bar dataKey="earn" fill={tintHex("#4a7c59", 0.2)} radius={[3, 3, 0, 0]} isAnimationActive animationDuration={900} />
                 <Bar dataKey="spend" fill={tintHex("#e07a5f", 0.2)} radius={[3, 3, 0, 0]} isAnimationActive animationDuration={900} />
@@ -3519,9 +3524,9 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
         <div style={{ height: 140 }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={moodData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
-              <CartesianGrid stroke="#f0ece0" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 8, fill: "#b3ac99" }} interval={4} />
-              <YAxis domain={[0, 1]} ticks={[0, 0.5, 1]} tickFormatter={(v) => v === 1 ? "🙂" : v === 0.5 ? "😐" : "🙁"} tick={{ fontSize: 10 }} width={24} />
+              <CartesianGrid stroke={ac.chartAxis || "#f0ece0"} vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 8, fill: ac.chartAxis || "#b3ac99" }} interval={4} />
+              <YAxis domain={[0, 1]} ticks={[0, 0.5, 1]} tickFormatter={(v) => v === 1 ? "🙂" : v === 0.5 ? "😐" : "🙁"} tick={{ fontSize: 10, fill: ac.chartAxis || undefined }} width={24} />
               <Tooltip formatter={(v) => v === 1 ? "Happy" : v === 0.5 ? "Neutral" : v === 0 ? "Sad" : "No entry"} labelStyle={{ fontSize: 10 }} contentStyle={{ fontSize: 10 }} />
               <Line type="monotone" dataKey="mood" stroke={ac.moodLine || C.blue} strokeWidth={2} dot={{ r: 2 }} connectNulls />
             </LineChart>
@@ -4277,9 +4282,9 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
                       <stop offset="100%" stopColor={mc.netLine || C.accent} stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid stroke="#f0ece0" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fontSize: 8, fill: "#b3ac99" }} interval={Math.ceil(range / 7)} />
-                  <YAxis tick={{ fontSize: 9, fill: "#b3ac99" }} width={34} tickFormatter={(v) => `₹${v}`} />
+                  <CartesianGrid stroke={mc.chartAxis || "#f0ece0"} vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 8, fill: mc.chartAxis || "#b3ac99" }} interval={Math.ceil(range / 7)} />
+                  <YAxis tick={{ fontSize: 9, fill: mc.chartAxis || "#b3ac99" }} width={34} tickFormatter={(v) => `₹${v}`} />
                   <Tooltip
                     formatter={(v, key) => [`₹${Number(v).toFixed(0)}`, key === "earn" ? "Earned" : key === "spend" ? "Spent" : "Net"]}
                     labelStyle={{ fontSize: 10, fontWeight: 700 }} contentStyle={{ fontSize: 10, borderRadius: 8, border: "1px solid #ece7d8" }}
@@ -5419,7 +5424,7 @@ function AnalyticsSummaryMetric({ meta, value, textColor }) {
   // on both light and dark backgrounds.
   const ringColor = meta.color === C.dark ? safeTextColor : meta.color;
   if (meta.type === "ring") {
-    return <RingStat pct={value} label={meta.label} color={ringColor} />;
+    return <RingStat pct={value} label={meta.label} color={ringColor} textColor={safeTextColor} />;
   }
   const Icon = meta.icon;
   const display = meta.type === "money"
@@ -8658,15 +8663,15 @@ function BTLDashboardInner() {
             </motion.div>
             <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed" }}>Goals</Oval>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed", justifyContent: "flex-start" }}>
+              <Oval title="Coming soon" style={{ cursor: "not-allowed", justifyContent: "flex-start", background: hexToRgba("#4a7c59", 0.16), borderColor: "#4a7c59", color: "#4a7c59" }}>
                 Total Earn Money life :-&nbsp;
-                <span style={{ fontWeight: 900, color: "#4a7c59", background: "#4a7c5920", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>
+                <span style={{ fontWeight: 900, color: "#4a7c59", background: "#4a7c5930", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>
                   ₹{state.totalEarnLife.toFixed(0)}
                 </span>
               </Oval>
-              <Oval title="Coming soon" style={{ opacity: 0.55, cursor: "not-allowed", borderColor: "#c0392b", color: "#c0392b", justifyContent: "flex-start" }}>
+              <Oval title="Coming soon" style={{ cursor: "not-allowed", justifyContent: "flex-start", background: hexToRgba("#c0392b", 0.16), borderColor: "#c0392b", color: "#c0392b" }}>
                 Total Spend Money life :-&nbsp;
-                <span style={{ fontWeight: 900, color: "#c0392b", background: "#c0392b20", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>
+                <span style={{ fontWeight: 900, color: "#c0392b", background: "#c0392b30", padding: "2px 9px", borderRadius: 999, marginLeft: 4 }}>
                   ₹{(state.totalSpendLife || 0).toFixed(0)}
                 </span>
               </Oval>
