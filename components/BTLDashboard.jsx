@@ -9,7 +9,7 @@ import {
   ArrowUpCircle, ArrowDownCircle, PiggyBank, Receipt, ArrowLeft,
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
   Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn,
-  Users, Clock,
+  Users, Clock, PieChart as PieChartIcon,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -476,6 +476,22 @@ function ensureGoalDefaults(g) {
    lighter than GoalChecklist's item (no category/priority/subtasks) —
    this widget's whole point is "what happens at what time", not goal
    tracking. */
+/* ---------------- TIME TABLE: category palette (this update) ----------------
+   Powers both the little colored dot on each row and the new time-block
+   breakdown pie chart (how many hours today went to Study vs Work vs Rest
+   etc). Same "key + label + color" shape as CATEGORIES/SPEND_CATEGORIES
+   above, kept as its own list since a day's schedule buckets don't map
+   1:1 onto goal categories or spend categories. */
+const TIME_CATEGORIES = [
+  { key: "study", label: "Study", emoji: "📚", color: C.blue },
+  { key: "work", label: "Work", emoji: "💼", color: C.accent },
+  { key: "health", label: "Health", emoji: "💪", color: "#4a7c59" },
+  { key: "rest", label: "Rest", emoji: "🛌", color: "#b083f0" },
+  { key: "personal", label: "Personal", emoji: "🧑", color: "#f4d35e" },
+  { key: "other", label: "Other", emoji: "🔖", color: "#b3ac99" },
+];
+const timeCatInfo = (key) => TIME_CATEGORIES.find((c) => c.key === key) || TIME_CATEGORIES[TIME_CATEGORIES.length - 1];
+
 function ensureTimeItemDefaults(t) {
   return {
     id: t.id,
@@ -483,12 +499,13 @@ function ensureTimeItemDefaults(t) {
     text: t.text || "",
     done: !!t.done,
     icon: t.icon || "",
+    category: TIME_CATEGORIES.some((c) => c.key === t.category) ? t.category : "other",
   };
 }
 
 function makeDefaultState() {
   const mk = (arr) => arr.map((t, i) => ensureGoalDefaults({ id: `${Date.now()}-${i}-${Math.random()}`, text: t, done: false }));
-  const mkTime = (arr) => arr.map((t, i) => ensureTimeItemDefaults({ id: `${Date.now()}-tt-${i}-${Math.random()}`, time: t.time, text: t.text, done: false }));
+  const mkTime = (arr) => arr.map((t, i) => ensureTimeItemDefaults({ id: `${Date.now()}-tt-${i}-${Math.random()}`, time: t.time, text: t.text, category: t.category, done: false }));
   return {
     user: null,
     bigGoals: ["Become financially free", "Build a strong, healthy body", "Travel to 20 countries"],
@@ -496,13 +513,13 @@ function makeDefaultState() {
     dailyGoals: mk(["Workout", "Meditate 10 min", "Read", "Drink 3L water", "Plan tomorrow", "No junk food", "Sleep by 11 PM", "Gratitude note"]),
     extryGoals: mk(["Learn something new", "Message a friend", "Save ₹100", "Fix one small thing", "Say no to a distraction", "Tidy workspace", "Review budget", "Reply pending messages"]),
     timeTable: mkTime([
-      { time: "05:00", text: "Wake up" },
-      { time: "05:30", text: "Workout" },
-      { time: "07:00", text: "Breakfast" },
-      { time: "09:00", text: "Deep work" },
-      { time: "13:00", text: "Lunch" },
-      { time: "18:00", text: "Read 20 pages" },
-      { time: "22:30", text: "Sleep" },
+      { time: "05:00", text: "Wake up", category: "personal" },
+      { time: "05:30", text: "Workout", category: "health" },
+      { time: "07:00", text: "Breakfast", category: "personal" },
+      { time: "09:00", text: "Deep work", category: "work" },
+      { time: "13:00", text: "Lunch", category: "personal" },
+      { time: "18:00", text: "Read 20 pages", category: "study" },
+      { time: "22:30", text: "Sleep", category: "rest" },
     ]),
     notes: "",
     earnToday: "",
@@ -1602,8 +1619,10 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
 
   const [time, setTime] = useState("09:00");
   const [text, setText] = useState("");
+  const [category, setCategory] = useState("other");
   const [celebrateId, setCelebrateId] = useState(null);
   const [showHeat, setShowHeat] = useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const [nowStr, setNowStr] = useState(() => {
     const d = new Date();
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -1631,15 +1650,20 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
 
   const submit = () => {
     if (!text.trim()) return;
-    onAdd(time, text.trim());
+    onAdd(time, text.trim(), category);
     setText("");
   };
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
-      <ChecklistHeader title={<><Clock size={11} style={{ marginRight: 3, verticalAlign: -1 }} />Time Table</>} streak={streak} accent={accent} showHeat={showHeat} onToggleHeat={() => setShowHeat((v) => !v)} />
+      <ChecklistHeader
+        title={<><Clock size={11} style={{ marginRight: 3, verticalAlign: -1 }} />Time Table</>}
+        streak={streak} accent={accent} showHeat={showHeat} onToggleHeat={() => setShowHeat((v) => !v)}
+        extraToggle={{ icon: <PieChartIcon size={10} />, active: showBreakdown, onClick: () => setShowBreakdown((v) => !v), title: "Where today's hours go" }}
+      />
       <AnimatePresence initial={false}>
         {showHeat && <WidgetHeatmapPanel history={history} accent={accent} />}
+        {showBreakdown && <TimeBreakdownPanel items={items} accent={accent} />}
       </AnimatePresence>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: cardBg || "#fff" }} className="btl-scroll">
         {sorted.length === 0 && (
@@ -1652,6 +1676,7 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
             const isUpcoming = t.id === upcomingId;
             const isOverdue = !t.done && !isUpcoming && (t.time || "") < nowStr;
             const isCelebrating = celebrateId === t.id;
+            const cat = timeCatInfo(t.category);
             return (
               <motion.div
                 key={t.id}
@@ -1678,6 +1703,7 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
                     animate={isCelebrating ? { scale: [1, 1.35, 1] } : { scale: 1 }}
                     transition={{ duration: 0.35, ease: "easeOut" }}
                   />
+                  <span title={cat.label} style={{ width: 6, height: 6, borderRadius: "50%", background: cat.color, flexShrink: 0 }} />
                   <motion.span
                     animate={isUpcoming && !t.done ? { boxShadow: ["0 0 0 0 rgba(252,163,17,0.45)", "0 0 0 5px rgba(252,163,17,0)"] } : { boxShadow: "0 0 0 0 rgba(0,0,0,0)" }}
                     transition={{ duration: 1.6, repeat: isUpcoming && !t.done ? Infinity : 0, ease: "easeOut" }}
@@ -1718,7 +1744,13 @@ function TimeTable({ items, onToggle, onAdd, onRemove, accent, textStyle, cardBg
         </AnimatePresence>
       </div>
 
-      <div style={{ marginTop: 6, flexShrink: 0, display: "flex", gap: 4 }}>
+      <div style={{ marginTop: 6, flexShrink: 0, display: "flex", gap: 4, flexWrap: "wrap" }}>
+        <select
+          value={category} onChange={(e) => setCategory(e.target.value)}
+          style={{ fontSize: 9, padding: "5px 2px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", flexShrink: 0, background: "#fff" }}
+        >
+          {TIME_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.emoji} {c.label}</option>)}
+        </select>
         <input
           type="time" value={time} onChange={(e) => setTime(e.target.value)}
           style={{ fontSize: 10, padding: "5px 4px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", width: 84, flexShrink: 0 }}
@@ -2404,12 +2436,27 @@ function StreakChip({ streak, accent }) {
 /* Header row shared by GoalChecklist + TimeTable: centered Oval title, with the
    streak chip and a heatmap-toggle button pinned to the right so the title stays
    visually centered regardless of whether a widget has an active streak yet. */
-function ChecklistHeader({ title, streak, accent, showHeat, onToggleHeat }) {
+function ChecklistHeader({ title, streak, accent, showHeat, onToggleHeat, extraToggle }) {
   return (
     <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 6, flexShrink: 0, minHeight: 22 }}>
       <Oval style={{ display: "block", margin: 0, background: C.dark, color: C.bg, borderColor: C.dark }}>{title}</Oval>
       <div style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", gap: 4 }}>
         <StreakChip streak={streak} accent={accent} />
+        {extraToggle && (
+          <motion.button
+            onClick={extraToggle.onClick}
+            whileHover={{ scale: 1.12 }}
+            whileTap={{ scale: 0.88 }}
+            title={extraToggle.title}
+            style={{
+              border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 18, height: 18, borderRadius: 6,
+              background: extraToggle.active ? accent : "rgba(0,0,0,0.05)", color: extraToggle.active ? "#fff" : "#8a8579",
+            }}
+          >
+            {extraToggle.icon}
+          </motion.button>
+        )}
         <motion.button
           onClick={onToggleHeat}
           whileHover={{ scale: 1.12 }}
@@ -2440,6 +2487,82 @@ function WidgetHeatmapPanel({ history, accent }) {
           Last 8 weeks — daily % complete
         </div>
         <Heatmap completionHistory={history || {}} accentColor={accent} weeks={8} cellSize={8} />
+      </div>
+    </motion.div>
+  );
+}
+
+/* ---------------- TIME TABLE: time-block breakdown pie chart (this update) ----------------
+   "Where did today's hours actually go" — sorts the schedule by time and
+   treats each row's duration as the gap to the next row (the last row wraps
+   around to the first row's time next day, so a full day's schedule always
+   sums to 24h). Durations are then summed per TIME_CATEGORIES bucket and
+   drawn as a small recharts donut, matching the visual language of the
+   existing "Spend by category" donut in Money Management. */
+function timeToMinutes(hhmm) {
+  const [h, m] = (hhmm || "00:00").split(":").map(Number);
+  return (Number.isNaN(h) ? 0 : h) * 60 + (Number.isNaN(m) ? 0 : m);
+}
+
+function computeTimeBreakdown(items) {
+  const sorted = [...(items || [])].sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+  if (!sorted.length) return [];
+  const totals = {};
+  for (let i = 0; i < sorted.length; i++) {
+    const cur = timeToMinutes(sorted[i].time);
+    const next = i < sorted.length - 1 ? timeToMinutes(sorted[i + 1].time) : timeToMinutes(sorted[0].time) + 24 * 60;
+    const dur = Math.max(0, next - cur);
+    const key = sorted[i].category || "other";
+    totals[key] = (totals[key] || 0) + dur;
+  }
+  return Object.entries(totals)
+    .map(([key, mins]) => {
+      const info = timeCatInfo(key);
+      return { key, label: info.label, emoji: info.emoji, color: info.color, hours: +(mins / 60).toFixed(1) };
+    })
+    .filter((c) => c.hours > 0)
+    .sort((a, b) => b.hours - a.hours);
+}
+
+function TimeBreakdownPanel({ items, accent }) {
+  const data = useMemo(() => computeTimeBreakdown(items), [items]);
+  const totalHours = data.reduce((a, c) => a + c.hours, 0);
+  return (
+    <motion.div
+      initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+      style={{ overflow: "hidden", flexShrink: 0 }}
+    >
+      <div style={{ marginBottom: 6, padding: "6px 8px", background: "rgba(0,0,0,0.03)", borderRadius: 6 }}>
+        <div style={{ fontSize: 8, fontWeight: 800, color: "#a39c86", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.4 }}>
+          Where today's hours go
+        </div>
+        {data.length === 0 ? (
+          <div style={{ fontSize: 9.5, color: "#a39c86", textAlign: "center", padding: "8px 0" }}>Add a couple of time blocks to see the breakdown.</div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 64, height: 64, flexShrink: 0 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={data} dataKey="hours" nameKey="label" innerRadius={18} outerRadius={30} paddingAngle={2} strokeWidth={1} stroke="#fff">
+                    {data.map((c) => <Cell key={c.key} fill={c.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(v, n, p) => [`${v}h`, p?.payload?.label]} contentStyle={{ fontSize: 9, borderRadius: 8, border: "1px solid #ece7d8" }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+              {data.map((c) => (
+                <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 9, flex: 1 }}>{c.emoji} {c.label}</span>
+                  <span style={{ fontSize: 9, fontWeight: 800, color: accent }}>{c.hours}h</span>
+                  <span style={{ fontSize: 8, color: "#a39c86", width: 26, textAlign: "right" }}>{totalHours ? Math.round((c.hours / totalHours) * 100) : 0}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </motion.div>
   );
@@ -7795,8 +7918,8 @@ function BTLDashboardInner() {
     recordWidgetProgress(s, "timeTable", s.timeTable);
     return s;
   });
-  const addTimeItem = (time, text) => update((s) => {
-    s.timeTable = [...(s.timeTable || []), ensureTimeItemDefaults({ id: `${Date.now()}-${Math.random()}`, time, text, done: false })];
+  const addTimeItem = (time, text, category) => update((s) => {
+    s.timeTable = [...(s.timeTable || []), ensureTimeItemDefaults({ id: `${Date.now()}-${Math.random()}`, time, text, category, done: false })];
     return s;
   });
   const removeTimeItem = (id) => update((s) => {
