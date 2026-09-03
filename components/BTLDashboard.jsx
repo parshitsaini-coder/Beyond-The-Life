@@ -172,6 +172,34 @@ function autoMutedColor(bg) {
   return hexLuminance(bg || "#fff") < 0.5 ? "#b7b2a2" : "#8a8579";
 }
 
+/* ---- Glassmorphism 2.0 widget cards (this update) ----
+   Daily Goals / Extry Goals, Time Table, and Calendar cards now get a
+   frosted-glass look instead of a flat opaque fill. Reads from the
+   exact same `cardBg` these cards already used (default cream, a
+   per-widget custom color from the Widgets theme tab, or whatever a
+   Panel Theme preset wrote into it) — no new theme field needed, it
+   just renders that color semi-transparent with a blur behind it
+   instead of solid. */
+function hexToRgba(hex, alpha) {
+  const safe = typeof hex === "string" && /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : "#fffdf7";
+  const r = parseInt(safe.slice(1, 3), 16);
+  const g = parseInt(safe.slice(3, 5), 16);
+  const b = parseInt(safe.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+function glassCardStyle(cardBg) {
+  const isDark = hexLuminance(cardBg || "#fffdf7") < 0.5;
+  return {
+    background: hexToRgba(cardBg || "#fffdf7", 0.55),
+    backdropFilter: "blur(16px) saturate(150%)",
+    WebkitBackdropFilter: "blur(16px) saturate(150%)",
+    border: `1px solid ${isDark ? "rgba(255,255,255,0.14)" : "rgba(64,61,57,0.12)"}`,
+    boxShadow: isDark
+      ? "0 8px 28px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06)"
+      : "0 8px 28px rgba(64,61,57,0.10), inset 0 1px 0 rgba(255,255,255,0.55)",
+  };
+}
+
 /* ---- Money Management tab — per-element custom colors (this update) ----
    Same idea as the Analytics element colors above, applied to the
    Money Management screen: every distinctly-colored stat card, chart
@@ -1356,7 +1384,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
       <AnimatePresence initial={false}>
         {showHeat && <WidgetHeatmapPanel history={history} accent={accent} />}
       </AnimatePresence>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: cardBg || "#fff" }} className="btl-scroll">
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", borderRadius: 8, ...glassCardStyle(cardBg) }} className="btl-scroll">
         <AnimatePresence initial={false}>
           {items.map((g) => {
             const cat = catInfo(g.category);
@@ -1873,7 +1901,7 @@ function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRec
         {showHeat && <WidgetHeatmapPanel history={history} accent={accent} />}
         {showBreakdown && <TimeBreakdownPanel items={items} accent={accent} />}
       </AnimatePresence>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", border: `1px solid ${C.text}`, borderRadius: 8, background: cardBg || "#fff" }} className="btl-scroll">
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", borderRadius: 8, ...glassCardStyle(cardBg) }} className="btl-scroll">
         {sorted.length === 0 && (
           <div style={{ padding: "16px 10px", fontSize: 10, color: "#a39c86", textAlign: "center" }}>
             No time blocks yet — add your first one below.
@@ -5192,7 +5220,7 @@ function CalendarWidget({ completionHistory, cardBg, textStyle }) {
   const hist = completionHistory || {};
 
   return (
-    <div style={{ border: `1px solid ${C.text}`, borderRadius: 8, padding: 10, background: cardBg || "#fff", width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, overflow: "hidden" }}>
+    <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, overflow: "hidden", ...glassCardStyle(cardBg) }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: titleFontSize, fontWeight: 800, color: textColor || autoTextColor(cardBg), fontFamily, display: "flex", alignItems: "center", gap: 5 }}><CalendarDays size={13} /> Calendar</span>
         <AnimatePresence mode="wait" initial={false}>

@@ -1,6 +1,30 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🖼️ New — browser tab / app icon added (this update)
+## 🌫️ New — Glassmorphism 2.0 on Daily Goals / Extry Goals, Time Table & Calendar cards (this update)
+
+The three checklist-style cards on the dashboard no longer render as a
+flat, fully-opaque cream fill — they now use a frosted-glass look:
+semi-transparent background + backdrop blur, a soft ambient shadow,
+and a subtle inner highlight for depth.
+
+- Applies to: **Daily Goals**, **Extry Goals** (both share the same
+  `GoalChecklist` component), **Time Table**, and **Calendar**.
+- New `glassCardStyle(cardBg)` helper (next to the existing
+  `autoTextColor`/`autoMutedColor` helpers in `components/BTLDashboard.jsx`)
+  takes whatever color is already sitting in that card's `cardBg` — the
+  app's default cream, a per-widget custom color from Setting → Theme →
+  Widgets, or a color written in by a Panel Theme preset — and renders
+  it at ~55% opacity with `backdrop-filter: blur(16px) saturate(150%)`
+  behind it, plus a shadow/border that automatically switches between a
+  light-mode and dark-mode look based on that same color's brightness
+  (reusing the existing `hexLuminance` check). **No new theme fields or
+  settings needed** — same pattern as the auto-contrast text fix above.
+- Pure CSS (`backdrop-filter`), no new npm installs. Support is ~97%
+  across browsers; on the rare browser without it, the card just shows
+  its semi-transparent color without the blur — still readable, just
+  slightly less "frosted."
+
+## 🖼️ New — browser tab / app icon added (earlier update)
 
 The browser tab (favicon) and home-screen icon now show a custom "B"
 monogram mark — dark badge, cream "B" wordmark, small orange spark
