@@ -10,6 +10,7 @@ import {
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
   Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn,
   Users, Clock, PieChart as PieChartIcon, Bell, BellOff, Square,
+  AlarmClock, Volume2, Play,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -67,6 +68,7 @@ const WIDGETS = [
   { id: "earnMoney", label: "Earn Money / Notes" },
   { id: "analyticsSummary", label: "Analytics Summary" },
   { id: "calendar", label: "Calendar" },
+  { id: "clock", label: "Analog Clock & Alarm" },
 ];
 const GRID_COLS = 100;        // fine-grained width grid (1–100 = % of container) — free-form, continuous horizontal resize
 const OLD_GRID_COLS = 6;      // pre-update width resolution, kept only so normalizeSize can rescale old saved layouts
@@ -470,6 +472,7 @@ const DEFAULT_LAYOUT = {
     bigGoals: { w: 50, h: 172 }, lifeRules: { w: 50, h: 172 }, dailyGoals: { w: 50, h: 215 }, extryGoals: { w: 50, h: 215 },
     timeTable: { w: 50, h: 260 },
     earnMoney: { w: 50, h: 240 }, analyticsSummary: { w: 100, h: 260 }, calendar: { w: 50, h: 300 },
+    clock: { w: 33, h: 320 },
   },
   pinned: { analyticsSummary: false },
   hidden: {},
@@ -661,6 +664,14 @@ function makeDefaultState() {
     widgetStreaks: { dailyGoals: 0, extryGoals: 0, timeTable: 0 },
     widgetLastCompletedDate: {}, // { dailyGoals: "2026-08-30", ... }
     widgetHistory: { dailyGoals: {}, extryGoals: {}, timeTable: {} }, // { dailyGoals: { "2026-08-30": 62.5 }, ... }
+    // Analog Clock widget (this update) — alarms set by double-clicking a
+    // spot on the clock face. { id, time: "HH:MM" (24h), label }[]. Fires
+    // daily whenever the live clock reaches `time` (see the alarm-check
+    // loop in BTLDashboardInner) until removed from the widget.
+    clockAlarms: [],
+    // Which of the 4 built-in ALARM_RINGTONES (see below) plays when an
+    // alarm fires — changeable from Setting → Alarm.
+    clockRingtone: "classic",
     layout: defaultLayout(),
     theme: defaultTheme(),
   };
@@ -706,6 +717,8 @@ async function loadState(user) {
     s.widgetStreaks = { dailyGoals: 0, extryGoals: 0, timeTable: 0, ...(s.widgetStreaks || {}) };
     s.widgetHistory = { dailyGoals: {}, extryGoals: {}, timeTable: {}, ...(s.widgetHistory || {}) };
     s.widgetLastCompletedDate = s.widgetLastCompletedDate || {};
+    s.clockAlarms = Array.isArray(s.clockAlarms) ? s.clockAlarms : [];
+    s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === s.clockRingtone) ? s.clockRingtone : "classic";
   }
   const withLayout = ensureLayoutDefaults(s);
   return { ...withLayout, theme: normalizeTheme(withLayout.theme) };
@@ -1818,6 +1831,333 @@ function playChime() {
   } catch (e) { /* audio not available — fine, notification still fires */ }
 }
 
+/* ================================================================
+   ANALOG CLOCK & ALARM (this update)
+   A live analog clock face — hour/minute/second hands driven by the
+   real system time, redrawn every second — that doubles as a quick
+   alarm setter: hover anywhere on the dial and a small popup shows
+   the time at that exact angle; double-click there to arm an alarm
+   for it. When the live clock reaches an armed alarm's time, a glass
+   "Liquid Glass" popup pulses onto the dashboard (see AlarmRingModal)
+   with a selectable ringtone that rings for up to 30s or until
+   dismissed via "Done". All 4 ringtones are synthesized live with the
+   Web Audio API (same technique as the Time Table chime above) — no
+   audio files to bundle, and instantly available offline.
+   ================================================================ */
+const ALARM_RINGTONES = [
+  { id: "classic", label: "Classic Beep" },
+  { id: "chime", label: "Gentle Chime" },
+  { id: "digital", label: "Digital Pulse" },
+  { id: "bell", label: "Bell Toll" },
+];
+function ringtoneLabel(id) { return (ALARM_RINGTONES.find((r) => r.id === id) || ALARM_RINGTONES[0]).label; }
+
+/* Schedules one oscillator note with a short attack/decay envelope so
+   nothing clicks/pops — shared by every ringtone below. */
+function playAlarmTone(ctx, { freq, start, dur, type = "sine", peak = 0.18, glideTo }) {
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, ctx.currentTime + start);
+  if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, ctx.currentTime + start + dur);
+  g.gain.value = 0.0001;
+  o.connect(g); g.connect(ctx.destination);
+  g.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+  g.gain.exponentialRampToValueAtTime(peak, ctx.currentTime + start + Math.min(0.03, dur * 0.3));
+  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+  o.start(ctx.currentTime + start);
+  o.stop(ctx.currentTime + start + dur + 0.03);
+}
+/* Plays one full cycle of the given ringtone id on a shared AudioContext
+   and returns the cycle's duration in ms, so a caller can schedule the
+   next repeat back-to-back for a smooth, gapless loop. */
+function playRingtoneCycle(ctx, id) {
+  if (id === "chime") {
+    [523.25, 659.25, 783.99].forEach((f, i) => playAlarmTone(ctx, { freq: f, start: i * 0.18, dur: 0.32, type: "triangle", peak: 0.16 }));
+    return 900;
+  }
+  if (id === "digital") {
+    [0, 0.16, 0.32].forEach((start) => playAlarmTone(ctx, { freq: 1180, start, dur: 0.11, type: "square", peak: 0.1 }));
+    return 700;
+  }
+  if (id === "bell") {
+    playAlarmTone(ctx, { freq: 660, start: 0, dur: 1.1, type: "sine", peak: 0.17 });
+    playAlarmTone(ctx, { freq: 1320, start: 0, dur: 0.7, type: "sine", peak: 0.06 });
+    return 1300;
+  }
+  // "classic" (default) — two quick descending beeps
+  playAlarmTone(ctx, { freq: 880, start: 0, dur: 0.3, type: "sine", peak: 0.18, glideTo: 660 });
+  playAlarmTone(ctx, { freq: 880, start: 0.38, dur: 0.3, type: "sine", peak: 0.18, glideTo: 660 });
+  return 850;
+}
+/* One-shot preview — used by the ▶ button in Setting → Alarm. Own
+   short-lived AudioContext that closes itself once the cycle ends. */
+function previewRingtone(id) {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const dur = playRingtoneCycle(ctx, id);
+    setTimeout(() => ctx.close(), dur + 200);
+  } catch (e) { /* audio not available — preview silently no-ops */ }
+}
+const ALARM_MAX_RING_MS = 30 * 1000; // "alarm 30 second tak" — hard ceiling even if never dismissed
+/* Loops a ringtone (gapless repeats) until stop() is called or
+   ALARM_MAX_RING_MS elapses. Returns stop(). Used while the
+   AlarmRingModal is on screen (see the effect in BTLDashboardInner). */
+function startAlarmRingtone(id) {
+  let stopped = false, ctx = null, timer = null;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) ctx = new AudioCtx();
+  } catch (e) { /* ignore — alarm still shows visually even if audio is blocked */ }
+  const tick = () => {
+    if (stopped || !ctx) return;
+    const dur = playRingtoneCycle(ctx, id);
+    timer = setTimeout(tick, dur);
+  };
+  if (ctx) tick();
+  return () => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+    if (ctx) { try { ctx.close(); } catch (e) { /* already closed */ } }
+  };
+}
+
+/* ---- Clock-face angle <-> time math ---- 0deg = 12 o'clock, clockwise. */
+function clockAngleToTime12(angleDeg) {
+  const totalMin = (angleDeg / 360) * 12 * 60; // 0..720 across the 12h dial
+  const hh12 = Math.floor(totalMin / 60) % 12; // 0..11 (0 == "12")
+  const mm = Math.round(totalMin % 60) % 60;
+  return { hh12, mm };
+}
+/* A bare dial reading (e.g. "3:00") is ambiguous between AM and PM —
+   this picks whichever real 24h time is soonest from now, so
+   double-clicking always arms the *next* occurrence of that spot. */
+function nearestFutureTime(hh12, mm, now) {
+  const candidates = [hh12, (hh12 + 12) % 24];
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  let best = candidates[0], bestDelta = Infinity;
+  candidates.forEach((h) => {
+    let delta = (h * 60 + mm) - nowMin;
+    if (delta < 0) delta += 24 * 60;
+    if (delta < bestDelta) { bestDelta = delta; best = h; }
+  });
+  return { hh: best, mm };
+}
+
+/* ---- The widget itself ---- */
+function AnalogClockWidget({ alarms = [], ringtoneId, onSetAlarm, onRemoveAlarm, cardBg, accent }) {
+  const [now, setNow] = useState(() => new Date());
+  const [hover, setHover] = useState(null);   // { x, y, hh12, mm } | null
+  const [justSet, setJustSet] = useState(null); // "HH:MM" (24h) confirmation flash
+  const svgRef = useRef(null);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const sec = now.getSeconds(), min = now.getMinutes(), hr = now.getHours();
+  const secAngle = sec * 6;
+  const minAngle = min * 6 + sec * 0.1;
+  const hrAngle = (hr % 12) * 30 + min * 0.5;
+  const CX = 100, CY = 100, R = 88;
+
+  const angleFromEvent = (e) => {
+    if (!svgRef.current) return null;
+    const rect = svgRef.current.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 200;
+    const y = ((e.clientY - rect.top) / rect.height) * 200;
+    const dx = x - CX, dy = y - CY;
+    const dist = Math.hypot(dx, dy);
+    if (dist > R + 4 || dist < 8) return null; // ignore outside the dial / dead center
+    let angle = (Math.atan2(dx, -dy) * 180) / Math.PI;
+    if (angle < 0) angle += 360;
+    return angle;
+  };
+  const handleMove = (e) => {
+    const angle = angleFromEvent(e);
+    if (angle == null) { setHover(null); return; }
+    const { hh12, mm } = clockAngleToTime12(angle);
+    const rect = svgRef.current.getBoundingClientRect();
+    setHover({ x: e.clientX - rect.left, y: e.clientY - rect.top, hh12, mm });
+  };
+  const handleDoubleClick = (e) => {
+    const angle = angleFromEvent(e);
+    if (angle == null) return;
+    const { hh12, mm } = clockAngleToTime12(angle);
+    const { hh, mm: mm2 } = nearestFutureTime(hh12, mm, now);
+    const time = `${String(hh).padStart(2, "0")}:${String(mm2).padStart(2, "0")}`;
+    if (!alarms.some((a) => a.time === time)) onSetAlarm(time);
+    setJustSet(time);
+    setTimeout(() => setJustSet((v) => (v === time ? null : v)), 1200);
+  };
+
+  const digital = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
+  const textColor = autoTextColor(cardBg);
+  const mutedColor = autoMutedColor(cardBg);
+
+  return (
+    <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, overflow: "hidden", ...glassCardStyle(cardBg) }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: textColor, display: "flex", alignItems: "center", gap: 5 }}>
+          <AlarmClock size={13} /> Clock & Alarm
+        </span>
+        {alarms.length > 0 && (
+          <span style={{ fontSize: 9, fontWeight: 800, color: mutedColor, display: "flex", alignItems: "center", gap: 3 }}>
+            <Bell size={10} /> {alarms.length}
+          </span>
+        )}
+      </div>
+
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 0, position: "relative" }}>
+        <svg
+          ref={svgRef}
+          viewBox="0 0 200 200"
+          width="150" height="150"
+          style={{ cursor: "crosshair", touchAction: "none", overflow: "visible" }}
+          onMouseMove={handleMove}
+          onMouseLeave={() => setHover(null)}
+          onDoubleClick={handleDoubleClick}
+        >
+          <circle cx={CX} cy={CY} r={R} fill={hexToRgba(cardBg || "#fffdf7", 0.35)} stroke={mutedColor} strokeWidth="2" />
+          {Array.from({ length: 12 }).map((_, i) => {
+            const a = (i * 30 * Math.PI) / 180;
+            const isMajor = i % 3 === 0;
+            const r1 = isMajor ? R - 12 : R - 7;
+            const x1 = CX + Math.sin(a) * r1, y1 = CY - Math.cos(a) * r1;
+            const x2 = CX + Math.sin(a) * (R - 2), y2 = CY - Math.cos(a) * (R - 2);
+            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke={textColor} strokeWidth={isMajor ? 2 : 1} opacity={isMajor ? 0.8 : 0.4} strokeLinecap="round" />;
+          })}
+          {Array.from({ length: 12 }).map((_, i) => {
+            const num = i === 0 ? 12 : i;
+            const a = (i * 30 * Math.PI) / 180;
+            const r1 = R - 22;
+            const x = CX + Math.sin(a) * r1, y = CY - Math.cos(a) * r1;
+            return <text key={i} x={x} y={y + 3.5} textAnchor="middle" fontSize="10" fontWeight="800" fill={textColor} opacity={0.75}>{num}</text>;
+          })}
+          {alarms.map((a) => {
+            const [ah, am] = a.time.split(":").map(Number);
+            const dialAngle = (ah % 12) * 30 + am * 0.5;
+            const rad = (dialAngle * Math.PI) / 180;
+            const r1 = R - 4;
+            const x = CX + Math.sin(rad) * r1, y = CY - Math.cos(rad) * r1;
+            return <circle key={a.id} cx={x} cy={y} r="4" fill={accent} stroke="#fff" strokeWidth="1" />;
+          })}
+          <motion.line x1={CX} y1={CY} x2={CX} y2={CY - 42} stroke={textColor} strokeWidth="4.5" strokeLinecap="round"
+            style={{ originX: "100px", originY: "100px" }} animate={{ rotate: hrAngle }} transition={{ type: "tween", duration: 0.25 }} />
+          <motion.line x1={CX} y1={CY} x2={CX} y2={CY - 62} stroke={textColor} strokeWidth="3" strokeLinecap="round"
+            style={{ originX: "100px", originY: "100px" }} animate={{ rotate: minAngle }} transition={{ type: "tween", duration: 0.25 }} />
+          <motion.line x1={CX} y1={CY + 14} x2={CX} y2={CY - 76} stroke={accent} strokeWidth="1.4" strokeLinecap="round"
+            style={{ originX: "100px", originY: "100px" }} animate={{ rotate: secAngle }} transition={{ type: "tween", duration: 0.2 }} />
+          <circle cx={CX} cy={CY} r="4.5" fill={accent} stroke={textColor} strokeWidth="1" />
+        </svg>
+
+        {hover && (
+          <div style={{
+            position: "absolute", left: Math.min(Math.max(hover.x, 34), 116), top: Math.max(hover.y - 30, 0),
+            transform: "translate(-50%, 0)", pointerEvents: "none", zIndex: 3,
+            background: C.dark, color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: 6, padding: "3px 7px",
+            whiteSpace: "nowrap", boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
+          }}>
+            {String(hover.hh12 === 0 ? 12 : hover.hh12).padStart(2, "0")}:{String(hover.mm).padStart(2, "0")} · double-click for alarm
+          </div>
+        )}
+
+        <AnimatePresence>
+          {justSet && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, y: 6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }}
+              style={{
+                position: "absolute", bottom: 2, zIndex: 4, display: "flex", alignItems: "center", gap: 4,
+                background: "#4a9d5f", color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: 999, padding: "3px 9px",
+              }}
+            ><CheckCircle2 size={11} /> Alarm set for {formatTime12(justSet)}</motion.div>
+          )}
+        </AnimatePresence>
+
+        <div style={{ fontFamily: "'JetBrains Mono', 'Courier New', monospace", fontSize: 15, fontWeight: 800, color: textColor, letterSpacing: 0.5 }}>
+          {digital}
+        </div>
+      </div>
+
+      {alarms.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, flexShrink: 0, maxHeight: 46, overflowY: "auto" }} className="btl-scroll">
+          <AnimatePresence>
+            {alarms.map((a) => (
+              <motion.span
+                key={a.id}
+                initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 4, fontSize: 9, fontWeight: 800,
+                  background: hexToRgba(accent, 0.16), color: textColor, border: `1px solid ${hexToRgba(accent, 0.4)}`,
+                  borderRadius: 999, padding: "2px 6px 2px 8px",
+                }}
+              >
+                <Bell size={9} /> {formatTime12(a.time)}
+                <span onClick={() => onRemoveAlarm(a.id)} title="Remove alarm" style={{ cursor: "pointer", display: "inline-flex", opacity: 0.7 }}>
+                  <X size={10} />
+                </span>
+              </motion.span>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---- The "ring" popup — glassmorphism + a warm pulsing wash + a
+   shaking bell, so it reads as an alarm rather than a generic modal. ---- */
+function AlarmRingModal({ alarm, ringtoneId, onDismiss }) {
+  if (!alarm) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{ position: "absolute", inset: 0, zIndex: 95, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(37,36,34,0.35)" }}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.85, y: 10 }}
+        transition={{ type: "spring", stiffness: 320, damping: 22 }}
+        style={{
+          width: "min(88%, 320px)", borderRadius: 20, padding: "26px 22px", textAlign: "center", position: "relative", overflow: "hidden",
+          background: "rgba(255,255,255,0.72)", backdropFilter: "blur(24px) saturate(190%)", WebkitBackdropFilter: "blur(24px) saturate(190%)",
+          border: "1px solid rgba(255,255,255,0.85)", boxShadow: "0 24px 60px rgba(37,36,34,0.35), inset 0 1px 0 rgba(255,255,255,0.7)",
+        }}
+      >
+        <motion.div
+          animate={{ opacity: [0.25, 0.55, 0.25], scale: [1, 1.15, 1] }}
+          transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+          style={{ position: "absolute", inset: -40, zIndex: 0, borderRadius: "50%", background: `radial-gradient(circle, ${hexToRgba(C.accent, 0.5)}, transparent 70%)` }}
+        />
+        <motion.div
+          animate={{ rotate: [0, -14, 14, -10, 10, -4, 4, 0] }}
+          transition={{ duration: 0.9, repeat: Infinity, repeatDelay: 0.3, ease: "easeInOut" }}
+          style={{ position: "relative", zIndex: 1, display: "inline-flex", color: C.accent, marginBottom: 6 }}
+        >
+          <AlarmClock size={40} />
+        </motion.div>
+        <div style={{ position: "relative", zIndex: 1, fontSize: 11, fontWeight: 800, color: "#8a8579", marginBottom: 2 }}>Alarm</div>
+        <div style={{ position: "relative", zIndex: 1, fontSize: 30, fontWeight: 900, color: C.dark, fontFamily: "'JetBrains Mono', 'Courier New', monospace", marginBottom: 4 }}>
+          {formatTime12(alarm.time)}
+        </div>
+        <div style={{ position: "relative", zIndex: 1, fontSize: 10, fontWeight: 700, color: "#a39c86", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+          <Volume2 size={11} /> {ringtoneLabel(ringtoneId)}
+        </div>
+        <motion.button
+          onClick={onDismiss}
+          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.94 }}
+          style={{
+            position: "relative", zIndex: 1, border: "none", background: C.dark, color: "#fff",
+            fontSize: 12, fontWeight: 800, borderRadius: 999, padding: "9px 28px", cursor: "pointer",
+          }}
+        >Done</motion.button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 /* ---------------- TIME TABLE: drag-to-reschedule time math (this update) ----------------
    Dragging a row to a new spot in the list (via Reorder.Group below) drops
    it between two neighbors; these turn that new position into an actual
@@ -2321,8 +2661,8 @@ function MoodBtn({ active, onClick, children, title }) {
 }
 
 /* ---------------- SETTINGS PANEL CONTENT (rendered inside the glass modal) ---------------- */
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset }) {
-  const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | null
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onSetClockRingtone }) {
+  const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | "alarm" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
   const [editVal, setEditVal] = useState("");
@@ -2386,6 +2726,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
         <Oval onClick={() => setMode("bigGoals")} style={{ cursor: "pointer", background: mode === "bigGoals" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "bigGoals" ? "#fff" : C.text }}>Add Big Goal</Oval>
         <Oval onClick={() => setMode("lifeRules")} style={{ cursor: "pointer", background: mode === "lifeRules" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "lifeRules" ? "#fff" : C.text }}>Add Rule</Oval>
         <Oval onClick={() => setMode(mode === "theme" ? null : "theme")} style={{ cursor: "pointer", background: mode === "theme" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "theme" ? "#fff" : C.text }}><Palette size={11} style={{ marginRight: 4 }} />Theme</Oval>
+        <Oval onClick={() => setMode(mode === "alarm" ? null : "alarm")} style={{ cursor: "pointer", background: mode === "alarm" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "alarm" ? "#fff" : C.text }}><AlarmClock size={11} style={{ marginRight: 4 }} />Alarm</Oval>
         <div style={{ flex: 1 }} />
         <motion.span whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onClose} title="Close" style={{
           borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
@@ -2415,6 +2756,44 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             onApplyPreset={onApplyPanelPreset}
             onResetPreset={onResetPanelPreset}
           />
+        ) : mode === "alarm" ? (
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, marginBottom: 4, display: "flex", alignItems: "center", gap: 5 }}>
+              <AlarmClock size={14} /> Alarm Ringtone
+            </div>
+            <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 12, maxWidth: 420 }}>
+              Plays when an alarm set on the Clock & Alarm widget goes off (rings up to 30s or until dismissed). Tap ▶ to preview, then pick one.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxWidth: 420 }}>
+              {ALARM_RINGTONES.map((r) => {
+                const selected = (state.clockRingtone || "classic") === r.id;
+                return (
+                  <motion.div
+                    key={r.id}
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                    onClick={() => onSetClockRingtone(r.id)}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6,
+                      border: `1.5px solid ${selected ? C.accent : "rgba(64,61,57,0.15)"}`, borderRadius: 10,
+                      padding: "8px 10px", background: selected ? hexToRgba(C.accent, 0.12) : "rgba(255,255,255,0.5)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ fontSize: 11, fontWeight: 800, color: selected ? C.accent : C.text, display: "flex", alignItems: "center", gap: 6 }}>
+                      {selected ? <CheckCircle2 size={13} /> : <Bell size={13} style={{ opacity: 0.5 }} />}
+                      {r.label}
+                    </span>
+                    <motion.button
+                      whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+                      onClick={(e) => { e.stopPropagation(); previewRingtone(r.id); }}
+                      title="Preview"
+                      style={{ border: "none", background: C.dark, color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
+                    ><Play size={10} fill="#fff" /></motion.button>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
         ) : (
           <>
             {mode && (
@@ -8438,6 +8817,7 @@ function BTLDashboardInner() {
   const [showShare, setShowShare] = useState(false);
   const [friendOpen, setFriendOpen] = useState(false); // Friend Celebration panel
   const [saveStatus, setSaveStatus] = useState("idle"); // "idle" | "saving" | "saved"
+  const [activeAlarm, setActiveAlarm] = useState(null); // { id, time } | null — Clock & Alarm widget (this update)
   const incomingFriendReqCount = useIncomingFriendRequestCount(fbUser?.uid);
   const fileRef = useRef(null);
   const loaded = useRef(false);
@@ -8472,6 +8852,41 @@ function BTLDashboardInner() {
     }, 400);
     return () => clearTimeout(t);
   }, [state, fbUser]);
+
+  // ---- Clock & Alarm (this update): watches state.clockAlarms every
+  // second and fires AlarmRingModal the moment the live clock hits an
+  // armed alarm's "HH:MM". Reads from a ref (kept in sync below) instead
+  // of `state` directly so this one interval doesn't need to be torn
+  // down/recreated on every keystroke elsewhere in the app. Alarms are
+  // daily-recurring by design (an analog dial can't tell today from
+  // tomorrow) — `firedRef` just guards against re-firing twice inside
+  // the same minute, not against firing again the next day.
+  const clockStateRef = useRef(state);
+  useEffect(() => { clockStateRef.current = state; }, [state]);
+  const alarmFiredRef = useRef({});
+  useEffect(() => {
+    const id = setInterval(() => {
+      const s = clockStateRef.current;
+      if (!s) return;
+      const now = new Date();
+      const key = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const match = (s.clockAlarms || []).find((a) => a.time === key && alarmFiredRef.current[a.id] !== key);
+      if (match) {
+        alarmFiredRef.current[match.id] = key;
+        setActiveAlarm(match);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+  // Starts the looping ringtone the moment an alarm fires, and stops it
+  // either when "Done" is tapped (setActiveAlarm(null) below) or after
+  // ALARM_MAX_RING_MS (~30s) — whichever comes first.
+  useEffect(() => {
+    if (!activeAlarm) return;
+    const stopTone = startAlarmRingtone(clockStateRef.current?.clockRingtone || "classic");
+    const t = setTimeout(() => setActiveAlarm(null), ALARM_MAX_RING_MS);
+    return () => { stopTone(); clearTimeout(t); };
+  }, [activeAlarm]);
 
   const update = useCallback((fn) => setState((s) => fn({ ...s })), []);
   // Shared "shine" trigger — the diagonal shine sweep used to fire on every
@@ -8618,6 +9033,23 @@ function BTLDashboardInner() {
   // rolloverDailyGoals below, or stays as a one-off event.
   const toggleTimeRecurring = (id) => update((s) => {
     s.timeTable = (s.timeTable || []).map((t) => t.id === id ? { ...t, recurring: !t.recurring } : t);
+    return s;
+  });
+
+  // Clock & Alarm (this update) — set via double-click on the dial,
+  // removed via the ✕ on its chip under the widget, ringtone changed
+  // from Setting → Alarm. Same `update()` pattern as everything else.
+  const setClockAlarm = (time) => update((s) => {
+    if ((s.clockAlarms || []).some((a) => a.time === time)) return s; // already armed
+    s.clockAlarms = [...(s.clockAlarms || []), { id: `${Date.now()}-${Math.random()}`, time }];
+    return s;
+  });
+  const removeClockAlarm = (id) => update((s) => {
+    s.clockAlarms = (s.clockAlarms || []).filter((a) => a.id !== id);
+    return s;
+  });
+  const setClockRingtone = (ringtoneId) => update((s) => {
+    s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === ringtoneId) ? ringtoneId : "classic";
     return s;
   });
 
@@ -8848,6 +9280,7 @@ function BTLDashboardInner() {
     earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} onImageDrop={processImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} cardBg={theme.widgets.earnMoney?.bg} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} metrics={theme.analyticsSummary.metrics} colors={theme.analyticsSummaryColors} />,
     calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} textStyle={state.layout.textStyles?.calendar} />,
+    clock: <AnalogClockWidget alarms={state.clockAlarms || []} ringtoneId={state.clockRingtone} onSetAlarm={setClockAlarm} onRemoveAlarm={removeClockAlarm} accent={C.accent} cardBg={theme.widgets.clock?.bg} />,
   };
 
   return (
@@ -9086,6 +9519,7 @@ function BTLDashboardInner() {
               onAnalyticsColorChange={setAnalyticsColor} onAnalyticsColorReset={resetAnalyticsColors}
               onMoneyColorChange={setMoneyColor} onMoneyColorReset={resetMoneyColors}
               onApplyPanelPreset={applyPanelPreset} onResetPanelPreset={resetPanelPreset}
+              onSetClockRingtone={setClockRingtone}
             />
           </motion.div>
         )}
@@ -9131,6 +9565,13 @@ function BTLDashboardInner() {
             onClose={() => setMoneyModal(null)}
             onConfirm={commitMoney}
           />
+        )}
+      </AnimatePresence>
+
+      {/* ---------- ALARM RING POPUP (Clock & Alarm widget — this update) ---------- */}
+      <AnimatePresence>
+        {activeAlarm && (
+          <AlarmRingModal alarm={activeAlarm} ringtoneId={state.clockRingtone} onDismiss={() => setActiveAlarm(null)} />
         )}
       </AnimatePresence>
     </div>

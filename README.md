@@ -1,6 +1,51 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🌍 New — "Earthquake" jitter on checkbox tick (this update)
+## ⏰ New — "Analog Clock & Alarm" widget (this update)
+
+A new widget — add it from **Setting → Layout → Add widget → Analog
+Clock & Alarm** (or it's already in the default layout on a fresh
+install). It's a live analog clock face that doubles as a one-click
+alarm setter, plus a matching "ring" popup and a ringtone picker.
+
+- **Real analog clock** — hour, minute, and second hands driven by the
+  actual system time (redrawn every second via `AnalogClockWidget`'s own
+  `setInterval`), with a 12-number dial and a digital `HH:MM:SS AM/PM`
+  readout underneath.
+- **Hover-to-preview** — moving the mouse anywhere inside the dial
+  computes the angle from center, converts it to a 12-hour-dial reading
+  (`clockAngleToTime12`), and shows a small dark popup right next to the
+  cursor with that time (e.g. `03:15 · double-click for alarm`).
+- **Double-click to arm an alarm** — double-clicking commits that spot's
+  time as a real alarm. Since a bare dial position is ambiguous between
+  AM/PM, `nearestFutureTime()` picks whichever of the two is soonest
+  from right now, so it always arms the *next* upcoming occurrence.
+  Armed alarms show as small colored dots on the dial itself and as
+  removable chips (tap the ✕) under the clock.
+- **Alarms are daily-recurring** — because the dial can't distinguish
+  today from tomorrow, an armed `"HH:MM"` simply fires every day the
+  live clock reaches it, until it's removed from the widget's chip
+  list. New `state.clockAlarms: { id, time }[]`.
+- **The ring popup** — `AlarmRingModal`, a glassmorphism card (same
+  recipe as Settings/Memories) with a warm pulsing radial-gradient wash
+  behind a shaking `AlarmClock` icon, the fired time in large monospace
+  text, the active ringtone's name, and a **Done** button to dismiss.
+  Rendered at the dashboard's top level so it pops up over whatever tab
+  you're on when an alarm fires.
+- **Ringtones** — 4 built-in tones (**Classic Beep**, **Gentle Chime**,
+  **Digital Pulse**, **Bell Toll**), all synthesized live with the Web
+  Audio API (`playRingtoneCycle`/`startAlarmRingtone`) — no audio files
+  bundled. The alarm loops its ringtone gapless for **up to 30 seconds**
+  (`ALARM_MAX_RING_MS`) or until "Done" is tapped, whichever comes first.
+- **Setting → Alarm** (new tab next to Theme) — pick which of the 4
+  ringtones plays when an alarm fires, with a ▶ preview button on each
+  option so you can hear it before committing. Selection is saved to
+  `state.clockRingtone` like the rest of the app's settings.
+- Pure `framer-motion` + inline SVG + Web Audio — no new npm installs,
+  fits the existing per-user Firestore document (`clockAlarms` +
+  `clockRingtone` are just two new fields on the same `btl_state/{uid}`
+  doc everything else already lives in).
+
+## 🌍 New — "Earthquake" jitter on checkbox tick (earlier update)
 
 Ticking a checkbox (Daily Goals, Extry Goals, or Time Table) previously
 only triggered a color flash / scale pop. Now the whole row around the
