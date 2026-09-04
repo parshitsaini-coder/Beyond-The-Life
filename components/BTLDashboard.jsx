@@ -2136,6 +2136,26 @@ const ALARM_RINGTONES = [
   { id: "chime", label: "Gentle Chime" },
   { id: "digital", label: "Digital Pulse" },
   { id: "bell", label: "Bell Toll" },
+  // 8 more ringtones (this update) — same synthesis technique as the
+  // original 4, just new note patterns/oscillator types in
+  // playRingtoneCycle below. No audio files, still instant offline.
+  { id: "marimba", label: "Marimba Rise" },
+  { id: "siren", label: "Alarm Siren" },
+  { id: "retro", label: "Retro Arcade" },
+  { id: "pulse", label: "Soft Pulse" },
+  { id: "xylophone", label: "Xylophone" },
+  { id: "rooster", label: "Rooster Call" },
+  { id: "ocean", label: "Ocean Wave" },
+  { id: "birds", label: "Morning Birds" },
+  // 8 more ringtones (this update, round 2)
+  { id: "windchimes", label: "Wind Chimes" },
+  { id: "scifi", label: "Sci-Fi Alert" },
+  { id: "harp", label: "Harp Glissando" },
+  { id: "foghorn", label: "Foghorn" },
+  { id: "cuckoo", label: "Cuckoo Clock" },
+  { id: "piano", label: "Piano Riff" },
+  { id: "laser", label: "Laser Zap" },
+  { id: "temple", label: "Temple Bell" },
 ];
 function ringtoneLabel(id) { return (ALARM_RINGTONES.find((r) => r.id === id) || ALARM_RINGTONES[0]).label; }
 
@@ -2171,6 +2191,106 @@ function playRingtoneCycle(ctx, id) {
     playAlarmTone(ctx, { freq: 660, start: 0, dur: 1.1, type: "sine", peak: 0.17 });
     playAlarmTone(ctx, { freq: 1320, start: 0, dur: 0.7, type: "sine", peak: 0.06 });
     return 1300;
+  }
+  // ---- 8 new ringtones (this update) ----
+  if (id === "marimba") {
+    // ascending 4-note run, warm/wooden (triangle wave)
+    [392.0, 493.88, 587.33, 659.25].forEach((f, i) =>
+      playAlarmTone(ctx, { freq: f, start: i * 0.15, dur: 0.28, type: "triangle", peak: 0.17 }));
+    return 950;
+  }
+  if (id === "siren") {
+    // classic up/down wail — two long glides back to back
+    playAlarmTone(ctx, { freq: 500, start: 0, dur: 0.6, type: "sawtooth", peak: 0.1, glideTo: 900 });
+    playAlarmTone(ctx, { freq: 900, start: 0.6, dur: 0.6, type: "sawtooth", peak: 0.1, glideTo: 500 });
+    return 1250;
+  }
+  if (id === "retro") {
+    // 8-bit style ascending arpeggio, square wave, quick staccato
+    [440, 554.37, 659.25, 880].forEach((f, i) =>
+      playAlarmTone(ctx, { freq: f, start: i * 0.1, dur: 0.09, type: "square", peak: 0.1 }));
+    return 650;
+  }
+  if (id === "pulse") {
+    // one slow, gentle low swell — the softest of the set
+    playAlarmTone(ctx, { freq: 220, start: 0, dur: 1.3, type: "sine", peak: 0.13 });
+    return 1500;
+  }
+  if (id === "xylophone") {
+    // bright, quick 4-note run — same shape as marimba but higher/shorter
+    [783.99, 987.77, 1174.66, 1567.98].forEach((f, i) =>
+      playAlarmTone(ctx, { freq: f, start: i * 0.11, dur: 0.16, type: "triangle", peak: 0.14 }));
+    return 750;
+  }
+  if (id === "rooster") {
+    // two sharp, slightly rasping descending notes
+    playAlarmTone(ctx, { freq: 1100, start: 0, dur: 0.22, type: "sawtooth", peak: 0.13, glideTo: 700 });
+    playAlarmTone(ctx, { freq: 1300, start: 0.28, dur: 0.3, type: "sawtooth", peak: 0.13, glideTo: 750 });
+    return 900;
+  }
+  if (id === "ocean") {
+    // slow, low swell in and back out — the longest/calmest cycle
+    playAlarmTone(ctx, { freq: 180, start: 0, dur: 0.9, type: "sine", peak: 0.15, glideTo: 130 });
+    playAlarmTone(ctx, { freq: 130, start: 0.7, dur: 0.9, type: "sine", peak: 0.1, glideTo: 100 });
+    return 1700;
+  }
+  if (id === "birds") {
+    // several short high chirps at slightly different pitches/timings
+    [[1600, 0, 0.07], [1900, 0.1, 0.06], [1500, 0.24, 0.08], [2100, 0.38, 0.05]].forEach(([f, start, dur]) =>
+      playAlarmTone(ctx, { freq: f, start, dur, type: "sine", peak: 0.12, glideTo: f * 1.15 }));
+    return 750;
+  }
+  // ---- 8 more ringtones (this update, round 2) ----
+  if (id === "windchimes") {
+    // 5 staggered high triangle notes, uneven timing/pitch for a loose,
+    // random "chimes in a breeze" feel rather than a clean run.
+    [[1318.5, 0], [1760, 0.09], [1567.98, 0.21], [2093, 0.3], [1479.98, 0.44]].forEach(([f, start]) =>
+      playAlarmTone(ctx, { freq: f, start, dur: 0.5, type: "triangle", peak: 0.1 }));
+    return 1050;
+  }
+  if (id === "scifi") {
+    // alternating high/low square-wave blips, sharp and synthetic
+    [[1200, 0], [600, 0.12], [1200, 0.24], [600, 0.36]].forEach(([f, start]) =>
+      playAlarmTone(ctx, { freq: f, start, dur: 0.1, type: "square", peak: 0.11 }));
+    return 700;
+  }
+  if (id === "harp") {
+    // fast ascending 6-note glissando, plucky (triangle, very short notes)
+    [523.25, 587.33, 659.25, 698.46, 783.99, 880].forEach((f, i) =>
+      playAlarmTone(ctx, { freq: f, start: i * 0.07, dur: 0.22, type: "triangle", peak: 0.13 }));
+    return 750;
+  }
+  if (id === "foghorn") {
+    // one long, low, deliberate blast — the deepest tone in the set
+    playAlarmTone(ctx, { freq: 110, start: 0, dur: 1.4, type: "sawtooth", peak: 0.14 });
+    return 1650;
+  }
+  if (id === "cuckoo") {
+    // classic descending-third "cuckoo" call, repeated twice
+    playAlarmTone(ctx, { freq: 784, start: 0, dur: 0.22, type: "sine", peak: 0.16 });
+    playAlarmTone(ctx, { freq: 659.25, start: 0.24, dur: 0.26, type: "sine", peak: 0.16 });
+    playAlarmTone(ctx, { freq: 784, start: 0.6, dur: 0.22, type: "sine", peak: 0.16 });
+    playAlarmTone(ctx, { freq: 659.25, start: 0.84, dur: 0.26, type: "sine", peak: 0.16 });
+    return 1250;
+  }
+  if (id === "piano") {
+    // short 5-note melodic riff, warm triangle wave standing in for piano
+    [{ f: 440, s: 0 }, { f: 523.25, s: 0.14 }, { f: 659.25, s: 0.28 }, { f: 523.25, s: 0.44 }, { f: 440, s: 0.58 }]
+      .forEach(({ f, s }) => playAlarmTone(ctx, { freq: f, start: s, dur: 0.3, type: "triangle", peak: 0.15 }));
+    return 1000;
+  }
+  if (id === "laser") {
+    // quick downward zap, sawtooth — punchy and synthetic
+    playAlarmTone(ctx, { freq: 1800, start: 0, dur: 0.18, type: "sawtooth", peak: 0.12, glideTo: 200 });
+    playAlarmTone(ctx, { freq: 1800, start: 0.24, dur: 0.18, type: "sawtooth", peak: 0.12, glideTo: 200 });
+    return 600;
+  }
+  if (id === "temple") {
+    // one long resonant strike with a quieter high overtone, longer/lower
+    // than "Bell Toll" for a deeper, more meditative feel.
+    playAlarmTone(ctx, { freq: 440, start: 0, dur: 1.6, type: "sine", peak: 0.18 });
+    playAlarmTone(ctx, { freq: 880, start: 0, dur: 0.9, type: "sine", peak: 0.05 });
+    return 1850;
   }
   // "classic" (default) — two quick descending beeps
   playAlarmTone(ctx, { freq: 880, start: 0, dur: 0.3, type: "sine", peak: 0.18, glideTo: 660 });
@@ -4214,7 +4334,7 @@ function StreakChip({ streak, accent }) {
       transition={{ type: "spring", stiffness: 500, damping: 18 }}
       style={{
         display: "inline-flex", alignItems: "center", gap: 2, fontSize: 9, fontWeight: 900,
-        color: accent, background: "rgba(0,0,0,0.05)", borderRadius: 999, padding: "2px 6px",
+        color: "#fff", background: "#000", borderRadius: 999, padding: "2px 6px",
         whiteSpace: "nowrap",
       }}
       title={`${streak}-day streak on this list`}
@@ -4353,7 +4473,7 @@ function TimeBreakdownPanel({ items, accent }) {
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 9, flex: 1, color: "#000" }}>{c.emoji} {c.label}</span>
                   <span style={{ fontSize: 9, fontWeight: 800, color: accent }}>{c.hours}h</span>
-                  <span style={{ fontSize: 8, color: "#a39c86", width: 26, textAlign: "right" }}>{totalHours ? Math.round((c.hours / totalHours) * 100) : 0}%</span>
+                  <span style={{ fontSize: 8, color: "#000", width: 26, textAlign: "right" }}>{totalHours ? Math.round((c.hours / totalHours) * 100) : 0}%</span>
                 </div>
               ))}
             </div>
@@ -8782,6 +8902,11 @@ const LIFE_STORY_DEFAULT_THEME = {
   bold: false,
   textColor: C.text,
   bgColor: "linear-gradient(180deg, #fbf9f2, #f5f2e8)",
+  // entryBg (this update) — background of the actual card you write in,
+  // separate from bgColor (which is the whole scrollable page behind the
+  // cards). Empty string = auto (light or dark rgba based on the text
+  // color's luminance, same as before this field existed).
+  entryBg: "",
 };
 
 /* 10 curated presets — swatch shows page bg + text color together so it's
@@ -9239,7 +9364,7 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
         animate={{ backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"] }}
         transition={{ duration: isToday ? 5 : 9, repeat: Infinity, ease: "linear" }}
       >
-        <div style={{ position: "relative", background: isDark ? "rgba(20,20,20,0.94)" : "rgba(255,255,255,0.92)", borderRadius: 16, padding: 14 }}>
+        <div style={{ position: "relative", background: t.entryBg || (isDark ? "rgba(20,20,20,0.94)" : "rgba(255,255,255,0.92)"), borderRadius: 16, padding: 14 }}>
           {isToday ? (
             <div
               ref={editableRef}
@@ -9292,7 +9417,7 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
    curated themes. */
 function LifeStoryThemeSettings({ theme, onChange, onClose }) {
   const set = (patch) => onChange({ ...theme, presetId: "custom", ...patch });
-  const applyPreset = (p) => onChange({ presetId: p.id, fontFamily: theme.fontFamily, fontSize: theme.fontSize, bold: theme.bold, textColor: p.text, bgColor: p.bg });
+  const applyPreset = (p) => onChange({ presetId: p.id, fontFamily: theme.fontFamily, fontSize: theme.fontSize, bold: theme.bold, textColor: p.text, bgColor: p.bg, entryBg: "" });
 
   return (
     <motion.div
@@ -9364,8 +9489,10 @@ function LifeStoryThemeSettings({ theme, onChange, onClose }) {
         }}
       ><Bold size={12} /> Bold text {theme.bold ? "On" : "Off"}</motion.div>
 
-      {/* Text color + Background color */}
-      <div style={{ display: "flex", gap: 10 }}>
+      {/* Text color + Box background + Page background (this update adds
+          BOX BG — the actual card you write in — separate from PAGE BG,
+          which is only the scrollable area behind the cards). */}
+      <div style={{ display: "flex", gap: 8 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
             <Palette size={10} /> TEXT COLOR
@@ -9373,6 +9500,16 @@ function LifeStoryThemeSettings({ theme, onChange, onClose }) {
           <input
             type="color" value={/^#/.test(theme.textColor) ? theme.textColor : "#403d39"}
             onChange={(e) => set({ textColor: e.target.value })}
+            style={{ width: "100%", height: 28, borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            <Palette size={10} /> BOX BG
+          </div>
+          <input
+            type="color" value={/^#[0-9a-fA-F]{6}$/.test(theme.entryBg) ? theme.entryBg : "#ffffff"}
+            onChange={(e) => set({ entryBg: e.target.value })}
             style={{ width: "100%", height: 28, borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
           />
         </div>
