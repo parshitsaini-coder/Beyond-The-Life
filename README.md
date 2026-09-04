@@ -22,6 +22,11 @@ user-controllable from **Setting → Background**:
 - Wave Effect (the old 3 scrolling SVG bands along the bottom edge) has
   been removed entirely from `LiquidBackground.jsx`, including its
   keyframe — it's no longer part of the layered system below.
+- The Ripple 3D Effect (the click-triggered expanding wave-interference
+  rings) has also been removed entirely — `RippleWaveCanvas`, its color
+  constants, and its usage are all gone from `LiquidBackground.jsx`. The
+  background is now 3 layers: Liquid Gradient, Liquid Blob, Particle
+  Fluid — nothing spawns on click anymore.
 
 ## 🌊 "Liquid Background" system (earlier update)
 
@@ -64,7 +69,7 @@ Five techniques, layered (Wave Effect was later removed — see the
   drawn toward the cursor when nearby, and draw faint connective lines
   between neighbors for a "fluid mesh" look — a single shared
   `requestAnimationFrame` loop, torn down on unmount.
-- **Ripple 3D Effect** — every click/tap anywhere on the dashboard spawns
+- ~~**Ripple 3D Effect** — every click/tap anywhere on the dashboard spawns
   a real wave-interference simulation instead of one fading circle: a
   single continuous radial gradient per ripple whose color stops *are*
   the sine wave and its exponential decay envelope (160 stops — the
@@ -76,7 +81,7 @@ Five techniques, layered (Wave Effect was later removed — see the
   just overlap flatly, they add into a bright interference zone, the
   same look as a real water-ripple photograph. Canvas 2D, not WebGL —
   cheap enough to run continuously, capped at 4 concurrent ripple
-  sources.
+  sources.~~ Removed.
 
 Details:
 - `LiquidBackground` takes `dark` (computed from the active Panel Theme's

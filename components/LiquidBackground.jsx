@@ -4,9 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 /* ============================================================
    LIQUID BACKGROUND — dashboard-wide animated background system
    ============================================================
-   Four techniques, all layered behind the dashboard's own content
-   (z-index -1, pointer-events: none except the ripple trigger which
-   just listens on the existing container — it never blocks clicks):
+   Three techniques, all layered behind the dashboard's own content
+   (z-index -1, pointer-events: none — purely decorative, never blocks
+   clicks meant for widgets):
 
      1. Liquid Gradient   — slow-shifting radial gradient mesh, the
                              base wash every other layer sits on.
@@ -19,9 +19,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
                              loosely drawn toward the cursor, with
                              faint connective lines for a "fluid mesh"
                              feel.
-     4. Ripple Effect     — an expanding, fading ring spawned at the
-                             exact point of every click/tap anywhere
-                             on the dashboard.
 
    Performance & accessibility (non-negotiable, matches epic-design /
    lightweight-3d-effects house rules):
@@ -212,136 +209,8 @@ function ParticleFluidCanvas({ reduced, coarse, dark, palette, speed }) {
   return <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />;
 }
 
-/* ---------------- 5. Ripple 3D Effect (wave-interference canvas) ----------------
-   A proper concentric-ring wave simulation instead of a single fading circle:
-   every click/tap spawns a point source, and each animation frame draws many
-   thin concentric rings expanding outward from it with a sine-shaped envelope
-   (bright at the wavefront, tapering behind it — like an actual ripple, not a
-   solid disc). Colors cycle teal → indigo per ring so the banding reads the
-   same as a real wave-interference photograph, and every ripple is drawn with
-   `globalCompositeOperation: "lighter"` (additive light blending) so when two
-   ripples' rings cross, they don't just overlap flatly — they add into a
-   bright, slightly magenta interference zone, exactly like two overlapping
-   water ripples. A soft shadowBlur gives the rings a glowing, slightly-3D
-   look rather than flat hard-edged circles. */
-const RIPPLE_TEAL = [45, 212, 191];
-const RIPPLE_INDIGO = [88, 28, 135];
-function lerpColor(a, b, t) {
-  return `${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(a[1] + (b[1] - a[1]) * t)},${Math.round(a[2] + (b[2] - a[2]) * t)}`;
-}
-
-function RippleWaveCanvas({ containerRef, reduced }) {
-  const canvasRef = useRef(null);
-  const ripplesRef = useRef([]); // [{x,y,start}], mutated directly — no re-render needed
-  const rafRef = useRef(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const el = containerRef?.current;
-    if (!canvas || !el) return;
-    const ctx = canvas.getContext("2d");
-    let width = 0, height = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-    function resize() {
-      const parent = canvas.parentElement;
-      width = parent.clientWidth;
-      height = parent.clientHeight;
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-      canvas.style.width = width + "px";
-      canvas.style.height = height + "px";
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(canvas.parentElement);
-
-    function onDown(e) {
-      const rect = el.getBoundingClientRect();
-      const x = (e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? 0) - rect.left;
-      const y = (e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? 0) - rect.top;
-      if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
-      ripplesRef.current = [...ripplesRef.current.slice(-3), { x, y, start: performance.now() }];
-    }
-    el.addEventListener("pointerdown", onDown);
-
-    if (reduced) {
-      // One gentle static ring per tap instead of an expanding animation.
-      function onDownReduced(e) {
-        const rect = el.getBoundingClientRect();
-        const x = (e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? 0) - rect.left;
-        const y = (e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? 0) - rect.top;
-        ctx.beginPath();
-        ctx.arc(x, y, 60, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(${RIPPLE_TEAL.join(",")},0.35)`;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        setTimeout(() => ctx.clearRect(0, 0, width, height), 500);
-      }
-      el.addEventListener("pointerdown", onDownReduced);
-      return () => { ro.disconnect(); el.removeEventListener("pointerdown", onDown); el.removeEventListener("pointerdown", onDownReduced); };
-    }
-
-    const SPEED = 260;         // px/sec — how fast the wavefront expands
-    const LIFE = 2400;         // ms — total ripple lifetime
-    const WAVELENGTH = 30;     // px — distance between wave crests (bigger = gentler, more "water"-like swell)
-    const STOPS = 160;         // gradient color-stop resolution — high enough that the browser's
-                                // own linear interpolation between stops reads as a perfectly smooth,
-                                // continuous wave with no visible ring edges (this is the fix for the
-                                // "distinct rings" look — a single gradient, not many stroked circles)
-
-    function tick() {
-      ctx.clearRect(0, 0, width, height);
-      const now = performance.now();
-      ripplesRef.current = ripplesRef.current.filter((r) => now - r.start < LIFE);
-
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-
-      ripplesRef.current.forEach((r) => {
-        const elapsed = now - r.start;
-        const t = elapsed / LIFE;
-        const fade = Math.max(0, 1 - t * t); // eases out smoothly near the end instead of a linear cutoff
-        const frontRadius = (elapsed / 1000) * SPEED;
-        if (frontRadius < 1) return;
-
-        const gradient = ctx.createRadialGradient(r.x, r.y, 0, r.x, r.y, frontRadius);
-        for (let s = 0; s <= STOPS; s++) {
-          const frac = s / STOPS;                              // 0 (center) .. 1 (wavefront)
-          const radiusPx = frac * frontRadius;
-          const behindFront = (frontRadius - radiusPx) / WAVELENGTH; // in wavelengths, 0 at the edge
-          const envelope = Math.exp(-behindFront / 2.4);        // smooth exponential taper toward the
-                                                                  // center — no hard cutoff, so nothing
-                                                                  // reads as a discrete "ring"
-          const crest = (Math.sin(radiusPx / WAVELENGTH * Math.PI * 2 - elapsed / 140) + 1) / 2;
-          const color = lerpColor(RIPPLE_TEAL, RIPPLE_INDIGO, crest);
-          const alpha = Math.max(0, Math.min(1, envelope * fade * (0.16 + crest * 0.34)));
-          gradient.addColorStop(frac, `rgba(${color},${alpha})`);
-        }
-
-        ctx.beginPath();
-        ctx.arc(r.x, r.y, frontRadius, 0, Math.PI * 2);
-        ctx.fillStyle = gradient;
-        ctx.fill();
-      });
-
-      ctx.restore();
-      rafRef.current = requestAnimationFrame(tick);
-    }
-    rafRef.current = requestAnimationFrame(tick);
-
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      ro.disconnect();
-      el.removeEventListener("pointerdown", onDown);
-    };
-  }, [containerRef, reduced]);
-
-  return <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />;
-}
-
 /* ---------------- main export ---------------- */
-export default function LiquidBackground({ containerRef, dark = false, colors, speed = 1 }) {
+export default function LiquidBackground({ dark = false, colors, speed = 1 }) {
   const reduced = usePrefersReducedMotion();
   const coarse = useIsCoarsePointer();
 
@@ -424,9 +293,6 @@ export default function LiquidBackground({ containerRef, dark = false, colors, s
 
       {/* 4. Particle Fluid */}
       <ParticleFluidCanvas reduced={reduced} coarse={coarse} dark={dark} palette={PALETTE} speed={safeSpeed} />
-
-      {/* 5. Ripple 3D Effect — wave-interference rings spawned from clicks anywhere on the dashboard */}
-      <RippleWaveCanvas containerRef={containerRef} reduced={reduced} />
 
       <style>{`
         @keyframes btlLiquidGradientShift {
