@@ -280,12 +280,13 @@ export default function LiquidBackground({ containerRef, dark = false }) {
         aria-hidden="true"
         className="btl-liquid-gradient"
         style={{
-          position: "absolute", inset: "-10%", opacity: dark ? 0.7 : 0.9,
+          position: "absolute", inset: "-10%", opacity: dark ? 0.85 : 1,
           background:
-            `radial-gradient(circle at 18% 22%, rgba(${PALETTE[0]},0.34), transparent 42%),` +
-            `radial-gradient(circle at 82% 18%, rgba(${PALETTE[1]},0.34), transparent 45%),` +
-            `radial-gradient(circle at 30% 85%, rgba(${PALETTE[2]},0.28), transparent 48%),` +
-            `radial-gradient(circle at 78% 80%, rgba(${PALETTE[3]},0.24), transparent 45%)`,
+            `radial-gradient(circle at 18% 22%, rgba(${PALETTE[0]},0.55), transparent 58%),` +
+            `radial-gradient(circle at 82% 18%, rgba(${PALETTE[1]},0.55), transparent 60%),` +
+            `radial-gradient(circle at 30% 85%, rgba(${PALETTE[2]},0.48), transparent 62%),` +
+            `radial-gradient(circle at 78% 80%, rgba(${PALETTE[3]},0.42), transparent 60%),` +
+            `radial-gradient(circle at 50% 50%, rgba(${PALETTE[0]},0.20), transparent 70%)`,
           animation: reduced ? "none" : "btlLiquidGradientShift 26s ease-in-out infinite alternate",
           filter: "blur(2px)",
         }}
@@ -294,31 +295,41 @@ export default function LiquidBackground({ containerRef, dark = false }) {
       {/* 2. Liquid Blob — goo-merged morphing blobs */}
       <div
         aria-hidden="true"
-        style={{ position: "absolute", inset: 0, filter: `url(#${gooId})`, opacity: dark ? 0.65 : 0.85 }}
+        style={{ position: "absolute", inset: 0, filter: `url(#${gooId})`, opacity: dark ? 0.75 : 0.95 }}
       >
-        {PALETTE.map((hue, i) => (
-          <div
-            key={i}
-            className={`btl-liquid-blob btl-liquid-blob-${i}`}
-            style={{
-              position: "absolute",
-              width: 230 + i * 32,
-              height: 230 + i * 32,
-              left: `${14 + i * 20}%`,
-              top: `${8 + (i % 2) * 46}%`,
-              background: `radial-gradient(circle at 35% 32%, rgba(${hue},0.95), rgba(${hue},0.35) 70%)`,
-              mixBlendMode: dark ? "screen" : "normal",
-              animation: reduced
-                ? "none"
-                : `btlBlobMorph ${blobDur[i]}s ease-in-out infinite, btlBlobDrift ${blobDur[i] + 6}s ease-in-out infinite`,
-              animationDelay: `${i * -3.5}s`,
-            }}
-          />
-        ))}
+        {[0, 1, 2, 3, 4].map((i) => {
+          const hue = PALETTE[i % PALETTE.length];
+          const pos = [
+            { left: "6%", top: "4%" },
+            { left: "62%", top: "2%" },
+            { left: "34%", top: "58%" },
+            { left: "78%", top: "60%" },
+            { left: "2%", top: "66%" },
+          ][i];
+          return (
+            <div
+              key={i}
+              className={`btl-liquid-blob btl-liquid-blob-${i}`}
+              style={{
+                position: "absolute",
+                width: 280 + i * 34,
+                height: 280 + i * 34,
+                left: pos.left,
+                top: pos.top,
+                background: `radial-gradient(circle at 35% 32%, rgba(${hue},1), rgba(${hue},0.45) 70%)`,
+                mixBlendMode: dark ? "screen" : "normal",
+                animation: reduced
+                  ? "none"
+                  : `btlBlobMorph ${blobDur[i % blobDur.length]}s ease-in-out infinite, btlBlobDrift ${blobDur[i % blobDur.length] + 6}s ease-in-out infinite`,
+                animationDelay: `${i * -3.5}s`,
+              }}
+            />
+          );
+        })}
       </div>
 
       {/* 3. Wave Effect — parallax bands along the bottom edge */}
-      <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "34%", opacity: dark ? 0.55 : 0.7 }}>
+      <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "34%", opacity: dark ? 0.6 : 0.75 }}>
         {[0, 1, 2].map((i) => (
           <svg
             key={i}
