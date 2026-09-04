@@ -1306,15 +1306,13 @@ function DayStreakBadge({ streak, accent = C.accent, dark = C.dark }) {
   );
 }
 
-/* ---------------- SHINE / COMPLETE ANIMATION ---------------- */
+/* ---------------- SHINE / COMPLETE ANIMATION ----------------
+   Single left-to-right sweep only (this update) — used to fire two
+   overlapping sweeps (one from each edge), which read as the "done"
+   celebration playing twice back-to-back. Now just the one pass. */
 function ShineOverlay({ active }) {
   if (!active) return null;
-  return (
-    <>
-      <div className="btl-shine btl-shine-left" />
-      <div className="btl-shine btl-shine-right" />
-    </>
-  );
+  return <div className="btl-shine btl-shine-left" />;
 }
 
 /* ---------------- CONFETTI / MILESTONE CELEBRATION ---------------- */
