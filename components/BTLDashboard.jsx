@@ -70,6 +70,7 @@ const WIDGETS = [
   { id: "analyticsSummary", label: "Analytics Summary" },
   { id: "calendar", label: "Calendar" },
   { id: "clock", label: "Analog Clock & Alarm" },
+  { id: "focusTimer", label: "Focus Timer" },
 ];
 const GRID_COLS = 100;        // fine-grained width grid (1–100 = % of container) — free-form, continuous horizontal resize
 const OLD_GRID_COLS = 6;      // pre-update width resolution, kept only so normalizeSize can rescale old saved layouts
@@ -474,6 +475,7 @@ const DEFAULT_LAYOUT = {
     timeTable: { w: 50, h: 260 },
     earnMoney: { w: 50, h: 240 }, analyticsSummary: { w: 100, h: 260 }, calendar: { w: 50, h: 300 },
     clock: { w: 33, h: 320 },
+    focusTimer: { w: 33, h: 340 },
   },
   pinned: { analyticsSummary: false },
   hidden: {},
@@ -927,6 +929,14 @@ function makeDefaultState() {
     // Which of the 4 built-in ALARM_RINGTONES (see below) plays when an
     // alarm fires — changeable from Setting → Alarm.
     clockRingtone: "classic",
+    // Focus Timer widget (this update) — per-category stopwatches (Screen
+    // time / Social media / Deep work / Study by default, plus any custom
+    // ones added from the widget's "add" popup). `active` holds the single
+    // currently-running category as { categoryId, startTs }, or null; every
+    // stop banks the elapsed seconds into `history[todayISO][categoryId]`,
+    // which is what powers both the widget's own today-breakdown donut and
+    // the Focus Time section in Analytics (trend + all-time breakdown).
+    focusTimer: { categories: FOCUS_TIMER_DEFAULT_CATEGORIES.map((c) => ({ ...c })), active: null, history: {} },
     // Liquid Background settings (this update) — Setting → Background lets
     // the user recolor all 4 hues used by the gradient/blobs/particles and
     // dial the overall animation speed. Colors are hex (converted to the
@@ -980,6 +990,7 @@ async function loadState(user) {
     s.widgetLastCompletedDate = s.widgetLastCompletedDate || {};
     s.clockAlarms = Array.isArray(s.clockAlarms) ? s.clockAlarms : [];
     s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === s.clockRingtone) ? s.clockRingtone : "classic";
+    s.focusTimer = normalizeFocusTimer(s.focusTimer);
     // liquidBg sanitize — old saved states won't have this field at all,
     // and a stored color could in theory be a bad/empty string, so each of
     // the 4 slots falls back to its own default hex independently.
@@ -2401,6 +2412,308 @@ function AnalogClockWidget({ alarms = [], ringtoneId, onSetAlarm, onRemoveAlarm,
           </AnimatePresence>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ================================================================
+   FOCUS TIMER WIDGET (this update)
+   A stopwatch-per-category tracker — "Screen time / Social media /
+   Deep work / Study" by default, plus any custom categories the user
+   adds via the glass "add" popup. Only one category can run at a
+   time (starting a new one auto-stops whichever was running); elapsed
+   seconds accumulate into state.focusTimer.history[todayISO][catId]
+   so Analytics can chart trend + category breakdown, same convention
+   as widgetHistory elsewhere in this file. The in-progress session
+   only stores { categoryId, startTs } (a plain epoch ms), so the
+   running timer survives a reload/tab-close — elapsed is always
+   `now - startTs` plus whatever was already banked today, never a
+   separately-ticking piece of state that could drift or freeze.
+   ================================================================ */
+const FOCUS_TIMER_PALETTE = ["#e07a5f", "#9d4edd", "#4a7c59", C.blue, "#fca311", "#e63946", "#2a9d8f", "#f77f00", "#5c6bc0", "#ff6f91"];
+const FOCUS_TIMER_DEFAULT_CATEGORIES = [
+  { id: "screenTime", label: "Screen time", color: "#e07a5f" },
+  { id: "socialMedia", label: "Social media", color: "#9d4edd" },
+  { id: "deepWork", label: "Deep work", color: "#4a7c59" },
+  { id: "study", label: "Study", color: C.blue },
+];
+function normalizeFocusTimer(ft) {
+  const raw = ft && typeof ft === "object" ? ft : {};
+  const categories = Array.isArray(raw.categories) && raw.categories.length
+    ? raw.categories
+      .filter((c) => c && typeof c === "object" && c.id && c.label)
+      .map((c) => ({ id: String(c.id), label: String(c.label).slice(0, 24), color: /^#[0-9a-fA-F]{6}$/.test(c.color) ? c.color : C.accent }))
+    : FOCUS_TIMER_DEFAULT_CATEGORIES.map((c) => ({ ...c }));
+  const validIds = categories.map((c) => c.id);
+  const active = raw.active && typeof raw.active === "object" && validIds.includes(raw.active.categoryId) && Number.isFinite(raw.active.startTs)
+    ? { categoryId: raw.active.categoryId, startTs: raw.active.startTs }
+    : null;
+  const history = raw.history && typeof raw.history === "object" ? raw.history : {};
+  return { categories, active, history };
+}
+function formatFocusDuration(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
+    : `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+/* Seconds banked today for one category — banked history plus, if that
+   category is the one currently running, the live in-progress elapsed. */
+function focusSecondsToday(focusTimer, categoryId, now = Date.now()) {
+  const day = todayISO();
+  const banked = (focusTimer.history?.[day]?.[categoryId]) || 0;
+  const live = focusTimer.active?.categoryId === categoryId ? Math.max(0, Math.floor((now - focusTimer.active.startTs) / 1000)) : 0;
+  return banked + live;
+}
+/* Category breakdown for a given day-range (today only, or last N days),
+   drawn as a donut — same visual language as TimeBreakdownPanel above. */
+function computeFocusBreakdown(focusTimer, days = 1) {
+  const totals = {};
+  const now = new Date();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(now); d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    const dayHist = focusTimer.history?.[iso] || {};
+    Object.entries(dayHist).forEach(([catId, secs]) => { totals[catId] = (totals[catId] || 0) + secs; });
+  }
+  if (focusTimer.active) {
+    const liveSecs = Math.max(0, Math.floor((Date.now() - focusTimer.active.startTs) / 1000));
+    totals[focusTimer.active.categoryId] = (totals[focusTimer.active.categoryId] || 0) + liveSecs;
+  }
+  return Object.entries(totals)
+    .map(([catId, secs]) => {
+      const cat = focusTimer.categories.find((c) => c.id === catId) || { label: "Removed category", color: "#b3ac99" };
+      return { key: catId, label: cat.label, color: cat.color, minutes: +(secs / 60).toFixed(1) };
+    })
+    .filter((c) => c.minutes > 0)
+    .sort((a, b) => b.minutes - a.minutes);
+}
+/* Total focused minutes per day, last N days — powers the Analytics trend chart. */
+function computeFocusDailyTotals(focusTimer, days = 14) {
+  const out = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now); d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    const dayHist = focusTimer.history?.[iso] || {};
+    let secs = Object.values(dayHist).reduce((a, b) => a + b, 0);
+    if (i === 0 && focusTimer.active) secs += Math.max(0, Math.floor((Date.now() - focusTimer.active.startTs) / 1000));
+    out.push({ date: d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }), minutes: +(secs / 60).toFixed(1) });
+  }
+  return out;
+}
+
+/* ---- Glass popup for naming + coloring a new timer category ---- */
+function AddFocusCategoryModal({ onAdd, onClose, usedColors }) {
+  const [label, setLabel] = useState("");
+  const [color, setColor] = useState(FOCUS_TIMER_PALETTE.find((c) => !usedColors.includes(c)) || FOCUS_TIMER_PALETTE[0]);
+  const submit = () => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    onAdd(trimmed, color);
+    onClose();
+  };
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 210, display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(37,36,34,0.45)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", padding: 20,
+      }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 10 }}
+        transition={{ type: "spring", stiffness: 360, damping: 28 }}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%", maxWidth: 300, borderRadius: 16, padding: 18,
+          background: "rgba(255,253,247,0.72)", backdropFilter: "blur(22px) saturate(200%)", WebkitBackdropFilter: "blur(22px) saturate(200%)",
+          border: "1px solid rgba(255,255,255,0.85)", boxShadow: "0 24px 60px rgba(37,36,34,0.32), inset 0 1px 0 rgba(255,255,255,0.7)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 900, color: C.dark, display: "flex", alignItems: "center", gap: 6 }}>
+            <Gauge size={14} color={C.accent} /> New timer
+          </span>
+          <motion.button whileHover={{ rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer" }}>
+            <X size={15} color={C.dark} />
+          </motion.button>
+        </div>
+        <input
+          autoFocus
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+          placeholder="e.g. Reading, Gym, Coding…"
+          style={{
+            width: "100%", boxSizing: "border-box", border: `1px solid rgba(64,61,57,0.2)`, borderRadius: 9,
+            padding: "9px 10px", fontSize: 12, fontWeight: 600, color: C.dark, background: "rgba(255,255,255,0.6)",
+            outline: "none", marginBottom: 12,
+          }}
+        />
+        <div style={{ fontSize: 9, fontWeight: 800, color: "#8a8579", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 }}>Color</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+          {FOCUS_TIMER_PALETTE.map((c) => (
+            <motion.button
+              key={c} onClick={() => setColor(c)} whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+              style={{
+                width: 22, height: 22, borderRadius: "50%", background: c, cursor: "pointer",
+                border: color === c ? `2px solid ${C.dark}` : "2px solid rgba(255,255,255,0.7)",
+                boxShadow: color === c ? "0 0 0 2px rgba(255,255,255,0.9)" : "none",
+              }}
+            />
+          ))}
+        </div>
+        <motion.button
+          whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }} onClick={submit} disabled={!label.trim()}
+          style={{
+            width: "100%", border: "none", borderRadius: 10, padding: "10px 0", fontSize: 12, fontWeight: 800,
+            cursor: label.trim() ? "pointer" : "not-allowed", background: label.trim() ? C.accent : "#ddd6c4", color: "#fff",
+          }}
+        >Add timer</motion.button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function FocusTimerWidget({ focusTimer, onToggle, onAddCategory, onRemoveCategory, cardBg, accent }) {
+  const [, forceTick] = useState(0);
+  const [showAdd, setShowAdd] = useState(false);
+  const [showBreakdown, setShowBreakdown] = useState(false);
+
+  // Re-render once a second only while a category is actively running,
+  // so the live "elapsed" readout ticks — idle state costs nothing.
+  useEffect(() => {
+    if (!focusTimer.active) return;
+    const id = setInterval(() => forceTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [focusTimer.active?.categoryId, focusTimer.active?.startTs]);
+
+  const textColor = autoTextColor(cardBg);
+  const mutedColor = autoMutedColor(cardBg);
+  const todayTotal = focusTimer.categories.reduce((sum, c) => sum + focusSecondsToday(focusTimer, c.id), 0);
+  const breakdown = useMemo(() => computeFocusBreakdown(focusTimer, 1), [focusTimer.active?.categoryId, focusTimer.active?.startTs, focusTimer.history, showBreakdown]);
+
+  return (
+    <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", ...glassCardStyle(cardBg) }}>
+      <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <Oval style={{ display: "block", margin: 0, background: C.dark, color: C.bg, borderColor: C.dark }}>Timer</Oval>
+        <div style={{ position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", gap: 4 }}>
+          <motion.button
+            onClick={() => setShowBreakdown((v) => !v)}
+            whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.88 }}
+            title="Show today's breakdown"
+            style={{
+              border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 20, height: 20, borderRadius: 999, background: showBreakdown ? accent : "rgba(0,0,0,0.06)", color: showBreakdown ? "#fff" : mutedColor,
+            }}
+          ><PieChartIcon size={11} /></motion.button>
+          <Oval onClick={() => setShowAdd(true)} style={{ padding: "3px 12px", fontSize: 12, background: hexToRgba(cardBg || "#fffdf7", 0.5), color: textColor, borderColor: mutedColor }}>
+            add
+          </Oval>
+        </div>
+      </div>
+
+      <div style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: mutedColor, flexShrink: 0 }}>
+        Focused today: <span style={{ color: textColor, fontWeight: 900 }}>{formatFocusDuration(todayTotal)}</span>
+      </div>
+
+      <AnimatePresence>
+        {showBreakdown && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.22, ease: "easeOut" }} style={{ overflow: "hidden", flexShrink: 0 }}>
+            <div style={{ padding: "6px 8px", background: "rgba(0,0,0,0.03)", borderRadius: 6 }}>
+              {breakdown.length === 0 ? (
+                <div style={{ fontSize: 9.5, color: mutedColor, textAlign: "center", padding: "6px 0" }}>Start a timer to see today's split.</div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 54, height: 54, flexShrink: 0 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={breakdown} dataKey="minutes" nameKey="label" innerRadius={15} outerRadius={26} paddingAngle={2} strokeWidth={1} stroke="#fff">
+                          {breakdown.map((c) => <Cell key={c.key} fill={c.color} />)}
+                        </Pie>
+                        <Tooltip formatter={(v, n, p) => [`${v}m`, p?.payload?.label]} contentStyle={{ fontSize: 9, borderRadius: 8, border: "1px solid #ece7d8" }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                    {breakdown.map((c) => (
+                      <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 8.5, flex: 1, color: textColor }}>{c.label}</span>
+                        <span style={{ fontSize: 8.5, fontWeight: 800, color: accent }}>{c.minutes}m</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="btl-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+        <AnimatePresence initial={false}>
+          {focusTimer.categories.map((cat) => {
+            const running = focusTimer.active?.categoryId === cat.id;
+            const secs = focusSecondsToday(focusTimer, cat.id);
+            return (
+              <motion.div
+                key={cat.id}
+                layout
+                initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8, borderRadius: 9, padding: "7px 9px", flexShrink: 0,
+                  background: running ? hexToRgba(cat.color, 0.16) : "rgba(0,0,0,0.03)",
+                  border: `1px solid ${running ? hexToRgba(cat.color, 0.45) : "transparent"}`,
+                }}
+              >
+                <motion.span
+                  animate={running ? { scale: [1, 1.35, 1], opacity: [1, 0.6, 1] } : { scale: 1, opacity: 1 }}
+                  transition={running ? { duration: 1.4, repeat: Infinity, ease: "easeInOut" } : undefined}
+                  style={{ width: 9, height: 9, borderRadius: "50%", background: cat.color, flexShrink: 0 }}
+                />
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: textColor, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cat.label}</span>
+                <span style={{ fontFamily: "'JetBrains Mono', 'Courier New', monospace", fontSize: 10.5, fontWeight: 800, color: running ? cat.color : mutedColor }}>
+                  {formatFocusDuration(secs)}
+                </span>
+                <motion.button
+                  onClick={() => onToggle(cat.id)}
+                  whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.88 }}
+                  title={running ? "Pause" : "Start"}
+                  style={{
+                    border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                    background: running ? cat.color : hexToRgba(cat.color, 0.18), color: running ? "#fff" : cat.color,
+                  }}
+                >
+                  {running ? <Square size={9} fill="currentColor" /> : <Play size={10} fill="currentColor" />}
+                </motion.button>
+                <span
+                  onClick={() => onRemoveCategory(cat.id)}
+                  title="Remove timer"
+                  style={{ cursor: "pointer", display: "inline-flex", opacity: 0.45, flexShrink: 0 }}
+                ><X size={11} color={mutedColor} /></span>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+        {focusTimer.categories.length === 0 && (
+          <div style={{ fontSize: 9.5, color: mutedColor, textAlign: "center", padding: "12px 0" }}>Tap "add" to create your first timer.</div>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {showAdd && (
+          <AddFocusCategoryModal
+            onAdd={onAddCategory}
+            onClose={() => setShowAdd(false)}
+            usedColors={focusTimer.categories.map((c) => c.color)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -4293,6 +4606,19 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
     [state.completionHistory, state.moodLog, state.streak, ac.lifeScoreRing]
   );
 
+  const focusTimer = useMemo(() => normalizeFocusTimer(state.focusTimer), [state.focusTimer]);
+  const focusDailyTotals = useMemo(() => computeFocusDailyTotals(focusTimer, 14), [focusTimer]);
+  const focusBreakdown30d = useMemo(() => computeFocusBreakdown(focusTimer, 30), [focusTimer]);
+  const focusTodaySeconds = useMemo(
+    () => focusTimer.categories.reduce((sum, c) => sum + focusSecondsToday(focusTimer, c.id), 0),
+    [focusTimer]
+  );
+  const focus7dAvgMinutes = useMemo(() => {
+    const last7 = focusDailyTotals.slice(-7);
+    if (!last7.length) return 0;
+    return Math.round(last7.reduce((a, d) => a + d.minutes, 0) / last7.length);
+  }, [focusDailyTotals]);
+
   const smartInsights = useMemo(() => {
     const cards = [];
     const hist = state.completionHistory || {};
@@ -4496,6 +4822,64 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
             </LineChart>
           </ResponsiveContainer>
         </div>
+
+        {/* ---------- Focus Timer analytics (this update) ---------- */}
+        <div style={{ fontSize: 11, fontWeight: 800, color: ac.sectionHeader || C.dark, margin: "18px 0 6px" }}>Focus Time — last 14 days</div>
+        <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 100, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
+            <Gauge size={14} color={C.accent} />
+            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>{formatFocusDuration(focusTodaySeconds)}</div>
+            <div style={{ fontSize: 9, color: "#b3ac99" }}>Focused today</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 100, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
+            <TrendingUp size={14} color="#4a7c59" />
+            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>{focus7dAvgMinutes}m</div>
+            <div style={{ fontSize: 9, color: "#b3ac99" }}>7-day avg / day</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 100, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
+            <Award size={14} color={C.blue} />
+            <div style={{ fontSize: 12, fontWeight: 900, color: C.dark }}>{focusBreakdown30d[0]?.label || "—"}</div>
+            <div style={{ fontSize: 9, color: "#b3ac99" }}>Top category · 30d</div>
+          </div>
+        </div>
+        <div style={{ height: 130, marginBottom: 14 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={focusDailyTotals} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+              <CartesianGrid stroke={ac.chartAxis || "#f0ece0"} vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 8, fill: ac.chartAxis || "#b3ac99" }} interval={1} />
+              <YAxis tick={{ fontSize: 9, fill: ac.chartAxis || undefined }} width={28} />
+              <Tooltip formatter={(v) => [`${v}m`, "Focused"]} labelStyle={{ fontSize: 10 }} contentStyle={{ fontSize: 10 }} />
+              <Bar dataKey="minutes" fill={C.accent} radius={[4, 4, 0, 0]} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+        {focusBreakdown30d.length > 0 && (
+          <div style={{ marginBottom: 18, padding: "8px 10px", background: "rgba(0,0,0,0.03)", borderRadius: 8, display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 74, height: 74, flexShrink: 0 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={focusBreakdown30d} dataKey="minutes" nameKey="label" innerRadius={20} outerRadius={34} paddingAngle={2} strokeWidth={1} stroke="#fff">
+                    {focusBreakdown30d.map((c) => <Cell key={c.key} fill={c.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(v, n, p) => [`${v}m`, p?.payload?.label]} contentStyle={{ fontSize: 9, borderRadius: 8, border: "1px solid #ece7d8" }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+              {focusBreakdown30d.map((c) => {
+                const totalMin = focusBreakdown30d.reduce((a, x) => a + x.minutes, 0);
+                return (
+                  <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 9.5, flex: 1, color: C.text }}>{c.label}</span>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, color: C.accent }}>{Math.round(c.minutes)}m</span>
+                    <span style={{ fontSize: 8, color: "#a39c86", width: 26, textAlign: "right" }}>{totalMin ? Math.round((c.minutes / totalMin) * 100) : 0}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* ---------- Money Management nav card — detailed money analytics live in their own tab ---------- */}
         <div style={{ fontSize: 11, fontWeight: 800, color: ac.sectionHeader || C.dark, margin: "20px 0 8px" }}>💰 Money</div>
@@ -9411,6 +9795,45 @@ function BTLDashboardInner() {
   // Clock & Alarm (this update) — set via double-click on the dial,
   // removed via the ✕ on its chip under the widget, ringtone changed
   // from Setting → Alarm. Same `update()` pattern as everything else.
+  /* ---- Focus Timer (this update) ----
+     `update()` runs synchronously against the freshest state, so
+     stop-then-start (when switching categories) is done as one atomic
+     write rather than two separate updates that could race. */
+  const bankFocusSeconds = (s) => {
+    // Mutates s.focusTimer in place to bank whatever's currently running
+    // into today's history, then clears `active`. No-op if nothing running.
+    const ft = normalizeFocusTimer(s.focusTimer);
+    if (ft.active) {
+      const elapsed = Math.max(0, Math.floor((Date.now() - ft.active.startTs) / 1000));
+      const day = todayISO();
+      const dayHist = { ...(ft.history[day] || {}) };
+      dayHist[ft.active.categoryId] = (dayHist[ft.active.categoryId] || 0) + elapsed;
+      ft.history = { ...ft.history, [day]: dayHist };
+      ft.active = null;
+    }
+    s.focusTimer = ft;
+    return ft;
+  };
+  const toggleFocusTimer = (categoryId) => update((s) => {
+    const ft = bankFocusSeconds(s); // stop+bank whatever was running (including this one, if it was running)
+    const wasRunningThis = state.focusTimer.active?.categoryId === categoryId;
+    if (!wasRunningThis) ft.active = { categoryId, startTs: Date.now() };
+    s.focusTimer = ft;
+    return s;
+  });
+  const addFocusCategory = (label, color) => update((s) => {
+    const ft = normalizeFocusTimer(s.focusTimer);
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    ft.categories = [...ft.categories, { id, label, color }];
+    s.focusTimer = ft;
+    return s;
+  });
+  const removeFocusCategory = (categoryId) => update((s) => {
+    const ft = state.focusTimer.active?.categoryId === categoryId ? bankFocusSeconds(s) : normalizeFocusTimer(s.focusTimer);
+    ft.categories = ft.categories.filter((c) => c.id !== categoryId);
+    s.focusTimer = ft;
+    return s;
+  });
   const setClockAlarm = (time) => update((s) => {
     if ((s.clockAlarms || []).some((a) => a.time === time)) return s; // already armed
     s.clockAlarms = [...(s.clockAlarms || []), { id: `${Date.now()}-${Math.random()}`, time }];
@@ -9674,6 +10097,7 @@ function BTLDashboardInner() {
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} metrics={theme.analyticsSummary.metrics} colors={theme.analyticsSummaryColors} />,
     calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} textStyle={state.layout.textStyles?.calendar} />,
     clock: <AnalogClockWidget alarms={state.clockAlarms || []} ringtoneId={state.clockRingtone} onSetAlarm={setClockAlarm} onRemoveAlarm={removeClockAlarm} accent={C.accent} cardBg={theme.widgets.clock?.bg} />,
+    focusTimer: <FocusTimerWidget focusTimer={normalizeFocusTimer(state.focusTimer)} onToggle={toggleFocusTimer} onAddCategory={addFocusCategory} onRemoveCategory={removeFocusCategory} accent={C.accent} cardBg={theme.widgets.focusTimer?.bg} />,
   };
 
   return (
