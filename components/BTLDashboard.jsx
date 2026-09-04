@@ -217,9 +217,9 @@ function hexToRgba(hex, alpha) {
 function glassCardStyle(cardBg, borderColor) {
   const isDark = hexLuminance(cardBg || "#fffdf7") < 0.5;
   return {
-    background: hexToRgba(cardBg || "#fffdf7", isDark ? 0.5 : 0.62),
-    backdropFilter: "blur(24px) saturate(190%)",
-    WebkitBackdropFilter: "blur(24px) saturate(190%)",
+    background: hexToRgba(cardBg || "#fffdf7", isDark ? 0.38 : 0.46),
+    backdropFilter: "blur(20px) saturate(220%)",
+    WebkitBackdropFilter: "blur(20px) saturate(220%)",
     border: `1px solid ${borderColor || (isDark ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.85)")}`,
     boxShadow: isDark
       ? "0 20px 50px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.10)"

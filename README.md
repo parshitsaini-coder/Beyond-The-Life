@@ -46,6 +46,23 @@ Details:
 - Pure inline SVG + Canvas 2D + `framer-motion` — no new npm installs.
   Purely decorative, no new Firestore fields, no new app state.
 
+### Follow-up tuning (this update)
+Two rounds of visibility fixes on top of the initial build:
+- All the gradient/blob/wave/particle alpha values were boosted noticeably
+  (roughly +50–70%) after the first pass looked too faint against the
+  cream/white base — the earlier values were tuned for a flashier dark
+  mockup and read as almost invisible on the app's actual light theme.
+- Every widget card already routes its background through the shared
+  `glassCardStyle()` helper (Life Big Goals, Life Rules, Clock & Alarm,
+  Earn/Spend Money, Analytics Summary, Daily/Extry Goals, Time Table,
+  Calendar — all of them). That helper's white overlay was dropped from
+  62%→46% opaque (dark presets: 50%→38%) and its `backdrop-filter` blur
+  eased from 24px→20px with saturation pushed 190%→220%, so noticeably
+  more of the liquid color now bleeds through every card's frosted glass
+  instead of being smoothed into a near-flat wash. If any card's text
+  starts to feel low-contrast against a busy background after this, dial
+  that opacity back up a few points — it's the single number to tune.
+
 ## ⏰ New — "Analog Clock & Alarm" widget (earlier update)
 
 A new widget — add it from **Setting → Layout → Add widget → Analog
