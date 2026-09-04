@@ -11,6 +11,7 @@ import {
   Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn,
   Users, Clock, PieChart as PieChartIcon, Bell, BellOff, Square,
   AlarmClock, Volume2, Play, Waves, Gauge,
+  Dumbbell, Info, Timer, Flower2, Wind,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -1516,6 +1517,7 @@ function QuickNavFab({ tab, setTab, focusMode, setFocusMode, setMemOpen, setSett
   const items = [
     { key: "memor", label: "memor", icon: BookOpen, bg: C.blue, fg: C.dark, onClick: () => { setMemOpen(true); setOpen(false); } },
     { key: "lifeStory", label: "Life Story", icon: Pencil, bg: "#b083f0", fg: "#fff", onClick: () => { setTab("lifeStory"); setOpen(false); } },
+    { key: "fitness", label: "Fitness", icon: Dumbbell, bg: "#e85d4c", fg: "#fff", onClick: () => { setTab("fitness"); setOpen(false); } },
     { key: "focus", label: "Focus Mode", icon: Target, bg: focusMode ? C.accent : "#fff", fg: focusMode ? "#fff" : C.dark, ring: !focusMode, onClick: () => { setFocusMode((v) => !v); setOpen(false); } },
     { key: "layout", label: "Layout", icon: LayoutGrid, bg: C.dark, fg: "#fff", onClick: () => { setTab("layout"); setOpen(false); } },
     { key: "analytics", label: "Analytics", icon: BarChart3, bg: C.dark, fg: "#fff", onClick: () => { setTab("analytics"); setOpen(false); } },
@@ -9698,6 +9700,325 @@ function LifeStoryTab({ state, update, onClose }) {
   );
 }
 
+/* ---------------- FITNESS TAB (this update) ----------------
+   New top-level tab (like Analytics/Money/Life Story) — a full "Liquid
+   Glass" screen with 3 sections: Exercise, Yoga, Pranayama. Each section
+   is a grid of GIF widget-cards; every card has a top-right "info" button
+   that pops a glass modal with how-to steps + benefits, in Hinglish, plus
+   the recommended duration. Purely content-driven (FITNESS_DATA below) —
+   adding more moves later is just pushing another object into the right
+   array and dropping the matching GIF into /public/fitness, no other code
+   changes needed. No new Firestore fields — this is reference content,
+   not a tracked/completable checklist. */
+const FITNESS_SECTIONS = [
+  { id: "exercise", label: "Exercise", icon: Dumbbell, color: "#e85d4c" },
+  { id: "yoga", label: "Yoga", icon: Flower2, color: "#4a7c59" },
+  { id: "pranayama", label: "Pranayama", icon: Wind, color: "#3a86c8" },
+];
+
+const FITNESS_DATA = {
+  exercise: [
+    {
+      id: "legRaise",
+      name: "Leg Raise",
+      duration: "3 sets × 12–15 reps",
+      gif: "/fitness/leg-raise.gif",
+      steps: [
+        "Peeth ke bal seedhe lait jayein, dono haath body ke dono taraf zameen par flat rakhein.",
+        "Dono pairon ko seedha rakhte hue zameen se halka sa (15–20°) upar uthayein.",
+        "Is position ko control ke saath hold karein, phir dheere-dheere niche layein — pair zameen ko touch na karne dein.",
+        "Isi tarah reps repeat karein, saans normal rakhein, jerk na maarein.",
+      ],
+      benefits: [
+        "Lower abs aur core strength badhti hai.",
+        "Hip flexors mazboot hote hain.",
+        "Belly fat kam karne me madad milti hai.",
+      ],
+    },
+    {
+      id: "superman",
+      name: "Superman Hold",
+      duration: "3 sets × 20–30 sec hold",
+      gif: "/fitness/superman-hold.gif",
+      steps: [
+        "Pet ke bal (face down) lait jayein, haathon ko chin/forehead ke neeche fold karke rakhein.",
+        "Dono haath aur dono pair ko ek saath zameen se halka upar uthayein, jaise superman udd raha ho.",
+        "Peeth aur core tight rakhte hue is position ko 20–30 second hold karein.",
+        "Dheere se wapas starting position me aayein aur repeat karein.",
+      ],
+      benefits: [
+        "Lower back aur spine strong hoti hai.",
+        "Posture improve hota hai.",
+        "Glutes aur hamstrings bhi activate hote hain.",
+      ],
+    },
+    {
+      id: "verticalLegRaise",
+      name: "Vertical Leg Raise",
+      duration: "3 sets × 10–12 reps",
+      gif: "/fitness/vertical-leg-raise.gif",
+      steps: [
+        "Peeth ke bal lait jayein, haath body ke dono taraf zameen par flat rakhein.",
+        "Dono pairon ko seedha rakhte hue upar ki taraf ~90° tak le jayein.",
+        "Control ke saath pairon ko dheere-dheere niche layein, bina zameen chhue.",
+        "Movement slow aur controlled rakhein, momentum se na uthayein.",
+      ],
+      benefits: [
+        "Lower abs ke liye ek best exercise hai.",
+        "Hip flexibility badhti hai.",
+        "Six-pack banane me madad karta hai.",
+      ],
+    },
+    {
+      id: "crunch",
+      name: "Crunch",
+      duration: "3 sets × 15–20 reps",
+      gif: "/fitness/crunch.gif",
+      steps: [
+        "Peeth ke bal lait jayein, ghutne mode kar zameen par pair flat rakhein.",
+        "Haathon ko sir ke peeche halka support ke liye rakhein — gardan par zor na dein.",
+        "Upper body ko dheere se upar uthayein, abs ko squeeze karein.",
+        "Saans exhale karte hue upar aayein, phir control ke saath wapas niche.",
+      ],
+      benefits: [
+        "Upper abs strong hote hain.",
+        "Core stability improve hoti hai.",
+        "Beginner-friendly exercise hai.",
+      ],
+    },
+    {
+      id: "benchDips",
+      name: "Bench Dips (Tricep Dips)",
+      duration: "3 sets × 12–15 reps",
+      gif: "/fitness/bench-dips.gif",
+      steps: [
+        "Ek bench ya stable surface ke edge par haath rakhein, ungliyan aage ki taraf.",
+        "Pairon ko aage seedha rakhein, hips ko bench se thoda aage slide karein.",
+        "Kohniyon ko mod kar body ko dheere-dheere niche layein, jab tak upper arm zameen ke parallel na ho.",
+        "Triceps se push karte hue wapas upar aayein — kohniyan poori tarah lock na karein.",
+      ],
+      benefits: [
+        "Triceps aur shoulders strong hote hain.",
+        "Upper body strength badhti hai.",
+        "Arms ko tone karne me madad karta hai.",
+      ],
+    },
+    {
+      id: "bentKneeCrunch",
+      name: "Bent-Knee Crunch",
+      duration: "3 sets × 15–20 reps",
+      gif: "/fitness/glute-bridge-crunch.gif",
+      steps: [
+        "Peeth ke bal lait jayein, ghutne mode karke pair zameen par flat rakhein.",
+        "Haathon ko chest par cross karke rakhein.",
+        "Upper body ko halka sa upar uthayein, abs ko squeeze karte hue.",
+        "Control ke saath niche aayein aur repeat karein.",
+      ],
+      benefits: [
+        "Core aur abs ko directly target karta hai.",
+        "Beginners ke liye safe aur effective hai.",
+        "Back par zyada pressure nahi padta.",
+      ],
+    },
+  ],
+  yoga: [],
+  pranayama: [],
+};
+
+/* Glass info popup — steps ("Kaise Karein") + benefits ("Fayde") for one move. */
+function FitnessInfoModal({ item, sectionColor, onClose }) {
+  if (!item) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 420, display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(37,36,34,0.5)", backdropFilter: "blur(5px)", WebkitBackdropFilter: "blur(5px)", padding: 18,
+      }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 18 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 12 }}
+        transition={{ type: "spring", stiffness: 340, damping: 27 }}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%", maxWidth: 380, maxHeight: "84vh", overflowY: "auto", borderRadius: 20, padding: 20,
+          background: "rgba(255,253,247,0.78)", backdropFilter: "blur(24px) saturate(200%)", WebkitBackdropFilter: "blur(24px) saturate(200%)",
+          border: "1px solid rgba(255,255,255,0.85)", boxShadow: "0 26px 64px rgba(37,36,34,0.35), inset 0 1px 0 rgba(255,255,255,0.75)",
+        }}
+        className="btl-scroll"
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: hexToRgba(sectionColor, 0.16), display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <img src={item.gif} alt={item.name} style={{ width: 34, height: 34, objectFit: "contain", borderRadius: 8 }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 14.5, fontWeight: 900, color: C.dark, lineHeight: 1.25 }}>{item.name}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 3, fontSize: 10.5, fontWeight: 800, color: sectionColor }}>
+                <Timer size={11} /> {item.duration}
+              </div>
+            </div>
+          </div>
+          <motion.button whileHover={{ rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ border: "none", background: "rgba(64,61,57,0.08)", borderRadius: 999, padding: 6, cursor: "pointer", flexShrink: 0 }}>
+            <X size={14} color={C.dark} />
+          </motion.button>
+        </div>
+
+        <div style={{ fontSize: 10, fontWeight: 900, color: sectionColor, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
+          🏋️ Kaise Karein
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+          {(item.steps || []).map((s, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: "50%", background: sectionColor, color: "#fff", fontSize: 9.5, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>{i + 1}</span>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: C.text, lineHeight: 1.5 }}>{s}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ fontSize: 10, fontWeight: 900, color: sectionColor, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+          💪 Fayde
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {(item.benefits || []).map((b, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <span style={{ flexShrink: 0, marginTop: 6, width: 5, height: 5, borderRadius: "50%", background: sectionColor }} />
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: C.text, lineHeight: 1.5 }}>{b}</span>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+const fitnessCardVariants = {
+  hidden: { opacity: 0, y: 18, scale: 0.96 },
+  show: (i) => ({ opacity: 1, y: 0, scale: 1, transition: { delay: i * 0.05, type: "spring", stiffness: 280, damping: 24 } }),
+};
+
+function FitnessCard({ item, index, sectionColor, onInfo }) {
+  return (
+    <motion.div
+      custom={index} variants={fitnessCardVariants} initial="hidden" animate="show"
+      whileHover={{ y: -4, boxShadow: "0 18px 36px rgba(37,36,34,0.18)" }}
+      style={{
+        borderRadius: 16, overflow: "hidden", position: "relative", cursor: "default",
+        ...glassCardStyle("#ffffff", hexToRgba(sectionColor, 0.35)),
+      }}
+    >
+      <div style={{ position: "relative", background: hexToRgba(sectionColor, 0.08) }}>
+        <img src={item.gif} alt={item.name} style={{ width: "100%", height: 150, objectFit: "contain", display: "block" }} />
+        <motion.button
+          whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.92 }}
+          onClick={() => onInfo(item)}
+          title="Info — kaise karein & fayde"
+          style={{
+            position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.8)",
+            background: "rgba(255,255,255,0.75)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+            display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 12px rgba(37,36,34,0.2)",
+          }}
+        >
+          <Info size={14} color={sectionColor} />
+        </motion.button>
+      </div>
+      <div style={{ padding: "10px 12px 12px" }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: C.dark, marginBottom: 4, lineHeight: 1.25 }}>{item.name}</div>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color: sectionColor, background: hexToRgba(sectionColor, 0.12), borderRadius: 999, padding: "3px 8px" }}>
+          <Timer size={10} /> {item.duration}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function FitnessEmptySection({ sectionColor, label }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "48px 16px", textAlign: "center", gap: 6 }}>
+      <div style={{ fontSize: 30 }}>🧘</div>
+      <div style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>{label} jaldi aa rahe hain</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "#8a8579", maxWidth: 260 }}>GIFs add hote hi yahan {label.toLowerCase()} ke widgets dikhne lagenge.</div>
+    </div>
+  );
+}
+
+function FitnessTab({ onClose }) {
+  const [section, setSection] = useState("exercise");
+  const [infoItem, setInfoItem] = useState(null);
+  const active = FITNESS_SECTIONS.find((s) => s.id === section) || FITNESS_SECTIONS[0];
+  const items = FITNESS_DATA[section] || [];
+
+  return (
+    <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 8 }}>
+        <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
+          <ArrowLeft size={15} color={C.dark} />
+        </motion.div>
+        <Dumbbell size={14} color={C.dark} />
+        <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Fitness</span>
+
+        <div style={{ flex: 1 }} />
+
+        <div style={{ display: "flex", gap: 4, background: "rgba(64,61,57,0.06)", borderRadius: 999, padding: 4 }}>
+          {FITNESS_SECTIONS.map((s) => {
+            const isActive = s.id === section;
+            const SIcon = s.icon;
+            return (
+              <motion.button
+                key={s.id} onClick={() => setSection(s.id)}
+                whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+                style={{
+                  position: "relative", border: "none", borderRadius: 999, padding: "6px 12px", cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800,
+                  color: isActive ? "#fff" : C.dark, background: "transparent", zIndex: 1,
+                }}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="fitnessSectionPill"
+                    transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                    style={{ position: "absolute", inset: 0, borderRadius: 999, background: s.color, zIndex: -1 }}
+                  />
+                )}
+                <SIcon size={12} /> {s.label}
+              </motion.button>
+            );
+          })}
+        </div>
+
+        <motion.div whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: C.dark }}>
+          <X size={16} />
+        </motion.div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: 16, background: `linear-gradient(180deg, ${hexToRgba(active.color, 0.05)} 0%, #fffcf2 220px)` }} className="btl-scroll">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={section}
+            initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }}
+            transition={{ duration: 0.22 }}
+          >
+            {items.length ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14, maxWidth: 980, margin: "0 auto" }}>
+                {items.map((item, i) => (
+                  <FitnessCard key={item.id} item={item} index={i} sectionColor={active.color} onInfo={setInfoItem} />
+                ))}
+              </div>
+            ) : (
+              <FitnessEmptySection sectionColor={active.color} label={active.label} />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      <AnimatePresence>
+        {infoItem && <FitnessInfoModal item={infoItem} sectionColor={active.color} onClose={() => setInfoItem(null)} />}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function BTLDashboardInner() {
   const { user: fbUser } = useAuth();
   const [state, setState] = useState(null);
@@ -10371,6 +10692,10 @@ function BTLDashboardInner() {
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <LifeStoryTab state={state} update={update} onClose={() => setTab("dashboard")} />
         </div>
+      ) : tab === "fitness" ? (
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <FitnessTab onClose={() => setTab("dashboard")} />
+        </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {/* ---------- HEADER ---------- */}
@@ -10405,6 +10730,7 @@ function BTLDashboardInner() {
             </div>
             <Oval className="btl-oval-btn" onClick={() => setMemOpen(true)} style={{ cursor: "pointer", background: C.blue, borderColor: C.blue, color: C.dark }}><BookOpen size={11} style={{ marginRight: 4 }} />memor</Oval>
             <Oval className="btl-oval-btn" onClick={() => setTab("lifeStory")} style={{ cursor: "pointer", background: "#b083f0", borderColor: "#b083f0", color: "#fff" }}><Pencil size={11} style={{ marginRight: 4 }} />life story</Oval>
+            <Oval className="btl-oval-btn" onClick={() => setTab("fitness")} style={{ cursor: "pointer", background: "#e85d4c", borderColor: "#e85d4c", color: "#fff" }}><Dumbbell size={11} style={{ marginRight: 4 }} />fitness</Oval>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <GlowIconButton icon={Target} label="Focus Mode" active={focusMode} color={C.accent} onClick={() => setFocusMode((v) => !v)} />
               <GlowIconButton icon={Sparkles} label="Share Journey" color="#b083f0" onClick={() => setShowShare(true)} />
