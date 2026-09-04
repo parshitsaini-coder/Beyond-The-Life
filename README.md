@@ -60,21 +60,27 @@ Details:
   Purely decorative, no new Firestore fields, no new app state.
 
 ### Follow-up tuning (this update)
-Two rounds of visibility fixes on top of the initial build:
+Two rounds of visibility fixes on top of the initial build, then one
+intensity dial-back once it was actually visible:
 - All the gradient/blob/wave/particle alpha values were boosted noticeably
   (roughly +50–70%) after the first pass looked too faint against the
   cream/white base — the earlier values were tuned for a flashier dark
   mockup and read as almost invisible on the app's actual light theme.
-- Every widget card already routes its background through the shared
-  `glassCardStyle()` helper (Life Big Goals, Life Rules, Clock & Alarm,
-  Earn/Spend Money, Analytics Summary, Daily/Extry Goals, Time Table,
-  Calendar — all of them). That helper's white overlay was dropped from
-  62%→46% opaque (dark presets: 50%→38%) and its `backdrop-filter` blur
-  eased from 24px→20px with saturation pushed 190%→220%, so noticeably
-  more of the liquid color now bleeds through every card's frosted glass
-  instead of being smoothed into a near-flat wash. If any card's text
-  starts to feel low-contrast against a busy background after this, dial
-  that opacity back up a few points — it's the single number to tune.
+- The **real bug** turned out to be a CSS stacking-context issue, not
+  opacity at all: the dashboard's outer panel had `position: relative`
+  but no `z-index`, so it never established its own stacking context —
+  meaning the `z-index: -1` LiquidBackground layer wasn't confined
+  *inside* the panel, it escaped to whatever ancestor stacking context
+  existed further up and painted behind that instead, invisible no
+  matter how the colors were tuned. Fixed with `zIndex: 0` +
+  `isolation: "isolate"` on the outer panel div in
+  `components/BTLDashboard.jsx`. If a background layer like this is ever
+  "in the DOM with the right styles but invisible," check this first.
+- Once actually visible, the first pass read as too vivid/saturated for
+  a data-dense dashboard, so gradient/blob/wave/particle alpha were
+  dialed back roughly 40% and the glass-card overlay opacity was nudged
+  back up (46%→66% light / 38%→56% dark) for crisper text contrast —
+  landing on a softer, still colorful wash instead of a loud one.
 
 ## ⏰ New — "Analog Clock & Alarm" widget (earlier update)
 

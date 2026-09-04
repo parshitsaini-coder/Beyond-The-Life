@@ -132,7 +132,7 @@ function ParticleFluidCanvas({ reduced, coarse, dark }) {
       particles.forEach((p) => {
         const px = p.x * width, py = p.y * height;
         const g = ctx.createRadialGradient(px, py, 0, px, py, p.r * 6);
-        g.addColorStop(0, `rgba(${p.hue},${dark ? 0.65 : 0.5})`);
+        g.addColorStop(0, `rgba(${p.hue},${dark ? 0.42 : 0.3})`);
         g.addColorStop(1, `rgba(${p.hue},0)`);
         ctx.fillStyle = g;
         ctx.beginPath();
@@ -174,7 +174,7 @@ function ParticleFluidCanvas({ reduced, coarse, dark }) {
           const dx = (a.x - b.x) * width, dy = (a.y - b.y) * height;
           const d = Math.hypot(dx, dy);
           if (d < 90) {
-            ctx.strokeStyle = `rgba(${a.hue},${(1 - d / 90) * (dark ? 0.2 : 0.14)})`;
+            ctx.strokeStyle = `rgba(${a.hue},${(1 - d / 90) * (dark ? 0.13 : 0.09)})`;
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(a.x * width, a.y * height);
@@ -187,7 +187,7 @@ function ParticleFluidCanvas({ reduced, coarse, dark }) {
       particles.forEach((p) => {
         const px = p.x * width, py = p.y * height;
         const g = ctx.createRadialGradient(px, py, 0, px, py, p.r * 6);
-        g.addColorStop(0, `rgba(${p.hue},${dark ? 0.65 : 0.5})`);
+        g.addColorStop(0, `rgba(${p.hue},${dark ? 0.42 : 0.3})`);
         g.addColorStop(1, `rgba(${p.hue},0)`);
         ctx.fillStyle = g;
         ctx.beginPath();
@@ -280,13 +280,13 @@ export default function LiquidBackground({ containerRef, dark = false }) {
         aria-hidden="true"
         className="btl-liquid-gradient"
         style={{
-          position: "absolute", inset: "-10%", opacity: dark ? 0.85 : 1,
+          position: "absolute", inset: "-10%", opacity: dark ? 0.5 : 0.6,
           background:
-            `radial-gradient(circle at 18% 22%, rgba(${PALETTE[0]},0.55), transparent 58%),` +
-            `radial-gradient(circle at 82% 18%, rgba(${PALETTE[1]},0.55), transparent 60%),` +
-            `radial-gradient(circle at 30% 85%, rgba(${PALETTE[2]},0.48), transparent 62%),` +
-            `radial-gradient(circle at 78% 80%, rgba(${PALETTE[3]},0.42), transparent 60%),` +
-            `radial-gradient(circle at 50% 50%, rgba(${PALETTE[0]},0.20), transparent 70%)`,
+            `radial-gradient(circle at 18% 22%, rgba(${PALETTE[0]},0.32), transparent 58%),` +
+            `radial-gradient(circle at 82% 18%, rgba(${PALETTE[1]},0.32), transparent 60%),` +
+            `radial-gradient(circle at 30% 85%, rgba(${PALETTE[2]},0.28), transparent 62%),` +
+            `radial-gradient(circle at 78% 80%, rgba(${PALETTE[3]},0.24), transparent 60%),` +
+            `radial-gradient(circle at 50% 50%, rgba(${PALETTE[0]},0.12), transparent 70%)`,
           animation: reduced ? "none" : "btlLiquidGradientShift 26s ease-in-out infinite alternate",
           filter: "blur(2px)",
         }}
@@ -295,7 +295,7 @@ export default function LiquidBackground({ containerRef, dark = false }) {
       {/* 2. Liquid Blob — goo-merged morphing blobs */}
       <div
         aria-hidden="true"
-        style={{ position: "absolute", inset: 0, filter: `url(#${gooId})`, opacity: dark ? 0.75 : 0.95 }}
+        style={{ position: "absolute", inset: 0, filter: `url(#${gooId})`, opacity: dark ? 0.45 : 0.55 }}
       >
         {[0, 1, 2, 3, 4].map((i) => {
           const hue = PALETTE[i % PALETTE.length];
@@ -316,7 +316,7 @@ export default function LiquidBackground({ containerRef, dark = false }) {
                 height: 280 + i * 34,
                 left: pos.left,
                 top: pos.top,
-                background: `radial-gradient(circle at 35% 32%, rgba(${hue},1), rgba(${hue},0.45) 70%)`,
+                background: `radial-gradient(circle at 35% 32%, rgba(${hue},0.75), rgba(${hue},0.25) 70%)`,
                 mixBlendMode: dark ? "screen" : "normal",
                 animation: reduced
                   ? "none"
@@ -329,7 +329,7 @@ export default function LiquidBackground({ containerRef, dark = false }) {
       </div>
 
       {/* 3. Wave Effect — parallax bands along the bottom edge */}
-      <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "34%", opacity: dark ? 0.6 : 0.75 }}>
+      <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "34%", opacity: dark ? 0.38 : 0.48 }}>
         {[0, 1, 2].map((i) => (
           <svg
             key={i}
