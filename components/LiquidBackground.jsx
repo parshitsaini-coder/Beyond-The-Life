@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 
 /* ============================================================
    LIQUID BACKGROUND — dashboard-wide animated background system
@@ -210,48 +209,128 @@ function ParticleFluidCanvas({ reduced, coarse, dark }) {
   return <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />;
 }
 
-/* ---------------- 5. Ripple Effect ---------------- */
-function RippleLayer({ containerRef, reduced }) {
-  const [ripples, setRipples] = useState([]);
-  const idRef = useRef(0);
+/* ---------------- 5. Ripple 3D Effect (wave-interference canvas) ----------------
+   A proper concentric-ring wave simulation instead of a single fading circle:
+   every click/tap spawns a point source, and each animation frame draws many
+   thin concentric rings expanding outward from it with a sine-shaped envelope
+   (bright at the wavefront, tapering behind it — like an actual ripple, not a
+   solid disc). Colors cycle teal → indigo per ring so the banding reads the
+   same as a real wave-interference photograph, and every ripple is drawn with
+   `globalCompositeOperation: "lighter"` (additive light blending) so when two
+   ripples' rings cross, they don't just overlap flatly — they add into a
+   bright, slightly magenta interference zone, exactly like two overlapping
+   water ripples. A soft shadowBlur gives the rings a glowing, slightly-3D
+   look rather than flat hard-edged circles. */
+const RIPPLE_TEAL = [45, 212, 191];
+const RIPPLE_INDIGO = [88, 28, 135];
+function lerpColor(a, b, t) {
+  return `${Math.round(a[0] + (b[0] - a[0]) * t)},${Math.round(a[1] + (b[1] - a[1]) * t)},${Math.round(a[2] + (b[2] - a[2]) * t)}`;
+}
+
+function RippleWaveCanvas({ containerRef, reduced }) {
+  const canvasRef = useRef(null);
+  const ripplesRef = useRef([]); // [{x,y,start}], mutated directly — no re-render needed
+  const rafRef = useRef(null);
 
   useEffect(() => {
-    if (reduced) return; // motion-sensitive users get no ripple bursts
+    const canvas = canvasRef.current;
     const el = containerRef?.current;
-    if (!el) return;
+    if (!canvas || !el) return;
+    const ctx = canvas.getContext("2d");
+    let width = 0, height = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    function resize() {
+      const parent = canvas.parentElement;
+      width = parent.clientWidth;
+      height = parent.clientHeight;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = width + "px";
+      canvas.style.height = height + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas.parentElement);
+
     function onDown(e) {
       const rect = el.getBoundingClientRect();
       const x = (e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? 0) - rect.left;
       const y = (e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? 0) - rect.top;
       if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
-      const id = ++idRef.current;
-      const hue = PALETTE[id % PALETTE.length];
-      setRipples((prev) => [...prev.slice(-5), { id, x, y, hue }]);
+      ripplesRef.current = [...ripplesRef.current.slice(-3), { x, y, start: performance.now() }];
     }
     el.addEventListener("pointerdown", onDown);
-    return () => el.removeEventListener("pointerdown", onDown);
+
+    if (reduced) {
+      // One gentle static ring per tap instead of an expanding animation.
+      function onDownReduced(e) {
+        const rect = el.getBoundingClientRect();
+        const x = (e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? 0) - rect.left;
+        const y = (e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? 0) - rect.top;
+        ctx.beginPath();
+        ctx.arc(x, y, 60, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${RIPPLE_TEAL.join(",")},0.35)`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        setTimeout(() => ctx.clearRect(0, 0, width, height), 500);
+      }
+      el.addEventListener("pointerdown", onDownReduced);
+      return () => { ro.disconnect(); el.removeEventListener("pointerdown", onDown); el.removeEventListener("pointerdown", onDownReduced); };
+    }
+
+    const SPEED = 300;        // px/sec — how fast the wavefront expands
+    const LIFE = 2200;        // ms — total ripple lifetime
+    const WAVELENGTH = 22;    // px between successive rings
+    const TRAIL = 5;          // how many wavelengths of "trailing" rings stay lit behind the front
+
+    function tick() {
+      ctx.clearRect(0, 0, width, height);
+      const now = performance.now();
+      ripplesRef.current = ripplesRef.current.filter((r) => now - r.start < LIFE);
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.shadowBlur = 6;
+
+      ripplesRef.current.forEach((r) => {
+        const elapsed = now - r.start;
+        const t = elapsed / LIFE;
+        const fade = Math.max(0, 1 - t);
+        const frontRadius = (elapsed / 1000) * SPEED;
+        const ringCount = Math.min(60, Math.floor(frontRadius / (WAVELENGTH / 2)));
+
+        for (let i = 0; i < ringCount; i++) {
+          const radius = i * (WAVELENGTH / 2);
+          const distBehindFront = (frontRadius - radius) / WAVELENGTH;
+          if (distBehindFront > TRAIL) continue;
+          const envelope = Math.max(0, 1 - distBehindFront / TRAIL);
+          const alpha = envelope * fade * 0.5;
+          if (alpha < 0.015) continue;
+          const bandPhase = (Math.sin(radius / (WAVELENGTH * 0.6)) + 1) / 2;
+          const color = lerpColor(RIPPLE_TEAL, RIPPLE_INDIGO, bandPhase);
+          ctx.beginPath();
+          ctx.arc(r.x, r.y, radius, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(${color},${alpha})`;
+          ctx.shadowColor = `rgba(${color},${alpha})`;
+          ctx.lineWidth = 2.2;
+          ctx.stroke();
+        }
+      });
+
+      ctx.restore();
+      rafRef.current = requestAnimationFrame(tick);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      ro.disconnect();
+      el.removeEventListener("pointerdown", onDown);
+    };
   }, [containerRef, reduced]);
 
-  return (
-    <AnimatePresence>
-      {ripples.map((r) => (
-        <motion.div
-          key={r.id}
-          initial={{ opacity: 0.55, scale: 0 }}
-          animate={{ opacity: 0, scale: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.9, ease: "easeOut" }}
-          onAnimationComplete={() => setRipples((prev) => prev.filter((p) => p.id !== r.id))}
-          style={{
-            position: "absolute", left: r.x, top: r.y, width: 220, height: 220,
-            marginLeft: -110, marginTop: -110, borderRadius: "50%",
-            background: `radial-gradient(circle, rgba(${r.hue},0.28) 0%, rgba(${r.hue},0.12) 45%, transparent 72%)`,
-            border: `1px solid rgba(${r.hue},0.35)`,
-          }}
-        />
-      ))}
-    </AnimatePresence>
-  );
+  return <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />;
 }
 
 /* ---------------- main export ---------------- */
@@ -352,8 +431,8 @@ export default function LiquidBackground({ containerRef, dark = false }) {
       {/* 4. Particle Fluid */}
       <ParticleFluidCanvas reduced={reduced} coarse={coarse} dark={dark} />
 
-      {/* 5. Ripple Effect — spawned from clicks anywhere on the dashboard */}
-      <RippleLayer containerRef={containerRef} reduced={reduced} />
+      {/* 5. Ripple 3D Effect — wave-interference rings spawned from clicks anywhere on the dashboard */}
+      <RippleWaveCanvas containerRef={containerRef} reduced={reduced} />
 
       <style>{`
         @keyframes btlLiquidGradientShift {

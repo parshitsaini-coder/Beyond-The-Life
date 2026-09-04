@@ -38,9 +38,17 @@ Five techniques, layered:
   drawn toward the cursor when nearby, and draw faint connective lines
   between neighbors for a "fluid mesh" look — a single shared
   `requestAnimationFrame` loop, torn down on unmount.
-- **Ripple Effect** — every click/tap anywhere on the dashboard spawns an
-  expanding, fading colored ring right at that point (`framer-motion`,
-  capped at 6 concurrent ripples).
+- **Ripple 3D Effect** — every click/tap anywhere on the dashboard spawns
+  a real wave-interference simulation instead of one fading circle: many
+  thin concentric rings expand outward from the touch point with a
+  sine-shaped envelope (bright at the wavefront, tapering behind it),
+  colors cycling teal → indigo per ring, drawn with additive
+  (`"lighter"`) canvas blending — so when two ripples' rings cross each
+  other they don't just overlap flatly, they add into a bright
+  interference zone, the same look as a real water-ripple photograph. A
+  soft `shadowBlur` glow gives the rings a slightly-3D feel. Canvas 2D,
+  not WebGL — cheap enough to run continuously, capped at 4 concurrent
+  ripple sources.
 
 Details:
 - `LiquidBackground` takes `dark` (computed from the active Panel Theme's
