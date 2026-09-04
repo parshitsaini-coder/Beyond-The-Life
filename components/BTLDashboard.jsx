@@ -10127,6 +10127,63 @@ const FITNESS_DATA = {
       ],
     },
   ],
+  /* Alt Exercise set — toggled in from the header "swap" button next to the
+     Exercise/Yoga/Pranayama pills. Same shape as `exercise` above, shown
+     instead of it when the toggle is on; toggling again switches back to
+     the original 23-item `exercise` list. */
+  exerciseAlt: [
+    {
+      id: "sideLyingLegStretch",
+      name: "Side-Lying Leg Stretch (Box)",
+      duration: "2–3 sets × 20–30 sec hold (per side)",
+      gif: "/fitness/side-lying-leg-stretch.gif",
+      steps: [
+        "Ek karvat (side) par lait jayein, hips aur shoulders ek hi line me stack rakhein.",
+        "Upar wale pair ko seedha rakhte hue kisi box/step ke upar rakhein, neeche wala pair halka mudha rahega.",
+        "Ek haath hip par rakhein aur doosra haath support ke liye zameen par flat rakhein.",
+        "Is position ko relax hoke hold karein, phir side badal kar doosri taraf repeat karein.",
+      ],
+      benefits: [
+        "Inner thigh aur hip ko achhi tarah stretch karta hai.",
+        "Hip flexibility aur mobility improve hoti hai.",
+        "Workout se pehle warm-up ya baad me cool-down ke liye achha hai.",
+      ],
+    },
+    {
+      id: "lyingToeTouch",
+      name: "Lying Toe Touch Stretch",
+      duration: "3 sets × 10–12 reps",
+      gif: "/fitness/lying-toe-touch.gif",
+      steps: [
+        "Peeth ke bal lait jayein, dono pair seedhe upar (ceiling ki taraf) le jayein.",
+        "Dono haathon se upar uthte hue apne toes/ankles ko touch karne ki koshish karein.",
+        "Shoulders ko halka sa zameen se upar uthayein, core tight rakhein.",
+        "Control ke saath wapas niche aayein aur repeat karein.",
+      ],
+      benefits: [
+        "Abs aur core strength badhti hai.",
+        "Hamstrings bhi isi motion me halke se stretch hote hain.",
+        "Flexibility aur body coordination improve hoti hai.",
+      ],
+    },
+    {
+      id: "floorDumbbellPress",
+      name: "Dumbbell Floor Press",
+      duration: "3 sets × 10–12 reps",
+      gif: "/fitness/floor-dumbbell-press.gif",
+      steps: [
+        "Peeth ke bal zameen par lait jayein, ghutne mode kar pair flat rakhein.",
+        "Dono haathon se ek dumbbell ko chest ke paas pakdein, kohniyan zameen ki taraf.",
+        "Dumbbell ko seedha upar push karein jab tak arms lock na ho jayein.",
+        "Control ke saath dheere-dheere wapas chest tak niche layein aur repeat karein.",
+      ],
+      benefits: [
+        "Chest aur triceps ko target karta hai.",
+        "Zameen par lait ke karne se shoulder par kam stress padta hai.",
+        "Beginners ke liye bench press ka ek achha, safe alternative hai.",
+      ],
+    },
+  ],
   yoga: [],
   pranayama: [],
 };
@@ -10252,8 +10309,16 @@ function FitnessEmptySection({ sectionColor, label }) {
 function FitnessTab({ onClose }) {
   const [section, setSection] = useState("exercise");
   const [infoItem, setInfoItem] = useState(null);
+  // Swaps the "Exercise" section between the original list and the alt
+  // (exerciseAlt) list — the header button next to the section pills.
+  // Clicking it once shows the alt set; clicking again reverts to the
+  // original set. Only meaningful on the "exercise" section.
+  const [showAltExercise, setShowAltExercise] = useState(false);
   const active = FITNESS_SECTIONS.find((s) => s.id === section) || FITNESS_SECTIONS[0];
-  const items = FITNESS_DATA[section] || [];
+  const items =
+    section === "exercise" && showAltExercise
+      ? FITNESS_DATA.exerciseAlt || []
+      : FITNESS_DATA[section] || [];
 
   return (
     <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
@@ -10293,6 +10358,22 @@ function FitnessTab({ onClose }) {
           })}
         </div>
 
+        {section === "exercise" && (
+          <motion.button
+            onClick={() => setShowAltExercise((v) => !v)}
+            whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
+            title={showAltExercise ? "Original exercises par wapas jayein" : "Alt exercises dikhayein"}
+            style={{
+              display: "flex", alignItems: "center", gap: 5, border: "none", borderRadius: 999,
+              padding: "6px 12px", cursor: "pointer", fontSize: 11, fontWeight: 800,
+              color: showAltExercise ? "#fff" : active.color,
+              background: showAltExercise ? active.color : hexToRgba(active.color, 0.14),
+            }}
+          >
+            <RefreshCw size={12} /> {showAltExercise ? "Original" : "Alt"}
+          </motion.button>
+        )}
+
         <motion.div whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: C.dark }}>
           <X size={16} />
         </motion.div>
@@ -10301,7 +10382,7 @@ function FitnessTab({ onClose }) {
       <div style={{ flex: 1, overflowY: "auto", padding: 16, background: `linear-gradient(180deg, ${hexToRgba(active.color, 0.05)} 0%, #fffcf2 220px)` }} className="btl-scroll">
         <AnimatePresence mode="wait">
           <motion.div
-            key={section}
+            key={section === "exercise" && showAltExercise ? "exerciseAlt" : section}
             initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }}
             transition={{ duration: 0.22 }}
           >
