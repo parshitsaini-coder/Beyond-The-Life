@@ -938,11 +938,14 @@ function makeDefaultState() {
     // the Focus Time section in Analytics (trend + all-time breakdown).
     focusTimer: { categories: FOCUS_TIMER_DEFAULT_CATEGORIES.map((c) => ({ ...c })), active: null, history: {} },
     // Liquid Background settings (this update) — Setting → Background lets
-    // the user recolor all 4 hues used by the gradient/blobs/particles and
-    // dial the overall animation speed. Colors are hex (converted to the
-    // rgba "r,g,b" triples LiquidBackground.jsx needs internally); speed is
-    // a plain multiplier, 1 = original speed.
-    liquidBg: { colors: [...LIQUID_BG_DEFAULT_COLORS], speed: 1 },
+    // the user recolor all 4 hues used by the gradient/blobs/particles,
+    // dial the overall animation speed, and now flip the whole thing off.
+    // Colors are hex (converted to the rgba "r,g,b" triples
+    // LiquidBackground.jsx needs internally); speed is a plain multiplier,
+    // 1 = original speed; enabled is the on/off switch — true by default so
+    // existing installs keep looking exactly as they did before this field
+    // existed.
+    liquidBg: { colors: [...LIQUID_BG_DEFAULT_COLORS], speed: 1, enabled: true },
     layout: defaultLayout(),
     theme: defaultTheme(),
   };
@@ -998,6 +1001,10 @@ async function loadState(user) {
     s.liquidBg = {
       colors: LIQUID_BG_DEFAULT_COLORS.map((def, i) => (/^#[0-9a-fA-F]{6}$/.test(savedColors[i]) ? savedColors[i] : def)),
       speed: Number.isFinite(s.liquidBg?.speed) && s.liquidBg.speed > 0 ? Math.min(3, Math.max(0.4, s.liquidBg.speed)) : 1,
+      // enabled sanitize — old saved states won't have this field at all;
+      // default to true (on) so nobody's existing background silently
+      // disappears just because they saved state before this toggle existed.
+      enabled: typeof s.liquidBg?.enabled === "boolean" ? s.liquidBg.enabled : true,
     };
   }
   const withLayout = ensureLayoutDefaults(s);
@@ -3294,22 +3301,53 @@ function MoodBtn({ active, onClick, children, title }) {
    gradient/particles. Both persist to Firestore on state.liquidBg like
    everything else in the app. */
 const LIQUID_BG_COLOR_LABELS = ["Amber", "Sky", "Coral", "Sage"];
-function LiquidBgPanel({ liquidBg, onColorChange, onColorsReset, onSpeedChange, onSpeedReset }) {
+function LiquidBgPanel({ liquidBg, onColorChange, onColorsReset, onSpeedChange, onSpeedReset, onEnabledChange }) {
   const colors = (liquidBg && Array.isArray(liquidBg.colors) && liquidBg.colors.length === 4)
     ? liquidBg.colors : LIQUID_BG_DEFAULT_COLORS;
   const speed = Number.isFinite(liquidBg?.speed) ? liquidBg.speed : 1;
+  // enabled — the on/off switch (this update). Colors/speed below still
+  // stay editable while off, they just won't visibly do anything until the
+  // background is switched back on — same as e.g. muting a video but still
+  // being able to change the volume slider underneath.
+  const enabled = liquidBg?.enabled !== false;
 
   return (
     <div style={{ maxWidth: 460 }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, marginBottom: 4, display: "flex", alignItems: "center", gap: 5 }}>
-        <Waves size={14} /> Liquid Background
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, gap: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, display: "flex", alignItems: "center", gap: 5 }}>
+          <Waves size={14} /> Liquid Background
+        </div>
+        {/* On/off switch (this update) — flips state.liquidBg.enabled, which
+            LiquidBackground.jsx checks before rendering anything at all
+            (gradient, blobs, and the particle canvas all stop together). */}
+        <motion.button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          title={enabled ? "Turn background animation off" : "Turn background animation on"}
+          whileTap={{ scale: 0.94 }}
+          onClick={() => onEnabledChange(!enabled)}
+          style={{
+            flexShrink: 0, width: 40, height: 22, borderRadius: 999, border: "none", cursor: "pointer",
+            padding: 3, display: "flex", justifyContent: enabled ? "flex-end" : "flex-start",
+            background: enabled ? C.accent : "#d8d2c0", transition: "background 160ms ease",
+          }}
+        >
+          <motion.span layout transition={{ type: "spring", stiffness: 500, damping: 32 }}
+            style={{ width: 16, height: 16, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,0.25)" }} />
+        </motion.button>
       </div>
       <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 14 }}>
         The animated gradient, blobs and floating particles behind the dashboard —
-        recolor all 4 hues, or speed up/slow down how fast they drift and morph.
+        recolor all 4 hues, speed up/slow down how fast they drift and morph, or
+        turn the whole thing off above for a plain, static background.
       </div>
 
       {/* Colors */}
+      <div style={{
+        opacity: enabled ? 1 : 0.45, pointerEvents: enabled ? "auto" : "none", transition: "opacity 160ms ease",
+      }}>
+      {/* placeholder-open — closed below, wraps colors+speed so both grey out together when off */}
       <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
         <Palette size={10} /> COLORS
       </div>
@@ -3356,11 +3394,12 @@ function LiquidBgPanel({ liquidBg, onColorChange, onColorsReset, onSpeedChange, 
       >
         Reset speed to 1.0x
       </motion.div>
+      </div>
     </div>
   );
 }
 
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onSetClockRingtone, onLiquidBgColorChange, onLiquidBgColorsReset, onLiquidBgSpeedChange, onLiquidBgSpeedReset }) {
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onSetClockRingtone, onLiquidBgColorChange, onLiquidBgColorsReset, onLiquidBgSpeedChange, onLiquidBgSpeedReset, onLiquidBgEnabledChange }) {
   const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | "alarm" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
@@ -3406,10 +3445,23 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
         border: "1px solid rgba(255,255,255,0.6)", borderRadius: 14,
         boxShadow: "0 12px 36px rgba(37,36,34,0.18)",
         display: "flex", flexDirection: "column", overflow: "hidden",
-        pointerEvents: "auto",
+        pointerEvents: "auto", position: "relative",
       }}>
+      {/* Close button — pinned to the modal's own top-right corner (this
+          update) instead of living inside the wrapping tab row. It used to
+          sit after a `flex:1` spacer at the end of that row, so once the
+          tabs (Add Goles / Add extra / .../ Background) ran out of room and
+          wrapped, the spacer + button wrapped down too and landed at the
+          *left* edge of the second line — nowhere near a "close" button's
+          expected spot. Absolute-positioning it against this outer card
+          keeps it top-right always, no matter how many tab rows wrap. */}
+      <motion.span whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onClose} title="Close" style={{
+        position: "absolute", top: 8, right: 8, zIndex: 2,
+        borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
+        display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0,
+      }}><X size={13} color={C.dark} /></motion.span>
       <div style={{
-        display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", flexWrap: "wrap",
+        display: "flex", alignItems: "center", gap: 8, padding: "8px 34px 8px 10px", flexWrap: "wrap",
         borderBottom: "1px solid rgba(64,61,57,0.15)", background: "rgba(255,252,242,0.5)",
       }}>
         <span
@@ -3427,11 +3479,6 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
         <Oval onClick={() => setMode(mode === "theme" ? null : "theme")} style={{ cursor: "pointer", background: mode === "theme" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "theme" ? "#fff" : C.text }}><Palette size={11} style={{ marginRight: 4 }} />Theme</Oval>
         <Oval onClick={() => setMode(mode === "alarm" ? null : "alarm")} style={{ cursor: "pointer", background: mode === "alarm" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "alarm" ? "#fff" : C.text }}><AlarmClock size={11} style={{ marginRight: 4 }} />Alarm</Oval>
         <Oval onClick={() => setMode(mode === "background" ? null : "background")} style={{ cursor: "pointer", background: mode === "background" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "background" ? "#fff" : C.text }}><Waves size={11} style={{ marginRight: 4 }} />Background</Oval>
-        <div style={{ flex: 1 }} />
-        <motion.span whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onClose} title="Close" style={{
-          borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
-          display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0,
-        }}><X size={13} color={C.dark} /></motion.span>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 14 }} className="btl-scroll">
@@ -3501,6 +3548,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             onColorsReset={onLiquidBgColorsReset}
             onSpeedChange={onLiquidBgSpeedChange}
             onSpeedReset={onLiquidBgSpeedReset}
+            onEnabledChange={onLiquidBgEnabledChange}
           />
         ) : (
           <>
@@ -4213,7 +4261,7 @@ function ChecklistHeader({ title, streak, accent, showHeat, onToggleHeat, extraT
           style={{
             border: "none", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
             width: 18, height: 18, borderRadius: 6,
-            background: showHeat ? accent : "rgba(0,0,0,0.05)", color: showHeat ? "#fff" : "#8a8579",
+            background: "#000", color: "#fff",
           }}
         >
           <BarChart3 size={10} />
@@ -4303,7 +4351,7 @@ function TimeBreakdownPanel({ items, accent }) {
               {data.map((c) => (
                 <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 9, flex: 1 }}>{c.emoji} {c.label}</span>
+                  <span style={{ fontSize: 9, flex: 1, color: "#000" }}>{c.emoji} {c.label}</span>
                   <span style={{ fontSize: 9, fontWeight: 800, color: accent }}>{c.hours}h</span>
                   <span style={{ fontSize: 8, color: "#a39c86", width: 26, textAlign: "right" }}>{totalHours ? Math.round((c.hours / totalHours) * 100) : 0}%</span>
                 </div>
@@ -9945,20 +9993,31 @@ function BTLDashboardInner() {
   const setLiquidBgColor = (index, hex) => update((s) => {
     const colors = [...(s.liquidBg?.colors || LIQUID_BG_DEFAULT_COLORS)];
     if (/^#[0-9a-fA-F]{6}$/.test(hex)) colors[index] = hex;
-    s.liquidBg = { ...(s.liquidBg || {}), colors, speed: s.liquidBg?.speed ?? 1 };
+    s.liquidBg = { ...(s.liquidBg || {}), colors, speed: s.liquidBg?.speed ?? 1, enabled: s.liquidBg?.enabled ?? true };
     return s;
   });
   const resetLiquidBgColors = () => update((s) => {
-    s.liquidBg = { ...(s.liquidBg || {}), colors: [...LIQUID_BG_DEFAULT_COLORS], speed: s.liquidBg?.speed ?? 1 };
+    s.liquidBg = { ...(s.liquidBg || {}), colors: [...LIQUID_BG_DEFAULT_COLORS], speed: s.liquidBg?.speed ?? 1, enabled: s.liquidBg?.enabled ?? true };
     return s;
   });
   const setLiquidBgSpeed = (speed) => update((s) => {
     const clamped = Math.min(3, Math.max(0.4, Number(speed) || 1));
-    s.liquidBg = { colors: s.liquidBg?.colors || [...LIQUID_BG_DEFAULT_COLORS], speed: clamped };
+    s.liquidBg = { colors: s.liquidBg?.colors || [...LIQUID_BG_DEFAULT_COLORS], speed: clamped, enabled: s.liquidBg?.enabled ?? true };
     return s;
   });
   const resetLiquidBgSpeed = () => update((s) => {
-    s.liquidBg = { colors: s.liquidBg?.colors || [...LIQUID_BG_DEFAULT_COLORS], speed: 1 };
+    s.liquidBg = { colors: s.liquidBg?.colors || [...LIQUID_BG_DEFAULT_COLORS], speed: 1, enabled: s.liquidBg?.enabled ?? true };
+    return s;
+  });
+  // On/off switch (this update) — flips whether LiquidBackground renders at
+  // all. Colors/speed are left untouched so switching back on picks up
+  // right where the user left their palette/speed dial.
+  const setLiquidBgEnabled = (enabled) => update((s) => {
+    s.liquidBg = {
+      colors: s.liquidBg?.colors || [...LIQUID_BG_DEFAULT_COLORS],
+      speed: s.liquidBg?.speed ?? 1,
+      enabled: !!enabled,
+    };
     return s;
   });
 
@@ -10220,12 +10279,18 @@ function BTLDashboardInner() {
           them to read as frosted glass rather than flat color. Backs
           off automatically on prefers-reduced-motion and on touch
           devices (see components/LiquidBackground.jsx). */}
-      <LiquidBackground
-        containerRef={dashboardRootRef}
-        dark={hexLuminance(dashTheme.bg) < 0.5}
-        colors={state.liquidBg?.colors}
-        speed={state.liquidBg?.speed}
-      />
+      {/* On/off switch (this update, Setting → Background) — when off,
+          LiquidBackground isn't mounted at all, so no CSS animation, no
+          canvas rAF loop, nothing running in the background at all, not
+          just hidden with opacity. */}
+      {state.liquidBg?.enabled !== false && (
+        <LiquidBackground
+          containerRef={dashboardRootRef}
+          dark={hexLuminance(dashTheme.bg) < 0.5}
+          colors={state.liquidBg?.colors}
+          speed={state.liquidBg?.speed}
+        />
+      )}
       <style>{`
         .btl-scroll::-webkit-scrollbar { width: 6px; }
         .btl-scroll::-webkit-scrollbar-thumb { background: #ddd6c4; border-radius: 4px; }
@@ -10445,6 +10510,7 @@ function BTLDashboardInner() {
               onLiquidBgColorsReset={resetLiquidBgColors}
               onLiquidBgSpeedChange={setLiquidBgSpeed}
               onLiquidBgSpeedReset={resetLiquidBgSpeed}
+              onLiquidBgEnabledChange={setLiquidBgEnabled}
             />
           </motion.div>
         )}
