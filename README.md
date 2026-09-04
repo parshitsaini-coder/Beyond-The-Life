@@ -1,6 +1,39 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🎛️ New — "Background" tab in Settings (this update)
+## 🧘 New — "Fitness" tab with animated Yoga exercises (this update)
+
+A new **Fitness** button — a blue lotus (`Flower2`) icon — sits in the
+dashboard header's icon row, right after the Friend Celebration button.
+Clicking it opens a dedicated full-screen tab (same pattern as Life
+Story / Analytics):
+
+- **4 yoga exercises** — Downward Dog, Tree Pose, Warrior II, Child's
+  Pose — each shown as its own glass card (`glassCardStyle`, the same
+  frosted recipe used everywhere else in the app).
+- **Each card is animated**, not a static icon — a small looping SVG
+  stick-figure pose (pure `framer-motion`, no new libraries) that
+  breathes, sways, or pulses depending on the pose, so it visibly reads
+  as "yoga in motion" rather than a flat illustration. An "● Animated
+  loop" pill on the card makes this explicit.
+- **Info icon** (ⓘ, top-right of every card) opens a glassy popup —
+  same blur/dim backdrop + spring entrance as the Money/Memories/Share
+  modals — with two sections per pose:
+  - **Kaise karein (How to do it)** — a numbered step-by-step.
+  - **Fayde (Benefits)** — a bullet list of what the pose helps with.
+- Built in `components/BTLDashboard.jsx`: `YOGA_POSES` (content data),
+  `YogaPoseAnimation` (the 4 SVG animations), `FitnessPoseCard`,
+  `FitnessInfoModal`, and the top-level `FitnessTab` component. Routed
+  via the existing `tab` state (`tab === "fitness"`), exactly like
+  `lifeStory`/`analytics`/`money`.
+- Purely presentational for now — no new Firestore fields, no new app
+  state. A natural next step (say the word) is tracking which poses
+  were completed each day, same as the existing goal-completion system.
+
+A matching Figma mockup (glass cards + the info popup) was built first
+to nail the look before writing the code — see the file shared in this
+conversation.
+
+## 🎛️ "Background" tab in Settings (earlier update)
 
 The Liquid Background (gradient wash + blobs + particles) is now fully
 user-controllable from **Setting → Background**:
