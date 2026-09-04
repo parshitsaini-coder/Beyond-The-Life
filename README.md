@@ -1,6 +1,21 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🎛️ New — "Background" tab in Settings (this update)
+## 🏋️ New — 19 more exercises added to Fitness → Exercise (this update)
+19 new GIFs (donkey kick, quadruped leg extension, straight-arm plank,
+child's pose stretch, cross-arm crunch, plank knee raise, reclined
+knee-bend rest, side-lying relaxation stretch, standing side leg raise,
+kneeling forward reach stretch, side-lying knee tuck stretch, vertical
+toe-reach crunch, standing march in place, boxer guard stance hold,
+flutter kicks, high plank hold, push-up, jogging in place, standing high
+knee raise) were dropped into `public/fitness/` and appended as new cards
+to `FITNESS_DATA.exerciseAlt` in `components/BTLDashboard.jsx` — same
+shape as every existing card (`id`, `name`, `duration`, `gif`, `steps`,
+`benefits`), so they show up automatically in **Fitness → Exercise** (the
+"alt" list, toggled with the swap button) with no other code changes.
+Exercise names/steps/benefits were inferred from the GIF poses — say the
+word if any need renaming or re-categorizing (e.g. into Yoga).
+
+## 🎛️ "Background" tab in Settings (earlier update)
 
 The Liquid Background (gradient wash + blobs + particles) is now fully
 user-controllable from **Setting → Background**:
