@@ -279,10 +279,13 @@ function RippleWaveCanvas({ containerRef, reduced }) {
       return () => { ro.disconnect(); el.removeEventListener("pointerdown", onDown); el.removeEventListener("pointerdown", onDownReduced); };
     }
 
-    const SPEED = 300;        // px/sec — how fast the wavefront expands
-    const LIFE = 2200;        // ms — total ripple lifetime
-    const WAVELENGTH = 22;    // px between successive rings
-    const TRAIL = 5;          // how many wavelengths of "trailing" rings stay lit behind the front
+    const SPEED = 260;         // px/sec — how fast the wavefront expands
+    const LIFE = 2400;         // ms — total ripple lifetime
+    const WAVELENGTH = 30;     // px — distance between wave crests (bigger = gentler, more "water"-like swell)
+    const STOPS = 160;         // gradient color-stop resolution — high enough that the browser's
+                                // own linear interpolation between stops reads as a perfectly smooth,
+                                // continuous wave with no visible ring edges (this is the fix for the
+                                // "distinct rings" look — a single gradient, not many stroked circles)
 
     function tick() {
       ctx.clearRect(0, 0, width, height);
@@ -291,31 +294,32 @@ function RippleWaveCanvas({ containerRef, reduced }) {
 
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
-      ctx.shadowBlur = 6;
 
       ripplesRef.current.forEach((r) => {
         const elapsed = now - r.start;
         const t = elapsed / LIFE;
-        const fade = Math.max(0, 1 - t);
+        const fade = Math.max(0, 1 - t * t); // eases out smoothly near the end instead of a linear cutoff
         const frontRadius = (elapsed / 1000) * SPEED;
-        const ringCount = Math.min(60, Math.floor(frontRadius / (WAVELENGTH / 2)));
+        if (frontRadius < 1) return;
 
-        for (let i = 0; i < ringCount; i++) {
-          const radius = i * (WAVELENGTH / 2);
-          const distBehindFront = (frontRadius - radius) / WAVELENGTH;
-          if (distBehindFront > TRAIL) continue;
-          const envelope = Math.max(0, 1 - distBehindFront / TRAIL);
-          const alpha = envelope * fade * 0.5;
-          if (alpha < 0.015) continue;
-          const bandPhase = (Math.sin(radius / (WAVELENGTH * 0.6)) + 1) / 2;
-          const color = lerpColor(RIPPLE_TEAL, RIPPLE_INDIGO, bandPhase);
-          ctx.beginPath();
-          ctx.arc(r.x, r.y, radius, 0, Math.PI * 2);
-          ctx.strokeStyle = `rgba(${color},${alpha})`;
-          ctx.shadowColor = `rgba(${color},${alpha})`;
-          ctx.lineWidth = 2.2;
-          ctx.stroke();
+        const gradient = ctx.createRadialGradient(r.x, r.y, 0, r.x, r.y, frontRadius);
+        for (let s = 0; s <= STOPS; s++) {
+          const frac = s / STOPS;                              // 0 (center) .. 1 (wavefront)
+          const radiusPx = frac * frontRadius;
+          const behindFront = (frontRadius - radiusPx) / WAVELENGTH; // in wavelengths, 0 at the edge
+          const envelope = Math.exp(-behindFront / 2.4);        // smooth exponential taper toward the
+                                                                  // center — no hard cutoff, so nothing
+                                                                  // reads as a discrete "ring"
+          const crest = (Math.sin(radiusPx / WAVELENGTH * Math.PI * 2 - elapsed / 140) + 1) / 2;
+          const color = lerpColor(RIPPLE_TEAL, RIPPLE_INDIGO, crest);
+          const alpha = Math.max(0, Math.min(1, envelope * fade * (0.16 + crest * 0.34)));
+          gradient.addColorStop(frac, `rgba(${color},${alpha})`);
         }
+
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, frontRadius, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
       });
 
       ctx.restore();
