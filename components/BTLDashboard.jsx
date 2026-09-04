@@ -2362,16 +2362,32 @@ function AnalogClockWidget({ alarms = [], ringtoneId, onSetAlarm, onRemoveAlarm,
           <circle cx={CX} cy={CY} r="4.5" fill={accent} stroke={textColor} strokeWidth="1" />
         </svg>
 
-        {hover && (
-          <div style={{
-            position: "absolute", left: Math.min(Math.max(hover.x, 34), 116), top: Math.max(hover.y - 30, 0),
-            transform: "translate(-50%, 0)", pointerEvents: "none", zIndex: 3,
-            background: C.dark, color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: 6, padding: "3px 7px",
-            whiteSpace: "nowrap", boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
-          }}>
-            {String(hover.hh12 === 0 ? 12 : hover.hh12).padStart(2, "0")}:{String(hover.mm).padStart(2, "0")} · double-click for alarm
-          </div>
-        )}
+        {hover && (() => {
+          // ---- Side-flipping tooltip (this update): previously always
+          // horizontally centered on the cursor (translate(-50%)), which
+          // meant it sat right on top of whatever clock position/time the
+          // user was pointing at — the exact spot they needed to see.
+          // Now it flips to whichever side has room: pointing on the left
+          // half of the dial → tooltip opens to the right of the cursor;
+          // pointing on the right half → it opens to the left. Either way
+          // it renders beside the cursor, never over it.
+          const svgSize = 150; // matches the <svg width="150" height="150"> below
+          const gap = 10;      // clearance between cursor and tooltip edge
+          const onLeftHalf = hover.x < svgSize / 2;
+          const sideStyle = onLeftHalf
+            ? { left: Math.min(hover.x + gap, svgSize + 40), transform: "translate(0, -50%)" }
+            : { left: Math.max(hover.x - gap, -40), transform: "translate(-100%, -50%)" };
+          return (
+            <div style={{
+              position: "absolute", top: hover.y, ...sideStyle,
+              pointerEvents: "none", zIndex: 3,
+              background: C.dark, color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: 6, padding: "3px 7px",
+              whiteSpace: "nowrap", boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
+            }}>
+              {String(hover.hh12 === 0 ? 12 : hover.hh12).padStart(2, "0")}:{String(hover.mm).padStart(2, "0")} · double-click for alarm
+            </div>
+          );
+        })()}
 
         <AnimatePresence>
           {justSet && (
