@@ -2323,6 +2323,19 @@ function AnalogClockWidget({ alarms = [], ringtoneId, onSetAlarm, onRemoveAlarm,
       </div>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 0, position: "relative" }}>
+        {/* ---- Tight 150×150 wrapper around the dial (this update) ----
+            Previously the hover tooltip/flash were positioned "absolute"
+            against the outer flex column above — which is wider than the
+            150×150 <svg> itself (it stretches to center the dial). Since
+            `hover.x/y` are measured relative to the SVG's own box (see
+            handleMove below), that mismatch let the tooltip land anywhere
+            up to the full widget width away from the actual cursor once
+            offset math was applied — occasionally rendering it clipped
+            against the widget's edge, disconnected from the dial. Giving
+            the dial its own exactly-sized relative wrapper makes hover.x/y
+            map 1:1 onto CSS left/top here, so the tooltip always renders
+            exactly where the cursor is on the dial — never off to a side. */}
+        <div style={{ position: "relative", width: 150, height: 150 }}>
         <svg
           ref={svgRef}
           viewBox="0 0 200 200"
@@ -2363,23 +2376,17 @@ function AnalogClockWidget({ alarms = [], ringtoneId, onSetAlarm, onRemoveAlarm,
         </svg>
 
         {hover && (() => {
-          // ---- Side-flipping tooltip (this update): previously always
-          // horizontally centered on the cursor (translate(-50%)), which
-          // meant it sat right on top of whatever clock position/time the
-          // user was pointing at — the exact spot they needed to see.
-          // Now it flips to whichever side has room: pointing on the left
-          // half of the dial → tooltip opens to the right of the cursor;
-          // pointing on the right half → it opens to the left. Either way
-          // it renders beside the cursor, never over it.
-          const svgSize = 150; // matches the <svg width="150" height="150"> below
-          const gap = 10;      // clearance between cursor and tooltip edge
-          const onLeftHalf = hover.x < svgSize / 2;
-          const sideStyle = onLeftHalf
-            ? { left: Math.min(hover.x + gap, svgSize + 40), transform: "translate(0, -50%)" }
-            : { left: Math.max(hover.x - gap, -40), transform: "translate(-100%, -50%)" };
+          // ---- Cursor-anchored tooltip (this update) — always horizontally
+          // centered right on the cursor, exactly where you're pointing on
+          // the dial, and only clamped just enough at the very edges so the
+          // box itself doesn't spill outside the 150×150 dial area. It never
+          // jumps to the opposite side anymore — same spot, every time.
+          const HALF_W = 46; // ≈ half the tooltip's own width, for edge clamping
+          const left = Math.min(Math.max(hover.x, HALF_W), 150 - HALF_W);
+          const top = Math.max(hover.y - 26, 2); // sits just above the cursor
           return (
             <div style={{
-              position: "absolute", top: hover.y, ...sideStyle,
+              position: "absolute", left, top, transform: "translate(-50%, 0)",
               pointerEvents: "none", zIndex: 3,
               background: C.dark, color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: 6, padding: "3px 7px",
               whiteSpace: "nowrap", boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
@@ -2394,12 +2401,13 @@ function AnalogClockWidget({ alarms = [], ringtoneId, onSetAlarm, onRemoveAlarm,
             <motion.div
               initial={{ opacity: 0, scale: 0.8, y: 6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }}
               style={{
-                position: "absolute", bottom: 2, zIndex: 4, display: "flex", alignItems: "center", gap: 4,
+                position: "absolute", left: "50%", bottom: 2, transform: "translateX(-50%)", zIndex: 4, display: "flex", alignItems: "center", gap: 4,
                 background: "#4a9d5f", color: "#fff", fontSize: 9, fontWeight: 800, borderRadius: 999, padding: "3px 9px",
               }}
             ><CheckCircle2 size={11} /> Alarm set for {formatTime12(justSet)}</motion.div>
           )}
         </AnimatePresence>
+        </div>
 
         <div style={{ fontFamily: "'JetBrains Mono', 'Courier New', monospace", fontSize: 15, fontWeight: 800, color: textColor, letterSpacing: 0.5 }}>
           {digital}
@@ -3650,13 +3658,31 @@ async function generateShareCard(state, lifeScore, userName, userPhoto) {
   const hasOverflow = doneGoals.length > MAX_ROWS || pendingGoals.length > MAX_ROWS;
   const panelH = HEADER_INSET + shownRows * ROW_H + (hasOverflow ? 34 : 0) + BOTTOM_PAD;
 
+  // ---- Focus Timer — today's tracked categories + time (this update) ----
+  // Same data the Focus Timer widget itself reads (focusSecondsToday banks
+  // whatever's currently running on top of what's already logged today),
+  // so the share card always matches what's live on the dashboard.
+  const focusTimer = normalizeFocusTimer(state.focusTimer);
+  const focusRows = focusTimer.categories
+    .map((c) => ({ label: c.label, color: c.color, secs: focusSecondsToday(focusTimer, c.id) }))
+    .filter((c) => c.secs > 0)
+    .sort((a, b) => b.secs - a.secs);
+  const totalFocusSecs = focusRows.reduce((a, c) => a + c.secs, 0);
+  const FOCUS_HEADER_H = 56;
+  const FOCUS_ROW_H = 44;
+  const FOCUS_MAX_ROWS = 6;
+  const focusRowsShown = Math.min(Math.max(focusRows.length, 1), FOCUS_MAX_ROWS);
+  const focusOverflow = focusRows.length > FOCUS_MAX_ROWS;
+  const FOCUS_PANEL_H = FOCUS_HEADER_H + focusRowsShown * FOCUS_ROW_H + (focusOverflow ? 30 : 0) + 22;
+  const FOCUS_BLOCK_H = FOCUS_PANEL_H + 40; // panel + top/bottom margin around it
+
   const W = 1080;
   const TOP_H = 900;
   const EARN_SPEND_H = 150;
   const GOALS_TITLE_H = 60;
   const QUOTE_H = 190;
   const FOOTER_H = 90;
-  const H = TOP_H + EARN_SPEND_H + GOALS_TITLE_H + panelH + 40 + QUOTE_H + FOOTER_H;
+  const H = TOP_H + EARN_SPEND_H + FOCUS_BLOCK_H + GOALS_TITLE_H + panelH + 40 + QUOTE_H + FOOTER_H;
 
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
@@ -3804,8 +3830,59 @@ async function generateShareCard(state, lifeScore, userName, userPhoto) {
     ctx.fillText(`Net Today ${netToday >= 0 ? "+" : ""}₹${netToday}`, W / 2, esY + esCardH + 32);
   }
 
+  // ---- Focus Timer panel — one row per category tracked today, with a
+  // colored dot matching the widget's own category color, and a total
+  // badge top-right (same formatFocusDuration used on the dashboard). ----
+  {
+    const fY = TOP_H + EARN_SPEND_H + 20;
+    const fX = 90, fW = W - 180;
+    drawRoundedRect(ctx, fX, fY, fW, FOCUS_PANEL_H, 20);
+    ctx.fillStyle = "#fca31112"; ctx.fill();
+    ctx.strokeStyle = "#fca31142"; ctx.lineWidth = 1.5; ctx.stroke();
+
+    ctx.textAlign = "left";
+    ctx.font = "800 22px Inter, sans-serif";
+    ctx.fillStyle = C.dark;
+    ctx.fillText("⏱️ Focus Timer", fX + 24, fY + 36);
+
+    ctx.textAlign = "right";
+    ctx.font = "800 20px Inter, sans-serif";
+    ctx.fillStyle = C.accent;
+    ctx.fillText(formatFocusDuration(totalFocusSecs), fX + fW - 24, fY + 36);
+
+    ctx.textAlign = "left";
+    if (focusRows.length === 0) {
+      ctx.font = "italic 600 18px Inter, sans-serif";
+      ctx.fillStyle = "#b3ac99";
+      ctx.fillText("No focus sessions today", fX + 24, fY + FOCUS_HEADER_H + 8);
+    } else {
+      const rowsToShow = Math.min(focusRows.length, FOCUS_MAX_ROWS);
+      for (let i = 0; i < rowsToShow; i++) {
+        const r = focusRows[i];
+        const rowY = fY + FOCUS_HEADER_H + i * FOCUS_ROW_H;
+        ctx.fillStyle = r.color;
+        ctx.beginPath(); ctx.arc(fX + 32, rowY + 6, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.textAlign = "left";
+        ctx.font = "600 20px Inter, sans-serif";
+        ctx.fillStyle = C.text;
+        ctx.fillText(truncateToWidth(ctx, r.label, fW - 220), fX + 54, rowY + 13);
+        ctx.textAlign = "right";
+        ctx.font = "800 20px Inter, sans-serif";
+        ctx.fillStyle = C.dark;
+        ctx.fillText(formatFocusDuration(r.secs), fX + fW - 24, rowY + 13);
+      }
+      if (focusOverflow) {
+        ctx.textAlign = "left";
+        ctx.font = "700 16px Inter, sans-serif";
+        ctx.fillStyle = "#a39c86";
+        ctx.fillText(`+${focusRows.length - FOCUS_MAX_ROWS} more`, fX + 54, fY + FOCUS_HEADER_H + rowsToShow * FOCUS_ROW_H + 8);
+      }
+    }
+    ctx.textAlign = "center";
+  }
+
   // ---- Today's Goals — completed vs pending, side by side ----
-  let y = TOP_H + EARN_SPEND_H;
+  let y = TOP_H + EARN_SPEND_H + FOCUS_BLOCK_H;
   ctx.font = "800 26px Inter, sans-serif";
   ctx.fillStyle = C.dark;
   ctx.fillText("📋 Today's Goals", W / 2, y + 30);
