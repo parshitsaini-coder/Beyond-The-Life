@@ -10,7 +10,7 @@ import {
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
   Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn,
   Users, Clock, PieChart as PieChartIcon, Bell, BellOff, Square,
-  AlarmClock, Volume2, Play, Waves, Gauge, Flower2, Info,
+  AlarmClock, Volume2, Play, Waves, Gauge,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -1306,13 +1306,15 @@ function DayStreakBadge({ streak, accent = C.accent, dark = C.dark }) {
   );
 }
 
-/* ---------------- SHINE / COMPLETE ANIMATION ----------------
-   Single left-to-right sweep only (this update) — used to fire two
-   overlapping sweeps (one from each edge), which read as the "done"
-   celebration playing twice back-to-back. Now just the one pass. */
+/* ---------------- SHINE / COMPLETE ANIMATION ---------------- */
 function ShineOverlay({ active }) {
   if (!active) return null;
-  return <div className="btl-shine btl-shine-left" />;
+  return (
+    <>
+      <div className="btl-shine btl-shine-left" />
+      <div className="btl-shine btl-shine-right" />
+    </>
+  );
 }
 
 /* ---------------- CONFETTI / MILESTONE CELEBRATION ---------------- */
@@ -9833,286 +9835,6 @@ function LifeStoryTab({ state, update, onClose }) {
   );
 }
 
-/* ---------------- FITNESS TAB — animated yoga exercises (this update) ----------------
-   4 yoga poses, each rendered as a small looping SVG animation (breathing /
-   gentle sway via framer-motion — no new libraries). Every card has an
-   info icon (top-right) that opens a glassy popup with "how to do it"
-   steps + benefits, using the exact same frosted-glass recipe
-   (glassCardStyle / blur+saturate) as every other modal in the app. */
-
-const YOGA_POSES = [
-  {
-    key: "downwardDog",
-    title: "Downward Dog",
-    sanskrit: "Adho Mukha Svanasana",
-    meta: "Standing • 30 sec hold",
-    hue: "#f0a94e",
-    steps: [
-      "Table-top position se shuru karein — hands shoulder-width apart, knees hip-width apart.",
-      "Toes ko tuck karein aur hips ko upar-peeche uthayein.",
-      "Legs ko seedha karein taaki body ek inverted 'V' shape bana le.",
-      "Heels ko floor ki taraf gently press karein, head aur neck relaxed rakhein.",
-      "5 deep, slow breaths ke liye is position ko hold karein.",
-    ],
-    benefits: [
-      "Shoulders, hamstrings aur calves ko achhe se stretch karta hai.",
-      "Head thoda niche hone se blood circulation improve hota hai.",
-      "Back pain aur stiffness kam karne me madad karta hai.",
-      "Mind ko calm karta hai aur stress relieve karta hai.",
-    ],
-  },
-  {
-    key: "treePose",
-    title: "Tree Pose",
-    sanskrit: "Vrikshasana",
-    meta: "Balance • 45 sec each side",
-    hue: "#5aa0d8",
-    steps: [
-      "Seedhe khade ho jaayein, weight dono pairon par barabar rakhein.",
-      "Right foot ko uthaakar left thigh ke andar (ankle se upar) rakhein.",
-      "Hands ko chest ke saamne 'namaste' me jodein, ya seedha upar utha lein.",
-      "Ek point par nazar (drishti) fix karein taaki balance bana rahe.",
-      "45 seconds hold karein, phir doosri taraf se repeat karein.",
-    ],
-    benefits: [
-      "Balance aur body ki stability improve karta hai.",
-      "Thighs, calves, ankles aur core ko strengthen karta hai.",
-      "Focus aur concentration badhata hai.",
-      "Posture ko better banata hai.",
-    ],
-  },
-  {
-    key: "warrior2",
-    title: "Warrior II",
-    sanskrit: "Virabhadrasana II",
-    meta: "Strength • 40 sec each side",
-    hue: "#e08a76",
-    steps: [
-      "Legs ko wide apart rakhein (roughly 3-4 feet), arms shoulder height par side-me stretch karein.",
-      "Right foot ko 90° outward, left foot ko halka sa inward turn karein.",
-      "Right knee ko bend karein taaki thigh floor ke parallel ho (knee ankle ke upar rahe).",
-      "Torso seedha rakhein, gaze right hand ki finger-tips ki taraf rakhein.",
-      "40 seconds hold karein, phir doosri side se repeat karein.",
-    ],
-    benefits: [
-      "Legs, ankles aur core ko strong banata hai.",
-      "Hips aur groin ko open karta hai.",
-      "Stamina aur endurance badhata hai.",
-      "Confidence aur focus improve karta hai.",
-    ],
-  },
-  {
-    key: "childsPose",
-    title: "Child's Pose",
-    sanskrit: "Balasana",
-    meta: "Relax • 60 sec hold",
-    hue: "#8fb573",
-    steps: [
-      "Floor par knees ke bal baith jaayein, big toes ko touch karein, knees ko hip-width apart karein.",
-      "Exhale karte hue torso ko thighs ke upar niche laayein.",
-      "Arms ko aage ki taraf stretch karein, palms floor par rakhein (ya arms body ke saath relax karein).",
-      "Forehead ko gently floor par rest karein.",
-      "60 seconds tak slow, deep breaths lein.",
-    ],
-    benefits: [
-      "Back, shoulders aur neck ko gently stretch karta hai.",
-      "Mind ko calm karta hai, anxiety aur stress kam karta hai.",
-      "Body ko rest aur recover karne me madad karta hai — workout ke beech me bhi achha hai.",
-      "Deep, relaxed breathing ko encourage karta hai.",
-    ],
-  },
-];
-
-/* Small looping SVG pose illustrations — pure stroke-based stick figures,
-   each with its own gentle breathing/sway animation loop so the card
-   genuinely reads as "yoga being performed", not a static icon. */
-function YogaPoseAnimation({ poseKey, color }) {
-  const stroke = { stroke: color, strokeWidth: 4.5, strokeLinecap: "round", strokeLinejoin: "round", fill: "none" };
-
-  if (poseKey === "downwardDog") {
-    return (
-      <motion.svg viewBox="0 0 140 100" width="100%" height="100%" style={{ overflow: "visible" }}
-        animate={{ y: [0, -4, 0] }} transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}>
-        <motion.path {...stroke} d="M20 85 L55 50 L85 50 L120 85 M55 50 L60 20 M85 50 L80 20 M60 20 L80 20"
-          animate={{ pathLength: [0.85, 1, 0.85] }} transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }} />
-        <circle cx={70} cy={16} r={7} fill={color} />
-      </motion.svg>
-    );
-  }
-  if (poseKey === "treePose") {
-    return (
-      <motion.svg viewBox="0 0 140 100" width="100%" height="100%" style={{ overflow: "visible" }}
-        animate={{ rotate: [-2.5, 2.5, -2.5] }} transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}>
-        <path {...stroke} d="M70 90 L70 45 M70 45 L45 60 M70 60 L95 40 M70 60 L45 40" />
-        <circle cx={70} cy={30} r={8} fill={color} />
-      </motion.svg>
-    );
-  }
-  if (poseKey === "warrior2") {
-    return (
-      <motion.svg viewBox="0 0 140 100" width="100%" height="100%" style={{ overflow: "visible" }}
-        animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}>
-        <path {...stroke} d="M70 25 L70 65 M20 45 L120 45 M70 65 L45 90 M70 65 L95 90" />
-        <circle cx={70} cy={15} r={8} fill={color} />
-      </motion.svg>
-    );
-  }
-  // childsPose
-  return (
-    <motion.svg viewBox="0 0 140 100" width="100%" height="100%" style={{ overflow: "visible", transformOrigin: "center" }}
-      animate={{ scaleY: [1, 1.06, 1] }} transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}>
-      <path {...stroke} d="M20 35 L120 35 M70 35 L70 60 L35 88 M70 60 L105 88" />
-    </motion.svg>
-  );
-}
-
-function FitnessPoseCard({ pose, onInfo }) {
-  return (
-    <motion.div
-      whileHover={{ y: -3 }}
-      transition={{ type: "spring", stiffness: 340, damping: 22 }}
-      style={{
-        position: "relative", borderRadius: 18, padding: 16, overflow: "hidden",
-        display: "flex", flexDirection: "column", minHeight: 230,
-        ...glassCardStyle("#ffffff"),
-      }}
-    >
-      <div style={{
-        position: "absolute", top: -30, left: "50%", transform: "translateX(-50%)",
-        width: 190, height: 190, borderRadius: "50%", background: pose.hue, opacity: 0.28, filter: "blur(2px)",
-      }} />
-      <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{
-          fontSize: 10, fontWeight: 800, color: pose.hue, background: "#ffffffcc",
-          borderRadius: 999, padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: 4,
-        }}>
-          <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.6, repeat: Infinity }} style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: pose.hue }} />
-          Animated loop
-        </span>
-        <motion.button
-          onClick={() => onInfo(pose)}
-          whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.9 }}
-          title="How to do it & benefits"
-          aria-label={`Info about ${pose.title}`}
-          style={{
-            width: 30, height: 30, borderRadius: "50%", border: "none", cursor: "pointer",
-            background: "#ffffffdd", color: pose.hue, display: "flex", alignItems: "center", justifyContent: "center",
-          }}
-        >
-          <Info size={15} />
-        </motion.button>
-      </div>
-
-      <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "6px 24px" }}>
-        <div style={{ width: 130, height: 100 }}>
-          <YogaPoseAnimation poseKey={pose.key} color={pose.hue} />
-        </div>
-      </div>
-
-      <div style={{ position: "relative" }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: C.dark }}>{pose.title}</div>
-        <div style={{ fontSize: 11, color: "#8a8579", marginTop: 2 }}>{pose.meta}</div>
-      </div>
-    </motion.div>
-  );
-}
-
-function FitnessInfoModal({ pose, onClose }) {
-  if (!pose) return null;
-  return createPortal(
-    <AnimatePresence>
-      <motion.div
-        key="fitness-info-backdrop"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        onClick={onClose}
-        style={{
-          position: "fixed", inset: 0, zIndex: 4000, display: "flex", alignItems: "center", justifyContent: "center",
-          background: "rgba(37,36,34,0.45)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", padding: 20,
-        }}
-      >
-        <motion.div
-          key="fitness-info-card"
-          onClick={(e) => e.stopPropagation()}
-          initial={{ opacity: 0, scale: 0.9, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 16 }}
-          transition={{ type: "spring", stiffness: 340, damping: 26 }}
-          style={{
-            width: "100%", maxWidth: 440, maxHeight: "82vh", overflowY: "auto", borderRadius: 22, padding: 24,
-            ...glassCardStyle("#fffdf7"),
-          }}
-          className="btl-scroll"
-        >
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 19, fontWeight: 900, color: C.dark, display: "flex", alignItems: "center", gap: 6 }}>
-                <Flower2 size={17} color={pose.hue} /> {pose.title}
-              </div>
-              <div style={{ fontSize: 11, color: "#8a8579", fontStyle: "italic", marginTop: 2 }}>{pose.sanskrit}</div>
-            </div>
-            <motion.button
-              onClick={onClose} whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }}
-              style={{ border: "none", background: "transparent", cursor: "pointer", color: C.dark, padding: 4 }}
-              aria-label="Close"
-            >
-              <X size={18} />
-            </motion.button>
-          </div>
-
-          <div style={{ marginTop: 18, fontSize: 12.5, fontWeight: 800, color: pose.hue, letterSpacing: 0.3 }}>
-            KAISE KAREIN (How to do it)
-          </div>
-          <ol style={{ margin: "8px 0 0", paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
-            {pose.steps.map((s, i) => (
-              <li key={i} style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{s}</li>
-            ))}
-          </ol>
-
-          <div style={{ marginTop: 18, fontSize: 12.5, fontWeight: 800, color: pose.hue, letterSpacing: 0.3 }}>
-            FAYDE (Benefits)
-          </div>
-          <ul style={{ margin: "8px 0 0", paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
-            {pose.benefits.map((b, i) => (
-              <li key={i} style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{b}</li>
-            ))}
-          </ul>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>,
-    document.body
-  );
-}
-
-function FitnessTab({ onClose }) {
-  const [infoPose, setInfoPose] = useState(null);
-  return (
-    <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 6 }}>
-        <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
-          <ArrowLeft size={15} color={C.dark} />
-        </motion.div>
-        <Flower2 size={14} color="#4ea8de" />
-        <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Fitness — Yoga</span>
-      </div>
-
-      <div style={{
-        flex: 1, overflowY: "auto", padding: 20,
-        background: "linear-gradient(160deg, #eef3ee 0%, #f3ede4 55%, #eef0f6 100%)",
-      }} className="btl-scroll">
-        <div style={{ fontSize: 12, color: "#8a8579", marginBottom: 16, maxWidth: 560 }}>
-          4 guided yoga exercises — har card khud animate hoti hai. Info (ⓘ) icon dabaayein
-          har exercise ka tarika aur fayde jaanne ke liye.
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 18, maxWidth: 900 }}>
-          {YOGA_POSES.map((pose) => (
-            <FitnessPoseCard key={pose.key} pose={pose} onInfo={setInfoPose} />
-          ))}
-        </div>
-      </div>
-
-      <FitnessInfoModal pose={infoPose} onClose={() => setInfoPose(null)} />
-    </div>
-  );
-}
-
 function BTLDashboardInner() {
   const { user: fbUser } = useAuth();
   const [state, setState] = useState(null);
@@ -10786,10 +10508,6 @@ function BTLDashboardInner() {
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
           <LifeStoryTab state={state} update={update} onClose={() => setTab("dashboard")} />
         </div>
-      ) : tab === "fitness" ? (
-        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <FitnessTab onClose={() => setTab("dashboard")} />
-        </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {/* ---------- HEADER ---------- */}
@@ -10842,7 +10560,6 @@ function BTLDashboardInner() {
                   >{incomingFriendReqCount}</motion.span>
                 )}
               </div>
-              <GlowIconButton icon={Flower2} label="Fitness" color="#4ea8de" onClick={() => setTab("fitness")} />
             </div>
 
 
