@@ -1,6 +1,29 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🌊 New — Full "Liquid Background" system
+## 🎛️ New — "Background" tab in Settings (this update)
+
+The Liquid Background (gradient wash + blobs + particles) is now fully
+user-controllable from **Setting → Background**:
+
+- **Colors** — all 4 hues it draws with (previously hardcoded amber/sky/
+  coral/sage) are now 4 native color pickers. Changing one updates the
+  gradient, the matching blob, and every particle tinted with that hue
+  at once, since they all read from the same shared palette. A **Reset
+  colors to default** button restores the original 4.
+- **Animation speed** — a single 0.4x–3x slider controls how fast the
+  blobs drift/morph, the gradient shifts, and the particles move (the
+  click-triggered ripple effect is unaffected, since it's a one-shot
+  reaction to a click, not a continuous loop). A **Reset speed to 1.0x**
+  button restores the original pace.
+- Both persist to Firestore on `state.liquidBg: { colors: string[4],
+  speed: number }`, same as every other Setting. Old saved states
+  without this field fall back to the original hardcoded colors/speed
+  automatically — no migration step needed.
+- Wave Effect (the old 3 scrolling SVG bands along the bottom edge) has
+  been removed entirely from `LiquidBackground.jsx`, including its
+  keyframe — it's no longer part of the layered system below.
+
+## 🌊 "Liquid Background" system (earlier update)
 
 The dashboard's old background was just 3 static blurred circles. It's now
 a full animated liquid system, built as its own component
@@ -22,17 +45,20 @@ background and its content. If a background layer like this ever again
 "exists in the DOM with the right styles but is invisible," this is the
 first thing to check — not opacity.
 
-Five techniques, layered:
+Five techniques, layered (Wave Effect was later removed — see the
+"Background" tab section above):
 - **Liquid Gradient** — a slow-shifting radial-gradient mesh (4 brand
-  hues: amber, sky, coral, sage) that drifts and rotates on a 26s loop —
-  the base wash every other layer sits on top of.
+  hues: amber, sky, coral, sage, now user-recolorable — see above) that
+  drifts and rotates on a 26s loop (speed adjustable) — the base wash
+  every other layer sits on top of.
 - **Liquid Blob** — 4 organic blobs, merged into one melting "goo" mass
   via an SVG `feGaussianBlur` + `feColorMatrix` filter, each morphing its
   own `border-radius` on a 19–27s loop while drifting/scaling — so they
   split apart and re-merge continuously instead of just floating as flat
   circles.
-- **Wave Effect** — 3 translucent SVG wave bands along the bottom edge,
-  each scrolling at a different speed/direction for a parallax feel.
+- ~~**Wave Effect** — 3 translucent SVG wave bands along the bottom edge,
+  each scrolling at a different speed/direction for a parallax feel.~~
+  Removed.
 - **Particle Fluid** — a `<canvas>` layer of ~28 soft glowing dots (14 on
   touch devices) that drift with gentle sine-based turbulence, are loosely
   drawn toward the cursor when nearby, and draw faint connective lines

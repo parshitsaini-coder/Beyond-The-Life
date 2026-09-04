@@ -10,7 +10,7 @@ import {
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
   Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn,
   Users, Clock, PieChart as PieChartIcon, Bell, BellOff, Square,
-  AlarmClock, Volume2, Play,
+  AlarmClock, Volume2, Play, Waves, Gauge,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -20,7 +20,7 @@ import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
 import { ensurePublicProfile, useIncomingFriendRequestCount } from "@/lib/friendsStorage";
 import FriendCelebration from "@/components/FriendCelebration";
 import BTLLoadingScreen from "@/components/BTLLoadingScreen";
-import LiquidBackground from "@/components/LiquidBackground";
+import LiquidBackground, { LIQUID_BG_DEFAULT_COLORS } from "@/components/LiquidBackground";
 
 /* ============================================================
    BEYOND THE LIFE (BTL)  —  personal life-goals dashboard
@@ -927,6 +927,12 @@ function makeDefaultState() {
     // Which of the 4 built-in ALARM_RINGTONES (see below) plays when an
     // alarm fires — changeable from Setting → Alarm.
     clockRingtone: "classic",
+    // Liquid Background settings (this update) — Setting → Background lets
+    // the user recolor all 4 hues used by the gradient/blobs/particles and
+    // dial the overall animation speed. Colors are hex (converted to the
+    // rgba "r,g,b" triples LiquidBackground.jsx needs internally); speed is
+    // a plain multiplier, 1 = original speed.
+    liquidBg: { colors: [...LIQUID_BG_DEFAULT_COLORS], speed: 1 },
     layout: defaultLayout(),
     theme: defaultTheme(),
   };
@@ -974,6 +980,14 @@ async function loadState(user) {
     s.widgetLastCompletedDate = s.widgetLastCompletedDate || {};
     s.clockAlarms = Array.isArray(s.clockAlarms) ? s.clockAlarms : [];
     s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === s.clockRingtone) ? s.clockRingtone : "classic";
+    // liquidBg sanitize — old saved states won't have this field at all,
+    // and a stored color could in theory be a bad/empty string, so each of
+    // the 4 slots falls back to its own default hex independently.
+    const savedColors = (s.liquidBg && Array.isArray(s.liquidBg.colors)) ? s.liquidBg.colors : [];
+    s.liquidBg = {
+      colors: LIQUID_BG_DEFAULT_COLORS.map((def, i) => (/^#[0-9a-fA-F]{6}$/.test(savedColors[i]) ? savedColors[i] : def)),
+      speed: Number.isFinite(s.liquidBg?.speed) && s.liquidBg.speed > 0 ? Math.min(3, Math.max(0.4, s.liquidBg.speed)) : 1,
+    };
   }
   const withLayout = ensureLayoutDefaults(s);
   return { ...withLayout, theme: normalizeTheme(withLayout.theme) };
@@ -2936,7 +2950,80 @@ function MoodBtn({ active, onClick, children, title }) {
 }
 
 /* ---------------- SETTINGS PANEL CONTENT (rendered inside the glass modal) ---------------- */
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onSetClockRingtone }) {
+/* ---------------- Setting → Background (this update) ----------------
+   Manages every color LiquidBackground.jsx draws with (gradient wash +
+   blobs + particles all share the same 4-hue palette — see PALETTE in
+   that file) plus one overall animation-speed dial for the blobs/
+   gradient/particles. Both persist to Firestore on state.liquidBg like
+   everything else in the app. */
+const LIQUID_BG_COLOR_LABELS = ["Amber", "Sky", "Coral", "Sage"];
+function LiquidBgPanel({ liquidBg, onColorChange, onColorsReset, onSpeedChange, onSpeedReset }) {
+  const colors = (liquidBg && Array.isArray(liquidBg.colors) && liquidBg.colors.length === 4)
+    ? liquidBg.colors : LIQUID_BG_DEFAULT_COLORS;
+  const speed = Number.isFinite(liquidBg?.speed) ? liquidBg.speed : 1;
+
+  return (
+    <div style={{ maxWidth: 460 }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, marginBottom: 4, display: "flex", alignItems: "center", gap: 5 }}>
+        <Waves size={14} /> Liquid Background
+      </div>
+      <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 14 }}>
+        The animated gradient, blobs and floating particles behind the dashboard —
+        recolor all 4 hues, or speed up/slow down how fast they drift and morph.
+      </div>
+
+      {/* Colors */}
+      <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+        <Palette size={10} /> COLORS
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+        {colors.map((hex, i) => (
+          <div key={i}>
+            <input
+              type="color"
+              value={/^#[0-9a-fA-F]{6}$/.test(hex) ? hex : LIQUID_BG_DEFAULT_COLORS[i]}
+              onChange={(e) => onColorChange(i, e.target.value)}
+              style={{ width: "100%", height: 30, borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
+            />
+            <div style={{ fontSize: 9, fontWeight: 700, color: C.text, textAlign: "center", marginTop: 3 }}>{LIQUID_BG_COLOR_LABELS[i]}</div>
+          </div>
+        ))}
+      </div>
+      <motion.div
+        whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+        onClick={onColorsReset}
+        style={{ textAlign: "center", fontSize: 10, fontWeight: 800, color: C.dark, border: "1px solid #ece7d8", borderRadius: 999, padding: "6px 0", cursor: "pointer", background: "#fff", marginBottom: 18 }}
+      >
+        Reset colors to default
+      </motion.div>
+
+      {/* Speed */}
+      <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+        <Gauge size={10} /> ANIMATION SPEED
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <input
+          type="range" min={0.4} max={3} step={0.1} value={speed}
+          onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
+          style={{ flex: 1, accentColor: C.accent, cursor: "pointer" }}
+        />
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.dark, width: 40, textAlign: "right" }}>{speed.toFixed(1)}x</span>
+      </div>
+      <div style={{ fontSize: 9, color: "#8a8579", marginBottom: 8 }}>
+        Controls how fast the blobs drift/morph, the gradient shifts, and the particles move. 1.0x is the original speed.
+      </div>
+      <motion.div
+        whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+        onClick={onSpeedReset}
+        style={{ textAlign: "center", fontSize: 10, fontWeight: 800, color: C.dark, border: "1px solid #ece7d8", borderRadius: 999, padding: "6px 0", cursor: "pointer", background: "#fff" }}
+      >
+        Reset speed to 1.0x
+      </motion.div>
+    </div>
+  );
+}
+
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onSetClockRingtone, onLiquidBgColorChange, onLiquidBgColorsReset, onLiquidBgSpeedChange, onLiquidBgSpeedReset }) {
   const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | "alarm" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
@@ -3002,6 +3089,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
         <Oval onClick={() => setMode("lifeRules")} style={{ cursor: "pointer", background: mode === "lifeRules" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "lifeRules" ? "#fff" : C.text }}>Add Rule</Oval>
         <Oval onClick={() => setMode(mode === "theme" ? null : "theme")} style={{ cursor: "pointer", background: mode === "theme" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "theme" ? "#fff" : C.text }}><Palette size={11} style={{ marginRight: 4 }} />Theme</Oval>
         <Oval onClick={() => setMode(mode === "alarm" ? null : "alarm")} style={{ cursor: "pointer", background: mode === "alarm" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "alarm" ? "#fff" : C.text }}><AlarmClock size={11} style={{ marginRight: 4 }} />Alarm</Oval>
+        <Oval onClick={() => setMode(mode === "background" ? null : "background")} style={{ cursor: "pointer", background: mode === "background" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "background" ? "#fff" : C.text }}><Waves size={11} style={{ marginRight: 4 }} />Background</Oval>
         <div style={{ flex: 1 }} />
         <motion.span whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onClose} title="Close" style={{
           borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
@@ -3069,6 +3157,14 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
               })}
             </div>
           </div>
+        ) : mode === "background" ? (
+          <LiquidBgPanel
+            liquidBg={state.liquidBg}
+            onColorChange={onLiquidBgColorChange}
+            onColorsReset={onLiquidBgColorsReset}
+            onSpeedChange={onLiquidBgSpeedChange}
+            onSpeedReset={onLiquidBgSpeedReset}
+          />
         ) : (
           <>
             {mode && (
@@ -9329,6 +9425,27 @@ function BTLDashboardInner() {
     return s;
   });
 
+  // Liquid Background — Setting → Background (this update)
+  const setLiquidBgColor = (index, hex) => update((s) => {
+    const colors = [...(s.liquidBg?.colors || LIQUID_BG_DEFAULT_COLORS)];
+    if (/^#[0-9a-fA-F]{6}$/.test(hex)) colors[index] = hex;
+    s.liquidBg = { ...(s.liquidBg || {}), colors, speed: s.liquidBg?.speed ?? 1 };
+    return s;
+  });
+  const resetLiquidBgColors = () => update((s) => {
+    s.liquidBg = { ...(s.liquidBg || {}), colors: [...LIQUID_BG_DEFAULT_COLORS], speed: s.liquidBg?.speed ?? 1 };
+    return s;
+  });
+  const setLiquidBgSpeed = (speed) => update((s) => {
+    const clamped = Math.min(3, Math.max(0.4, Number(speed) || 1));
+    s.liquidBg = { colors: s.liquidBg?.colors || [...LIQUID_BG_DEFAULT_COLORS], speed: clamped };
+    return s;
+  });
+  const resetLiquidBgSpeed = () => update((s) => {
+    s.liquidBg = { colors: s.liquidBg?.colors || [...LIQUID_BG_DEFAULT_COLORS], speed: 1 };
+    return s;
+  });
+
   const addPlain = (listKey, text) => update((s) => { s[listKey] = [...s[listKey], text]; return s; });
   const removePlain = (listKey, idx) => update((s) => { s[listKey] = s[listKey].filter((_, i) => i !== idx); return s; });
   const editPlain = (listKey, idx, text) => update((s) => { s[listKey] = s[listKey].map((t, i) => i === idx ? text : t); return s; });
@@ -9586,7 +9703,12 @@ function BTLDashboardInner() {
           them to read as frosted glass rather than flat color. Backs
           off automatically on prefers-reduced-motion and on touch
           devices (see components/LiquidBackground.jsx). */}
-      <LiquidBackground containerRef={dashboardRootRef} dark={hexLuminance(dashTheme.bg) < 0.5} />
+      <LiquidBackground
+        containerRef={dashboardRootRef}
+        dark={hexLuminance(dashTheme.bg) < 0.5}
+        colors={state.liquidBg?.colors}
+        speed={state.liquidBg?.speed}
+      />
       <style>{`
         .btl-scroll::-webkit-scrollbar { width: 6px; }
         .btl-scroll::-webkit-scrollbar-thumb { background: #ddd6c4; border-radius: 4px; }
@@ -9802,6 +9924,10 @@ function BTLDashboardInner() {
               onMoneyColorChange={setMoneyColor} onMoneyColorReset={resetMoneyColors}
               onApplyPanelPreset={applyPanelPreset} onResetPanelPreset={resetPanelPreset}
               onSetClockRingtone={setClockRingtone}
+              onLiquidBgColorChange={setLiquidBgColor}
+              onLiquidBgColorsReset={resetLiquidBgColors}
+              onLiquidBgSpeedChange={setLiquidBgSpeed}
+              onLiquidBgSpeedReset={resetLiquidBgSpeed}
             />
           </motion.div>
         )}

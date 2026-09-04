@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 /* ============================================================
    LIQUID BACKGROUND — dashboard-wide animated background system
    ============================================================
-   Five techniques, all layered behind the dashboard's own content
+   Four techniques, all layered behind the dashboard's own content
    (z-index -1, pointer-events: none except the ripple trigger which
    just listens on the existing container — it never blocks clicks):
 
@@ -14,14 +14,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
                              and drift, merged into one "goo" mass via
                              an SVG filter (blur + contrast) so they
                              melt into and split from each other.
-     3. Wave Effect       — 3 translucent SVG wave bands parallax-
-                             scrolling along the bottom edge.
-     4. Particle Fluid    — canvas layer of soft glowing dots that
+     3. Particle Fluid    — canvas layer of soft glowing dots that
                              drift with gentle turbulence and are
                              loosely drawn toward the cursor, with
                              faint connective lines for a "fluid mesh"
                              feel.
-     5. Ripple Effect     — an expanding, fading ring spawned at the
+     4. Ripple Effect     — an expanding, fading ring spawned at the
                              exact point of every click/tap anywhere
                              on the dashboard.
 
@@ -40,13 +38,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
        outside the rounded card.
    ============================================================ */
 
-const PALETTE = [
-  "252,163,17",   // amber  (C.accent)
-  "152,193,217",  // sky    (C.blue)
-  "224,122,95",   // coral
-  "129,178,154",  // sage — soft 4th liquid tone, keeps the goo mass
-                   // from reading as only 2 hues once blobs overlap
-];
+// Default 4 brand hues, as hex — exposed so Settings can show/edit them
+// and reset back to these. Converted to "r,g,b" triples at render time
+// (rgba() strings need the triple, not hex) via hexToRgbTriple() below.
+export const LIQUID_BG_DEFAULT_COLORS = ["#FCA311", "#98C1D9", "#E07A5F", "#81B29A"];
+
+function hexToRgbTriple(hex) {
+  const safe = typeof hex === "string" && /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : "#cccccc";
+  const r = parseInt(safe.slice(1, 3), 16);
+  const g = parseInt(safe.slice(3, 5), 16);
+  const b = parseInt(safe.slice(5, 7), 16);
+  return `${r},${g},${b}`;
+}
 
 function usePrefersReducedMotion() {
   const [reduced, setReduced] = useState(false);
@@ -77,7 +80,7 @@ function useIsCoarsePointer() {
 }
 
 /* ---------------- 4. Particle Fluid (canvas) ---------------- */
-function ParticleFluidCanvas({ reduced, coarse, dark }) {
+function ParticleFluidCanvas({ reduced, coarse, dark, palette, speed }) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const pointerRef = useRef({ x: -9999, y: -9999, active: false });
@@ -95,7 +98,7 @@ function ParticleFluidCanvas({ reduced, coarse, dark }) {
       vx: (Math.random() - 0.5) * 0.0006,
       vy: (Math.random() - 0.5) * 0.0006,
       r: 1.6 + Math.random() * 2.6,
-      hue: PALETTE[Math.floor(Math.random() * PALETTE.length)],
+      hue: palette[Math.floor(Math.random() * palette.length)],
       phase: Math.random() * Math.PI * 2,
     }));
 
@@ -143,14 +146,14 @@ function ParticleFluidCanvas({ reduced, coarse, dark }) {
 
     let t = 0;
     function tick() {
-      t += 0.008;
+      t += 0.008 * speed;
       ctx.clearRect(0, 0, width, height);
       const ptr = pointerRef.current;
 
       particles.forEach((p) => {
-        // gentle turbulence drift
-        p.x += p.vx + Math.sin(t + p.phase) * 0.00008;
-        p.y += p.vy + Math.cos(t + p.phase) * 0.00008;
+        // gentle turbulence drift — scaled by the Settings → Background speed dial
+        p.x += (p.vx + Math.sin(t + p.phase) * 0.00008) * speed;
+        p.y += (p.vy + Math.cos(t + p.phase) * 0.00008) * speed;
 
         // loose attraction toward the cursor — fluid-like pull, capped
         if (ptr.active) {
@@ -204,7 +207,7 @@ function ParticleFluidCanvas({ reduced, coarse, dark }) {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerleave", onLeave);
     };
-  }, [reduced, coarse, dark]);
+  }, [reduced, coarse, dark, palette, speed]);
 
   return <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />;
 }
@@ -338,11 +341,19 @@ function RippleWaveCanvas({ containerRef, reduced }) {
 }
 
 /* ---------------- main export ---------------- */
-export default function LiquidBackground({ containerRef, dark = false }) {
+export default function LiquidBackground({ containerRef, dark = false, colors, speed = 1 }) {
   const reduced = usePrefersReducedMotion();
   const coarse = useIsCoarsePointer();
 
-  const blobDur = useMemo(() => [22, 27, 19, 25], []);
+  // Settings → Background lets the user recolor all 4 hues (colors, hex)
+  // and dial the overall animation speed (speed, ~0.4x–3x). Both fall back
+  // to sane defaults so older saved states without this field still work.
+  const safeColors = Array.isArray(colors) && colors.length === 4 ? colors : LIQUID_BG_DEFAULT_COLORS;
+  const PALETTE = useMemo(() => safeColors.map(hexToRgbTriple), [safeColors.join("|")]);
+  const safeSpeed = Number.isFinite(speed) && speed > 0 ? speed : 1;
+
+  const blobDur = useMemo(() => [22, 27, 19, 25].map((d) => d / safeSpeed), [safeSpeed]);
+  const gradientDur = useMemo(() => 26 / safeSpeed, [safeSpeed]);
   const gooId = useMemo(() => `btl-goo-${Math.random().toString(36).slice(2, 9)}`, []);
 
   return (
@@ -370,7 +381,7 @@ export default function LiquidBackground({ containerRef, dark = false }) {
             `radial-gradient(circle at 30% 85%, rgba(${PALETTE[2]},0.28), transparent 62%),` +
             `radial-gradient(circle at 78% 80%, rgba(${PALETTE[3]},0.24), transparent 60%),` +
             `radial-gradient(circle at 50% 50%, rgba(${PALETTE[0]},0.12), transparent 70%)`,
-          animation: reduced ? "none" : "btlLiquidGradientShift 26s ease-in-out infinite alternate",
+          animation: reduced ? "none" : `btlLiquidGradientShift ${gradientDur}s ease-in-out infinite alternate`,
           filter: "blur(2px)",
         }}
       />
@@ -411,29 +422,8 @@ export default function LiquidBackground({ containerRef, dark = false }) {
         })}
       </div>
 
-      {/* 3. Wave Effect — parallax bands along the bottom edge */}
-      <div aria-hidden="true" style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: "34%", opacity: dark ? 0.38 : 0.48 }}>
-        {[0, 1, 2].map((i) => (
-          <svg
-            key={i}
-            viewBox="0 0 1200 120"
-            preserveAspectRatio="none"
-            style={{
-              position: "absolute", bottom: i * 6, left: "-10%", width: "120%", height: `${70 + i * 14}px`,
-              animation: reduced ? "none" : `btlWaveScroll ${18 + i * 9}s linear infinite`,
-              animationDirection: i % 2 ? "reverse" : "normal",
-            }}
-          >
-            <path
-              d="M0,40 C150,90 350,0 600,40 C850,80 1050,10 1200,50 L1200,120 L0,120 Z"
-              fill={`rgba(${PALETTE[i]},${0.28 - i * 0.04})`}
-            />
-          </svg>
-        ))}
-      </div>
-
       {/* 4. Particle Fluid */}
-      <ParticleFluidCanvas reduced={reduced} coarse={coarse} dark={dark} />
+      <ParticleFluidCanvas reduced={reduced} coarse={coarse} dark={dark} palette={PALETTE} speed={safeSpeed} />
 
       {/* 5. Ripple 3D Effect — wave-interference rings spawned from clicks anywhere on the dashboard */}
       <RippleWaveCanvas containerRef={containerRef} reduced={reduced} />
@@ -456,10 +446,6 @@ export default function LiquidBackground({ containerRef, dark = false }) {
           50%  { transform: translate(-18%, 20%) scale(0.9); }
           75%  { transform: translate(-26%, -16%) scale(1.1); }
           100% { transform: translate(0px, 0px) scale(1); }
-        }
-        @keyframes btlWaveScroll {
-          from { transform: translateX(0); }
-          to   { transform: translateX(-8.33%); }
         }
         @media (prefers-reduced-motion: reduce) {
           .btl-liquid-gradient, .btl-liquid-blob { animation: none !important; }
