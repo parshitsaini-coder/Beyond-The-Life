@@ -10,7 +10,7 @@ import {
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
   Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn,
   Users, Clock, PieChart as PieChartIcon, Bell, BellOff, Square,
-  AlarmClock, Volume2, Play, Waves, Gauge,
+  AlarmClock, Volume2, Play, Waves, Gauge, Activity, Info,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -4249,6 +4249,291 @@ function ShareJourneyModal({ state, lifeScore, userName, userPhoto, onClose }) {
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+/* ---------------- Fitness tab — Yoga (this update) ----------------
+   A dedicated glassmorphic full-screen panel opened from the header's
+   new "Fitness" icon. Shows 4 beginner yoga poses as animated line-art
+   figures (pure inline SVG + framer-motion, no image/video assets),
+   each with a top-right info button that opens a glass popup with
+   step-by-step instructions and benefits. Reuses the same
+   `glassCardStyle` recipe as the rest of the app so it matches the
+   Glassmorphism 2.0 look everywhere else. */
+const YOGA_POSES = [
+  {
+    id: "mountain",
+    name: "Mountain Pose",
+    sanskrit: "Tadasana",
+    tagline: "Grounding · Posture",
+    color: "#fca311",
+    steps: [
+      "Stand tall with feet together, big toes touching, weight spread evenly.",
+      "Engage thighs, lengthen spine, and let shoulders roll back and down.",
+      "Arms rest by your sides, palms facing forward, chin level.",
+      "Take 5–8 slow breaths, feeling the crown of your head lift upward.",
+    ],
+    benefits: [
+      "Improves posture and body awareness",
+      "Strengthens thighs, knees and ankles",
+      "Calms the mind and reduces anxiety",
+      "Foundation for every other standing pose",
+    ],
+  },
+  {
+    id: "tree",
+    name: "Tree Pose",
+    sanskrit: "Vrikshasana",
+    tagline: "Balance · Focus",
+    color: "#4a7c59",
+    steps: [
+      "From standing, shift weight onto your left foot.",
+      "Place right sole on inner left calf or thigh (never on the knee).",
+      "Bring palms together at chest, or reach arms overhead.",
+      "Fix your gaze on one point to steady balance; hold 5–8 breaths, then switch sides.",
+    ],
+    benefits: [
+      "Builds ankle, calf and core strength",
+      "Sharpens concentration and balance",
+      "Opens hips and stretches inner thighs",
+      "Relieves everyday stress and restlessness",
+    ],
+  },
+  {
+    id: "downdog",
+    name: "Downward Dog",
+    sanskrit: "Adho Mukha Svanasana",
+    tagline: "Full-body stretch",
+    color: "#98c1d9",
+    steps: [
+      "Start on hands and knees, wrists under shoulders, knees under hips.",
+      "Tuck toes and lift hips up and back, forming an inverted V-shape.",
+      "Press chest toward thighs, keeping a soft bend in the knees if hamstrings are tight.",
+      "Relax neck between arms and hold for 5–10 breaths.",
+    ],
+    benefits: [
+      "Stretches shoulders, hamstrings and calves",
+      "Builds strength in arms and core",
+      "Improves circulation and eases mild fatigue",
+      "Gently decompresses the spine",
+    ],
+  },
+  {
+    id: "child",
+    name: "Child's Pose",
+    sanskrit: "Balasana",
+    tagline: "Relax · Reset",
+    color: "#b083f0",
+    steps: [
+      "Kneel with big toes touching, sit hips back onto heels.",
+      "Fold forward, extending arms out in front of you, palms down.",
+      "Rest forehead gently on the mat and let shoulders soften.",
+      "Breathe deeply for 30–60 seconds, feeling the lower back release.",
+    ],
+    benefits: [
+      "Releases tension in back, hips and shoulders",
+      "Calms the nervous system, eases stress",
+      "Gentle stretch for a quick reset between poses",
+      "Great for winding down before sleep",
+    ],
+  },
+];
+
+/* Minimal line-art yoga figure per pose — animated with framer-motion
+   (breathing scale / gentle sway / soft bounce) so each card reads as
+   "doing yoga" rather than a flat static icon. */
+function YogaFigure({ pose, color }) {
+  const stroke = color || C.accent;
+  const common = { fill: "none", stroke, strokeWidth: 4.2, strokeLinecap: "round", strokeLinejoin: "round" };
+
+  if (pose === "mountain") {
+    return (
+      <motion.svg viewBox="0 0 120 140" width="100%" height="100%"
+        animate={{ scale: [1, 1.035, 1] }} transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}>
+        <circle cx="60" cy="24" r="12" {...common} />
+        <path d="M60 36 V90" {...common} />
+        <path d="M60 46 L40 60" {...common} />
+        <path d="M60 46 L80 60" {...common} />
+        <path d="M60 90 L46 132" {...common} />
+        <path d="M60 90 L74 132" {...common} />
+      </motion.svg>
+    );
+  }
+  if (pose === "tree") {
+    return (
+      <motion.svg viewBox="0 0 120 140" width="100%" height="100%"
+        animate={{ rotate: [-2.5, 2.5, -2.5] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        style={{ transformOrigin: "60px 132px" }}>
+        <circle cx="60" cy="22" r="11" {...common} />
+        <path d="M60 33 V80" {...common} />
+        <path d="M60 42 L44 22" {...common} />
+        <path d="M60 42 L76 22" {...common} />
+        <path d="M44 20 Q60 8 76 20" {...common} />
+        <path d="M60 80 L60 132" {...common} />
+        <path d="M60 96 Q40 96 44 78" {...common} />
+      </motion.svg>
+    );
+  }
+  if (pose === "downdog") {
+    return (
+      <motion.svg viewBox="0 0 140 110" width="100%" height="100%"
+        animate={{ y: [0, -3, 0] }} transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}>
+        <path d="M20 96 L66 30 L120 96" {...common} />
+        <circle cx="66" cy="18" r="10" {...common} />
+        <path d="M66 30 L60 18" {...common} />
+        <path d="M14 96 H30" {...common} />
+        <path d="M110 96 H126" {...common} />
+      </motion.svg>
+    );
+  }
+  // child's pose
+  return (
+    <motion.svg viewBox="0 0 140 100" width="100%" height="100%"
+      animate={{ scale: [1, 1.025, 1] }} transition={{ duration: 3.6, repeat: Infinity, ease: "easeInOut" }}>
+      <circle cx="108" cy="30" r="11" {...common} />
+      <path d="M97 34 Q60 40 30 34" {...common} />
+      <path d="M30 34 L30 60" {...common} />
+      <path d="M97 34 L110 62 L96 80" {...common} />
+      <path d="M30 60 L96 80" {...common} />
+    </motion.svg>
+  );
+}
+
+function PoseInfoModal({ pose, onClose }) {
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(37,36,34,0.62)", zIndex: 320,
+        display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+        backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+      }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 10 }}
+        transition={{ type: "spring", stiffness: 340, damping: 28 }}
+        style={{
+          maxWidth: 420, width: "100%", maxHeight: "82vh", overflowY: "auto", borderRadius: 20, padding: 20,
+          ...glassCardStyle("#fffdf7", "rgba(255,255,255,0.9)"),
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 900, color: C.dark }}>{pose.name}</div>
+            <div style={{ fontSize: 10.5, fontStyle: "italic", color: "#a39c86" }}>{pose.sanskrit}</div>
+          </div>
+          <motion.button whileHover={{ rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose}
+            style={{ border: "none", background: "none", cursor: "pointer" }}>
+            <X size={16} color={C.dark} />
+          </motion.button>
+        </div>
+
+        <div style={{ fontSize: 11.5, fontWeight: 800, color: pose.color, margin: "14px 0 6px", display: "flex", alignItems: "center", gap: 6 }}>
+          <Activity size={13} /> How to do it
+        </div>
+        <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+          {pose.steps.map((s, i) => (
+            <li key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.45 }}>{s}</li>
+          ))}
+        </ol>
+
+        <div style={{ fontSize: 11.5, fontWeight: 800, color: pose.color, margin: "16px 0 6px", display: "flex", alignItems: "center", gap: 6 }}>
+          <Sparkles size={13} /> Benefits
+        </div>
+        <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+          {pose.benefits.map((b, i) => (
+            <li key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.45 }}>{b}</li>
+          ))}
+        </ul>
+      </motion.div>
+    </motion.div>,
+    document.body
+  );
+}
+
+function YogaPoseCard({ pose, onInfo }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -4 }}
+      transition={{ type: "spring", stiffness: 260, damping: 22 }}
+      style={{
+        position: "relative", borderRadius: 18, padding: 14, display: "flex", flexDirection: "column",
+        alignItems: "center", gap: 8, ...glassCardStyle("#fffdf7", "rgba(255,255,255,0.85)"),
+      }}
+    >
+      <motion.button
+        whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.92 }}
+        onClick={() => onInfo(pose)}
+        title="How to do it & benefits"
+        style={{
+          position: "absolute", top: 10, right: 10, width: 26, height: 26, borderRadius: 999,
+          border: `1px solid ${pose.color}55`, background: `${pose.color}1c`, color: pose.color,
+          display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+        }}
+      >
+        <Info size={14} />
+      </motion.button>
+
+      <div style={{ width: 92, height: 108 }}>
+        <YogaFigure pose={pose.id} color={pose.color} />
+      </div>
+
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: 12.5, fontWeight: 900, color: C.dark }}>{pose.name}</div>
+        <div style={{ fontSize: 10, color: "#a39c86" }}>{pose.tagline}</div>
+      </div>
+    </motion.div>
+  );
+}
+
+function FitnessTab({ onClose }) {
+  const [infoPose, setInfoPose] = useState(null);
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 20, background: "linear-gradient(135deg, rgba(37,36,34,0.55), rgba(37,36,34,0.75))",
+        backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+      }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.94, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 12 }}
+        transition={{ type: "spring", stiffness: 300, damping: 28 }}
+        style={{
+          width: "100%", maxWidth: 780, maxHeight: "88vh", overflowY: "auto", borderRadius: 24, padding: 22,
+          ...glassCardStyle("#fffdf7", "rgba(255,255,255,0.85)"),
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <span style={{ fontSize: 15, fontWeight: 900, color: C.dark, display: "flex", alignItems: "center", gap: 7 }}>
+            <Activity size={16} color={C.accent} /> Fitness — Yoga
+          </span>
+          <motion.button whileHover={{ rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose}
+            style={{ border: "none", background: "none", cursor: "pointer" }}>
+            <X size={18} color={C.dark} />
+          </motion.button>
+        </div>
+        <div style={{ fontSize: 11, color: "#a39c86", marginBottom: 16 }}>
+          4 beginner-friendly poses — tap the <Info size={10} style={{ verticalAlign: -1 }} /> on any card for steps &amp; benefits.
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14 }}>
+          {YOGA_POSES.map((pose) => (
+            <YogaPoseCard key={pose.id} pose={pose} onInfo={setInfoPose} />
+          ))}
+        </div>
+
+        <AnimatePresence>
+          {infoPose && <PoseInfoModal pose={infoPose} onClose={() => setInfoPose(null)} />}
+        </AnimatePresence>
+      </motion.div>
+    </motion.div>,
+    document.body
   );
 }
 
@@ -9847,6 +10132,7 @@ function BTLDashboardInner() {
   const [focusMode, setFocusMode] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [friendOpen, setFriendOpen] = useState(false); // Friend Celebration panel
+  const [fitnessOpen, setFitnessOpen] = useState(false); // Fitness (Yoga) tab — this update
   const [saveStatus, setSaveStatus] = useState("idle"); // "idle" | "saving" | "saved"
   const [activeAlarm, setActiveAlarm] = useState(null); // { id, time } | null — Clock & Alarm widget (this update)
   const incomingFriendReqCount = useIncomingFriendRequestCount(fbUser?.uid);
@@ -10558,6 +10844,7 @@ function BTLDashboardInner() {
                   >{incomingFriendReqCount}</motion.span>
                 )}
               </div>
+              <GlowIconButton icon={Activity} label="Fitness" color="#4a7c59" onClick={() => setFitnessOpen(true)} />
             </div>
 
 
@@ -10680,6 +10967,11 @@ function BTLDashboardInner() {
             onClose={() => setShowShare(false)}
           />
         )}
+      </AnimatePresence>
+
+      {/* ---------- FITNESS TAB (header icon — 4 animated yoga poses, glass UI, per-pose info popup) ---------- */}
+      <AnimatePresence>
+        {fitnessOpen && <FitnessTab onClose={() => setFitnessOpen(false)} />}
       </AnimatePresence>
 
       {/* ---------- MONEY ADD POPUP (Earn: optional photo · Spend: required category → Done) ---------- */}
