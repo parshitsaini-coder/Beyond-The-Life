@@ -441,8 +441,8 @@ export default function LiquidBackground({ containerRef, dark = false }) {
       <style>{`
         @keyframes btlLiquidGradientShift {
           0%   { transform: translate(0%, 0%) rotate(0deg) scale(1); }
-          50%  { transform: translate(-2.5%, 2%) rotate(4deg) scale(1.06); }
-          100% { transform: translate(2%, -2%) rotate(-3deg) scale(1.03); }
+          50%  { transform: translate(-9%, 7%) rotate(8deg) scale(1.12); }
+          100% { transform: translate(8%, -8%) rotate(-6deg) scale(1.08); }
         }
         @keyframes btlBlobMorph {
           0%, 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
@@ -452,8 +452,9 @@ export default function LiquidBackground({ containerRef, dark = false }) {
         }
         @keyframes btlBlobDrift {
           0%   { transform: translate(0px, 0px) scale(1); }
-          33%  { transform: translate(4%, -6%) scale(1.08); }
-          66%  { transform: translate(-5%, 4%) scale(0.94); }
+          25%  { transform: translate(22%, -28%) scale(1.15); }
+          50%  { transform: translate(-18%, 20%) scale(0.9); }
+          75%  { transform: translate(-26%, -16%) scale(1.1); }
           100% { transform: translate(0px, 0px) scale(1); }
         }
         @keyframes btlWaveScroll {
