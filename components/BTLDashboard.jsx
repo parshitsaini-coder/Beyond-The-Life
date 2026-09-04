@@ -9566,6 +9566,12 @@ function BTLDashboardInner() {
       height: "100%", maxHeight: "100%", borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
       border: `1px solid #ece7d8`, fontSize: 11, boxSizing: "border-box",
       display: "flex", flexDirection: "column",
+      zIndex: 0, isolation: "isolate", // <-- establishes this panel's own stacking context so the
+      // z-index:-1 LiquidBackground layer below stays confined *inside* this
+      // div (behind its content, above its own background) instead of
+      // escaping to some ancestor's stacking context and rendering out of
+      // sight — without this, no amount of opacity/color tuning on the
+      // liquid layer would ever become visible.
       zoom: "80%", // <-- shrinks the WHOLE dashboard (text, buttons, spacing, icons). Change to "70%" for smaller, "90%" for bigger.
     }}>
       {/* ---- Liquid Background (this update) ---- replaces the old 3

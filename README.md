@@ -1,6 +1,6 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🌊 New — Full "Liquid Background" system (this update)
+## 🌊 New — Full "Liquid Background" system
 
 The dashboard's old background was just 3 static blurred circles. It's now
 a full animated liquid system, built as its own component
@@ -8,6 +8,19 @@ a full animated liquid system, built as its own component
 still `z-index: -1`, `pointer-events: none`, clipped by the dashboard's
 own rounded panel, so it never affects layout or intercepts clicks meant
 for widgets.
+
+**Root-cause fix (this update):** the dashboard's outer panel only had
+`position: relative` with no `z-index`, so it never established its own
+CSS stacking context. That meant the `z-index: -1` LiquidBackground layer
+wasn't confined *inside* this panel at all — it escaped to whatever
+ancestor stacking context existed further up the tree and painted behind
+that instead, invisible no matter how the colors/opacity were tuned. Fixed
+by adding `zIndex: 0` + `isolation: "isolate"` to the outer panel
+(`components/BTLDashboard.jsx`), which forces it to own its stacking
+context so the liquid layer now correctly sits between the panel's own
+background and its content. If a background layer like this ever again
+"exists in the DOM with the right styles but is invisible," this is the
+first thing to check — not opacity.
 
 Five techniques, layered:
 - **Liquid Gradient** — a slow-shifting radial-gradient mesh (4 brand
