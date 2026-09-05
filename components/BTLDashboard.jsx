@@ -16,7 +16,6 @@ import {
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
 import { createPortal } from "react-dom";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth, signOutUser, signInWithGoogle } from "@/lib/AuthContext";
 import { loadStateFromFirestore, saveStateToFirestore } from "@/lib/btlStorage";
 import { ensurePublicProfile, useIncomingFriendRequestCount } from "@/lib/friendsStorage";
@@ -13275,15 +13274,6 @@ function BTLDashboardInner() {
   const loaded = useRef(false);
   const dashboardRootRef = useRef(null); // outer panel — LiquidBackground listens here for ripple clicks
 
-  // ---- Deep-link from the circular launcher (/home) — ?open=<widgetOrTab> jumps
-  // straight to that feature instead of landing on the plain grid. Also drives
-  // the small "back to launcher" button that sits top-left on every tab.
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const appliedOpenParam = useRef(false);
-  const [highlightWidget, setHighlightWidget] = useState(null);
-  const goBackToLauncher = () => router.push("/home");
-
   useEffect(() => {
     if (!fbUser) return;
     loadState(fbUser).then((s) => { setState(rolloverDailyGoals(s)); loaded.current = true; });
@@ -13349,44 +13339,6 @@ function BTLDashboardInner() {
     const t = setTimeout(() => setActiveAlarm(null), ALARM_MAX_RING_MS);
     return () => { stopTone(); clearTimeout(t); };
   }, [activeAlarm]);
-
-  useEffect(() => {
-    if (!state || appliedOpenParam.current) return;
-    const open = searchParams?.get("open");
-    if (!open) return;
-    appliedOpenParam.current = true;
-    const FULL_TABS = new Set(["lifeStory", "fitness", "analytics"]);
-    if (FULL_TABS.has(open)) {
-      setTab(open);
-    } else if (open === "memories") {
-      setMemOpen(true);
-    } else if (open === "settings") {
-      openSettings({ mode: null, section: "dashboard" });
-    } else if (open === "friends") {
-      setFriendOpen(true);
-    } else if (open === "share") {
-      setShowShare(true);
-    } else {
-      // plain dashboard-grid widget (dailyGoals, extryGoals, bigGoals, clock,
-      // lifeRules, focusTimer, timeTable, calendar) — land on the grid, scroll
-      // to it and give it a few seconds of glow so it's obvious what opened.
-      setTab("dashboard");
-      setHighlightWidget(open);
-      setTimeout(() => {
-        document.querySelector(`[data-widget-id="${open}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 150);
-      setTimeout(() => setHighlightWidget(null), 2600);
-    }
-    // strip the query string so refreshing / navigating away+back doesn't re-trigger this
-    router.replace("/dashboard");
-  }, [state, searchParams, router]);
-
-  useEffect(() => {
-    if (!highlightWidget) return;
-    const el = document.querySelector(`[data-widget-id="${highlightWidget}"]`);
-    el?.classList.add("btl-launcher-highlight");
-    return () => el?.classList.remove("btl-launcher-highlight");
-  }, [highlightWidget]);
 
   const update = useCallback((fn) => setState((s) => fn({ ...s })), []);
   // Shared "shine" trigger — the diagonal shine sweep used to fire on every
@@ -13969,11 +13921,6 @@ function BTLDashboardInner() {
         }
         .btl-milestone-banner { animation: btlMilestonePop 2.6s ease forwards; }
         input, textarea, button { font-family: inherit; }
-        @keyframes btlLauncherGlow {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(64,61,57,0.45); }
-          50% { box-shadow: 0 0 0 6px rgba(64,61,57,0); }
-        }
-        .btl-launcher-highlight { animation: btlLauncherGlow 0.85s ease-out 3; border-radius: 8px; }
       `}</style>
 
       <ShineOverlay active={shine} />
@@ -13984,21 +13931,6 @@ function BTLDashboardInner() {
         focusMode={focusMode} setFocusMode={setFocusMode}
         setMemOpen={setMemOpen} setSettingsOpen={openSettings}
       />
-
-      {/* Back to the circular launcher (/home) — always reachable, any tab */}
-      <motion.button
-        onClick={goBackToLauncher}
-        title="Back to Home"
-        whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.92 }}
-        style={{
-          position: "absolute", top: 10, left: 10, zIndex: 80,
-          width: 30, height: 30, borderRadius: "50%", border: "none", cursor: "pointer",
-          background: "rgba(255,255,255,0.85)", display: "flex", alignItems: "center", justifyContent: "center",
-          boxShadow: "0 4px 12px rgba(37,36,34,0.18)",
-        }}
-      >
-        <ArrowLeft size={15} color={C.dark} />
-      </motion.button>
 
       {tab === "layout" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>

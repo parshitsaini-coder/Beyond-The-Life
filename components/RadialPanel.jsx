@@ -1,6 +1,5 @@
 "use client";
 import { motion, AnimatePresence } from "framer-motion";
-import MobileTopBar from "./MobileTopBar";
 
 /* ---------------- Step 4 — Panel open/close transition ----------------
    One shared wrapper so all 15 panels animate identically. The panel
@@ -11,15 +10,11 @@ import MobileTopBar from "./MobileTopBar";
    panel (15 different panel bodies, one shared open/close motion is
    simpler to keep consistent and cheaper to maintain).
 
-   Step 5 update: top bar is now the shared MobileTopBar (Back + Profile
-   only, per spec's "nothing else") instead of a Back + title row — any
-   heading a panel needs now lives inside its own body content.
-
    Usage (Step 7 will do this for real, test route does it now):
      <AnimatePresence>
        {activePanel && (
-         <RadialPanel key={activePanel.id} onClose={...} onProfile={...}>
-           ...panel content, including its own heading if it needs one...
+         <RadialPanel key={activePanel.id} title={activePanel.label} onClose={...}>
+           ...panel content...
          </RadialPanel>
        )}
      </AnimatePresence>
@@ -43,7 +38,7 @@ const panelVariants = {
   exit: { opacity: 0, scale: 0.18, y: 120, transition: CLOSE_TRANSITION },
 };
 
-export default function RadialPanel({ onClose, onProfile, profilePhotoUrl, children }) {
+export default function RadialPanel({ title, onClose, children }) {
   return (
     <>
       {/* Backdrop dims in/out with the panel */}
@@ -74,7 +69,38 @@ export default function RadialPanel({ onClose, onProfile, profilePhotoUrl, child
           background: "#c0d6df",
         }}
       >
-        <MobileTopBar onBack={onClose} onProfile={onProfile} profilePhotoUrl={profilePhotoUrl} />
+        {/* Top bar — Back + title, matches Step 5's eventual real top bar */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "calc(14px + env(safe-area-inset-top, 0px)) 16px 14px",
+            flexShrink: 0,
+          }}
+        >
+          <button
+            onClick={onClose}
+            aria-label="Back"
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: "50%",
+              border: "none",
+              background: "#403d39",
+              color: "#fffcf2",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 18,
+            }}
+          >
+            ←
+          </button>
+          <span style={{ fontSize: 16, fontWeight: 600, color: "#403d39" }}>
+            {title}
+          </span>
+        </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "0 16px 24px" }}>
           {children}
