@@ -1,327 +1,254 @@
 "use client";
-
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  CheckCircle2,
-  ListChecks,
-  Target,
-  AlarmClock,
-  BookOpenCheck,
-  Timer,
-  CalendarClock,
-  Calendar,
-  Image as ImageIcon,
-  Pencil,
-  Dumbbell,
-  Settings as SettingsIcon,
-  PartyPopper,
-  BarChart3,
-  Share2,
+  CheckCircle2, ListChecks, Trophy, AlarmClock, ShieldCheck, Timer,
+  CalendarClock, CalendarDays, Camera, BookOpen, Dumbbell, Settings,
+  PartyPopper, BarChart3, Share2,
 } from "lucide-react";
 
-// ---- Step 3 (icon + label mapping) folded in here since the list is fixed
-// by spec — exported so BTLDashboard.jsx can reuse the same keys when this
-// gets wired in (Step 7). Order here IS the sweep order around the arc.
-export const BTL_RADIAL_ITEMS = [
-  { key: "dailyGoals", label: "Daily Goal", Icon: CheckCircle2 },
-  { key: "extryGoals", label: "Entry Goals", Icon: ListChecks },
-  { key: "bigGoals", label: "Life Big Goals", Icon: Target },
-  { key: "clock", label: "Clock & Alarm", Icon: AlarmClock },
-  { key: "lifeRules", label: "Life Rules", Icon: BookOpenCheck },
-  { key: "focusTimer", label: "Timer", Icon: Timer },
-  { key: "timeTable", label: "Time Table", Icon: CalendarClock },
-  { key: "calendar", label: "Calendar", Icon: Calendar },
-  { key: "memory", label: "Memory", Icon: ImageIcon },
-  { key: "lifeStory", label: "Life Story", Icon: Pencil },
-  { key: "fitness", label: "Fitness", Icon: Dumbbell },
-  { key: "settings", label: "Settings", Icon: SettingsIcon },
-  { key: "friendCelebration", label: "Friend Celebration", Icon: PartyPopper },
-  { key: "analytics", label: "Analytics", Icon: BarChart3 },
-  { key: "shareJournal", label: "Share Journal", Icon: Share2 },
+/* ---------------- CONFIG ----------------
+   Exact 15 items + order from the spec. Each carries the `tab` id it
+   should eventually open (Step 7 wiring) — filled in now so wiring
+   later is a one-line lookup, not a second pass through this list.
+   `kind` records what Step 1's audit found: "widget" items are the 7
+   that live on the freeform dashboard grid today and (per your Step 1
+   decision) will each become their own dedicated full-screen panel;
+   "tab" items already have a real full-screen; "modal" items already
+   open as an overlay. */
+export const RADIAL_ITEMS = [
+  { id: "dailyGoals", label: "Daily Goal", icon: CheckCircle2, kind: "widget" },
+  { id: "extryGoals", label: "Entry Goals", icon: ListChecks, kind: "widget" },
+  { id: "bigGoals", label: "Life Big Goals", icon: Trophy, kind: "widget" },
+  { id: "clock", label: "Clock & Alarm", icon: AlarmClock, kind: "widget" },
+  { id: "lifeRules", label: "Life Rules", icon: ShieldCheck, kind: "widget" },
+  { id: "focusTimer", label: "Timer", icon: Timer, kind: "widget" },
+  { id: "timeTable", label: "Time Table", icon: CalendarClock, kind: "widget" },
+  { id: "calendar", label: "Calendar", icon: CalendarDays, kind: "widget" },
+  { id: "memory", label: "Memory", icon: Camera, kind: "modal" },
+  { id: "lifeStory", label: "Life Story", icon: BookOpen, kind: "tab" },
+  { id: "fitness", label: "Fitness", icon: Dumbbell, kind: "tab" },
+  { id: "settings", label: "Settings", icon: Settings, kind: "modal" },
+  { id: "friend", label: "Friend Celebration", icon: PartyPopper, kind: "modal" },
+  { id: "analytics", label: "Analytics", icon: BarChart3, kind: "tab" },
+  { id: "share", label: "Share Journal", icon: Share2, kind: "modal" },
 ];
 
 const CIRCLE_COLOR = "#403d39";
-const ARC_SPAN_DEG = 190; // total sweep, centered straight up (0deg = up)
-const RING_INNER = 108;
-const RING_OUTER = 178;
-const MIN_DRAG_PX = 22; // ignore angle until finger has moved this far from center
-const ITEM_SIZE = 50;
+const CIRCLE_SIZE = 76; // px
+const INNER_RADIUS = 108;
+const OUTER_RADIUS = 190;
+const SWEEP_DEG = 210; // total angular spread, centered straight up
+const DEADZONE = 34; // px — releasing inside this radius of the circle cancels
+const CHIP_SIZE = 56; // px, icon-only touch target
 
-function angleFor(index, total) {
-  const start = -ARC_SPAN_DEG / 2;
-  const step = total > 1 ? ARC_SPAN_DEG / (total - 1) : 0;
-  return start + step * index;
+function ringPositions(count, radius, sweep, offsetDeg = 0) {
+  const positions = [];
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0.5 : i / (count - 1);
+    const angleFromUp = -sweep / 2 + t * sweep + offsetDeg;
+    const theta = (angleFromUp * Math.PI) / 180;
+    positions.push({
+      x: radius * Math.sin(theta),
+      y: -radius * Math.cos(theta),
+      angle: angleFromUp,
+    });
+  }
+  return positions;
 }
 
-function polarToXY(deg, radius) {
-  const rad = (deg * Math.PI) / 180;
-  return { x: radius * Math.sin(rad), y: -radius * Math.cos(rad) };
+function buildLayout(items) {
+  const inner = items.slice(0, 7);
+  const outer = items.slice(7);
+  const innerPos = ringPositions(inner.length, INNER_RADIUS, SWEEP_DEG, 0);
+  // outer ring staggered by half a step so chips don't sit on the same
+  // radial line as the inner ring directly behind them
+  const outerPos = ringPositions(outer.length, OUTER_RADIUS, SWEEP_DEG, SWEEP_DEG / (outer.length * 2));
+  return [
+    ...inner.map((item, i) => ({ ...item, ...innerPos[i] })),
+    ...outer.map((item, i) => ({ ...item, ...outerPos[i] })),
+  ];
 }
+
+const LAYOUT = buildLayout(RADIAL_ITEMS);
 
 /**
- * Press-and-hold-drag radial dial menu.
- * Renders its OWN fixed-position circle + fan-out items — drop it once,
- * near the bottom of the screen, and it handles the rest.
- *
- * Usage: <RadialDialMenu items={BTL_RADIAL_ITEMS} onSelect={(key) => ...} />
+ * RadialDialMenu — bottom-center dial. Press and hold the circle,
+ * drag toward an item, release over it to select. Purely presentational:
+ * fires onSelect(item) and does no navigation itself, so it can be
+ * dropped into the isolated test route first and wired into the real
+ * dashboard in Step 7 unchanged.
  */
-export default function RadialDialMenu({
-  items = BTL_RADIAL_ITEMS,
-  onSelect,
-  circleColor = CIRCLE_COLOR,
-  disabled = false,
-  // Distance of the dial's center from the bottom of the screen — any CSS
-  // length works ("40px", "34vh", "38%"). Defaults to a thumb-reach bottom
-  // position; pass something like "34vh" to float it mid-screen instead.
-  anchorBottom = "40px",
-}) {
-  const anchorCalc = `calc(${anchorBottom} + env(safe-area-inset-bottom, 0px))`;
-  const labelCalc = `calc(${anchorBottom} + ${RING_OUTER + 90}px + env(safe-area-inset-bottom, 0px))`;
+export default function RadialDialMenu({ onSelect }) {
   const [open, setOpen] = useState(false);
-  const [pressed, setPressed] = useState(false);
-  const [activeKey, setActiveKey] = useState(null);
-  const [confirmKey, setConfirmKey] = useState(null);
-
+  const [hoverId, setHoverId] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
   const circleRef = useRef(null);
-  const centerRef = useRef({ x: 0, y: 0 });
-  const draggingRef = useRef(false);
+  const originRef = useRef({ x: 0, y: 0 });
 
-  const laidOut = items.map((it, i) => {
-    const deg = angleFor(i, items.length);
-    const radius = i % 2 === 0 ? RING_OUTER : RING_INNER;
-    const { x, y } = polarToXY(deg, radius);
-    return { ...it, deg, radius, x, y };
-  });
-
-  const resolveActive = useCallback(
-    (clientX, clientY) => {
-      const { x: cx, y: cy } = centerRef.current;
-      const dx = clientX - cx;
-      const dy = clientY - cy;
-      const dist = Math.hypot(dx, dy);
-      if (dist < MIN_DRAG_PX) return null;
-      // screen-degrees where 0 = straight up, clockwise positive
-      let deg = (Math.atan2(dx, -dy) * 180) / Math.PI;
-      const half = ARC_SPAN_DEG / 2;
-      if (deg < -half) deg = -half;
-      if (deg > half) deg = half;
-      let best = null;
-      let bestDelta = Infinity;
-      for (const it of laidOut) {
-        const delta = Math.abs(it.deg - deg);
-        if (delta < bestDelta) {
-          bestDelta = delta;
-          best = it;
-        }
+  const nearestItem = useCallback((px, py) => {
+    let best = null;
+    let bestDist = Infinity;
+    for (const item of LAYOUT) {
+      const ix = originRef.current.x + item.x;
+      const iy = originRef.current.y + item.y;
+      const d = Math.hypot(px - ix, py - iy);
+      if (d < bestDist) {
+        bestDist = d;
+        best = item;
       }
-      return best ? best.key : null;
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items]
-  );
+    }
+    return best;
+  }, []);
 
   const handlePointerDown = (e) => {
-    if (disabled) return;
-    e.preventDefault();
     const rect = circleRef.current.getBoundingClientRect();
-    centerRef.current = {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
-    };
-    circleRef.current.setPointerCapture(e.pointerId);
-    draggingRef.current = true;
-    setPressed(true);
+    originRef.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     setOpen(true);
-    setActiveKey(null);
+    setHoverId(null);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
   };
 
   const handlePointerMove = (e) => {
-    if (!draggingRef.current) return;
-    const key = resolveActive(e.clientX, e.clientY);
-    setActiveKey(key);
+    const dx = e.clientX - originRef.current.x;
+    const dy = e.clientY - originRef.current.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < DEADZONE) {
+      setHoverId(null);
+      return;
+    }
+    const item = nearestItem(e.clientX, e.clientY);
+    setHoverId(item ? item.id : null);
   };
 
-  const finishGesture = (e) => {
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    setPressed(false);
-    try {
-      circleRef.current.releasePointerCapture(e.pointerId);
-    } catch {
-      /* no-op: capture may already be gone */
+  const handlePointerUp = (e) => {
+    window.removeEventListener("pointermove", handlePointerMove);
+    const dx = e.clientX - originRef.current.x;
+    const dy = e.clientY - originRef.current.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < DEADZONE) {
+      // released back near the circle — cancel, no selection
+      setOpen(false);
+      setHoverId(null);
+      return;
     }
-    if (activeKey) {
-      const chosen = activeKey;
-      const chosenItem = laidOut.find((it) => it.key === chosen);
-      // Absolute screen point of the confirmed item's icon — passed along so
-      // the panel that opens next can visually "emerge" from this exact spot
-      // (Step 4) instead of appearing from nowhere.
-      const origin = chosenItem
-        ? { x: centerRef.current.x + chosenItem.x, y: centerRef.current.y + chosenItem.y }
-        : { ...centerRef.current };
-      setConfirmKey(chosen);
-      setActiveKey(null);
-      window.setTimeout(() => {
+    const item = nearestItem(e.clientX, e.clientY);
+    if (item) {
+      setConfirmId(item.id);
+      setTimeout(() => {
+        onSelect && onSelect(item);
         setOpen(false);
-        setConfirmKey(null);
-        onSelect?.(chosen, origin);
-      }, 170);
+        setHoverId(null);
+        setConfirmId(null);
+      }, 180);
     } else {
       setOpen(false);
+      setHoverId(null);
     }
   };
 
-  // Escape-to-close, for desktop/dev convenience while this lives on its
-  // own test route.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        draggingRef.current = false;
-        setPressed(false);
-        setActiveKey(null);
-        setOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  const activeItem = laidOut.find((it) => it.key === (activeKey || confirmKey));
-
   return (
-    <>
-      {/* Backdrop — dims whatever is behind the dial while it's open */}
+    <div
+      style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
+        bottom: "calc(28px + env(safe-area-inset-bottom, 0px))",
+        display: "flex",
+        justifyContent: "center",
+        zIndex: 60,
+        pointerEvents: "none",
+      }}
+    >
       <AnimatePresence>
         {open && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(20,22,20,0.30)",
-              backdropFilter: "blur(2px)",
-              zIndex: 40,
-              touchAction: "none",
-            }}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Currently-targeted item label */}
-      <AnimatePresence>
-        {open && activeItem && (
-          <motion.div
-            key="label"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 6 }}
-            transition={{ duration: 0.12 }}
-            style={{
-              position: "fixed",
-              left: "50%",
-              bottom: labelCalc,
-              transform: "translateX(-50%)",
-              zIndex: 55,
-              background: "#fff",
-              color: circleColor,
-              fontWeight: 700,
-              fontSize: 13,
-              padding: "6px 14px",
-              borderRadius: 999,
-              boxShadow: "0 4px 14px rgba(0,0,0,0.18)",
-              whiteSpace: "nowrap",
-              pointerEvents: "none",
-            }}
+            style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
           >
-            {activeItem.label}
+            {LAYOUT.map((item) => {
+              const isHover = hoverId === item.id;
+              const isConfirm = confirmId === item.id;
+              const Icon = item.icon;
+              return (
+                <motion.div
+                  key={item.id}
+                  initial={{ x: 0, y: 0, opacity: 0, scale: 0.3 }}
+                  animate={{
+                    x: item.x,
+                    y: item.y,
+                    opacity: confirmId && !isConfirm ? 0 : 1,
+                    scale: isConfirm ? 1.28 : isHover ? 1.16 : 1,
+                  }}
+                  exit={{ x: 0, y: 0, opacity: 0, scale: 0.3 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 30 }}
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    bottom: CIRCLE_SIZE / 2 + 4,
+                    width: CHIP_SIZE,
+                    height: CHIP_SIZE,
+                    marginLeft: -CHIP_SIZE / 2,
+                    borderRadius: "50%",
+                    background: isHover || isConfirm ? "#fca311" : "#fffcf2",
+                    color: isHover || isConfirm ? "#fff" : CIRCLE_COLOR,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+                  }}
+                >
+                  <Icon size={22} />
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 4px)",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: CIRCLE_COLOR,
+                      background: "#fffcf2",
+                      padding: "2px 6px",
+                      borderRadius: 6,
+                      whiteSpace: "nowrap",
+                      opacity: isHover || isConfirm ? 1 : 0,
+                      transition: "opacity 120ms",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    {item.label}
+                  </span>
+                </motion.div>
+              );
+            })}
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Fan-out items */}
-      <AnimatePresence>
-        {open &&
-          laidOut.map((it, i) => {
-            const isActive = it.key === (activeKey || confirmKey);
-            const Icon = it.Icon;
-            return (
-              <motion.div
-                key={it.key}
-                initial={{ opacity: 0, scale: 0.3, x: 0, y: 0 }}
-                animate={{
-                  opacity: 1,
-                  scale: isActive ? 1.2 : 1,
-                  x: it.x,
-                  y: it.y,
-                }}
-                exit={{ opacity: 0, scale: 0.3, x: 0, y: 0 }}
-                transition={{
-                  type: "spring",
-                  damping: 1,
-                  duration: 0.4,
-                  delay: draggingRef.current ? 0 : i * 0.012,
-                }}
-                style={{
-                  position: "fixed",
-                  left: "50%",
-                  bottom: anchorCalc,
-                  width: ITEM_SIZE,
-                  height: ITEM_SIZE,
-                  marginLeft: -ITEM_SIZE / 2,
-                  marginBottom: -ITEM_SIZE / 2,
-                  zIndex: 50,
-                  borderRadius: "50%",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background: isActive ? "#f5efe4" : "#ffffff",
-                  color: circleColor,
-                  boxShadow: isActive
-                    ? "0 6px 18px rgba(0,0,0,0.28)"
-                    : "0 3px 10px rgba(0,0,0,0.18)",
-                  pointerEvents: "none", // selection is resolved by drag angle, not hover/click
-                }}
-              >
-                <Icon size={22} strokeWidth={2.2} />
-              </motion.div>
-            );
-          })}
-      </AnimatePresence>
-
-      {/* Center dial */}
       <motion.button
         ref={circleRef}
-        type="button"
-        aria-label="Open menu"
         onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={finishGesture}
-        onPointerCancel={finishGesture}
-        animate={{ scale: pressed ? 0.92 : 1 }}
-        transition={{ type: "spring", damping: 1, duration: 0.25 }}
+        animate={{ scale: open ? 1.08 : 1 }}
+        transition={{ type: "spring", stiffness: 400, damping: 24 }}
         style={{
-          position: "fixed",
-          left: "50%",
-          bottom: anchorCalc,
-          transform: "translateX(-50%)",
-          width: 76,
-          height: 76,
-          borderRadius: "50%",
-          background: circleColor,
-          border: "none",
-          zIndex: 60,
-          boxShadow: open
-            ? "0 0 0 8px rgba(64,61,57,0.16)"
-            : "0 4px 16px rgba(0,0,0,0.28)",
+          pointerEvents: "auto",
           touchAction: "none",
-          cursor: "pointer",
+          width: CIRCLE_SIZE,
+          height: CIRCLE_SIZE,
+          borderRadius: "50%",
+          background: CIRCLE_COLOR,
+          border: "none",
+          boxShadow: open
+            ? "0 0 0 8px rgba(64,61,57,0.15)"
+            : "0 3px 10px rgba(0,0,0,0.25)",
+          zIndex: 61,
         }}
+        aria-label="Open navigation dial"
       />
-    </>
+    </div>
   );
 }
