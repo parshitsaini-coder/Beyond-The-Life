@@ -1,5 +1,55 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## 🏋️ Fitness now has a guided, full-screen "Start" workout (this update)
+Per your marked-up screenshot: added a **Start** button in the Fitness
+header, right next to the "Fitness" title (`FitnessTab` in
+`components/BTLDashboard.jsx`).
+
+- Tapping **Start** turns whichever grid is open (Exercise/Alt/Yoga/
+  Pranayama) into a picker — tap any cards to select them (colored outline
+  + checkmark badge, `FitnessCard`'s new `selectable`/`selected` props).
+  Tapping **Start** again (now labelled "Selecting…") cancels out of
+  picker mode.
+- Once at least one card is selected, a floating **OK** button appears
+  bottom-right of the grid (the spot from your screenshot) showing the
+  count selected.
+- Tapping it opens a glass popup (`FitnessTimeModal`) with a minutes/
+  seconds stepper for "how long each exercise runs," live-previewing the
+  total workout length (including rest) before you commit. **Apply**
+  builds the queue from your selected exercises in the order they appear
+  in the grid.
+- That hands off to a full-screen guided player (`FitnessWorkoutPlayer`):
+  the current exercise's GIF (gently pulsing) with an animated countdown
+  ring, its name, and a peek at what's next — followed automatically by a
+  **5-second REST** beat (`REST_SECONDS`) between every exercise before
+  the next one starts, all self-calculated from however many exercises
+  you picked and the per-exercise time you set. A progress bar and
+  "Exercise X / N" counter track where you are in the set, Pause/Resume
+  is available, and a **Cancel** button sits top-right the entire time as
+  an emergency stop — tapping it exits the workout immediately, no
+  confirmation needed. Finishing the last exercise shows a short
+  "Workout complete!" screen before closing.
+- Nothing about this is saved to Firestore — it's a session-only player
+  layered on top of the existing static exercise/yoga/pranayama grids,
+  which are untouched when you're not using Start.
+
+## 🔒 Life Story now actually locks behind its password (earlier update)
+Until now, setting a password on Life Story (via the profile pill → Account
+→ Set Password) only protected the **Reset/Forgot-password recovery flow**
+— the diary itself still opened straight to your entries the moment you
+tapped the **life story** button, password or not.
+
+Now, if a password is set, opening the tab shows a **lock gate**
+(`LifeStoryLockGate` in `components/BTLDashboard.jsx`) first — same glass
+card look as the Money Management reset gate — and the entries, Today's
+Entry popup, filters, and theme controls are not rendered until the
+correct password is entered. A wrong password shakes the card and shows
+an inline error instead of letting you through. The back arrow and ✕ on
+the lock screen just close the tab, same as always, without needing the
+password. It re-locks every time you leave and come back to the tab —
+there's no "stay unlocked" — and if you don't set a password at all, the
+diary opens straight in like before.
+
 ## ⚙️ Friend Celebration's gear icon now opens Setting *on top of* it (this update)
 Per your marked-up screenshot of the "dev VS dev" screen: tapping the gear
 icon (top-left, next to **← Back**) used to close Friend Celebration first

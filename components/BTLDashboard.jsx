@@ -10,7 +10,7 @@ import {
   Lock, AlertCircle, Eye, EyeOff, ListChecks, ShieldCheck, Filter,
   Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn,
   Users, Clock, PieChart as PieChartIcon, Bell, BellOff, Square,
-  AlarmClock, Volume2, Play, Waves, Gauge,
+  AlarmClock, Volume2, Play, Pause, Waves, Gauge,
   Dumbbell, Info, Timer, Flower2, Wind, KeyRound, HelpCircle, ShieldAlert, CalendarClock,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
@@ -10274,8 +10274,125 @@ function LifeStoryTodayGlassPopup({ open, toggleRef, children, onClose, cardBg =
   );
 }
 
+/* ---------------- LIFE STORY — LOCK GATE (this update) ----------------
+   If a password is set (state.lifeStory.security.password), the diary no
+   longer opens straight to the entries — this gate blocks the whole tab
+   until the correct password is entered, same glass-card look as the
+   Money Management reset gate. Wrong entries shake + show an inline error
+   and never close on their own; only a correct password (or the back
+   arrow / X, which just closes the tab like before) gets past it. Stays
+   unlocked for as long as the tab stays open — closing and reopening the
+   tab asks again. */
+function LifeStoryLockGate({ security, onUnlock, onClose }) {
+  const [pwd, setPwd] = useState("");
+  const [show, setShow] = useState(false);
+  const [error, setError] = useState(false);
+  const [shakeKey, setShakeKey] = useState(0);
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const submit = () => {
+    if (pwd && simpleHash(pwd) === security.password) {
+      onUnlock();
+    } else {
+      setError(true);
+      setShakeKey((k) => k + 1);
+      setPwd("");
+      inputRef.current?.focus();
+    }
+  };
+
+  return (
+    <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "#fff", borderRadius: "0 0 10px 10px" }}>
+      <motion.div
+        key={shakeKey}
+        initial={{ opacity: 0, scale: 0.88, y: 24 }}
+        animate={error
+          ? { opacity: 1, scale: 1, y: 0, x: [0, -10, 10, -8, 8, -4, 4, 0] }
+          : { opacity: 1, scale: 1, y: 0, x: 0 }}
+        transition={error ? { x: { duration: 0.45, ease: "easeInOut" }, default: { type: "spring", stiffness: 320, damping: 26 } } : { type: "spring", stiffness: 320, damping: 26 }}
+        style={{
+          width: "min(320px, 90vw)",
+          background: "rgba(255,252,242,0.9)",
+          backdropFilter: "blur(24px) saturate(190%)", WebkitBackdropFilter: "blur(24px) saturate(190%)",
+          border: `1px solid ${error ? "rgba(192,57,43,0.45)" : "rgba(255,255,255,0.65)"}`, borderRadius: 18,
+          boxShadow: "0 30px 70px rgba(37,36,34,0.18), inset 0 1px 0 rgba(255,255,255,0.6)",
+          padding: 20, position: "relative", boxSizing: "border-box",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: 14 }}>
+          <div style={{ width: 46, height: 46, borderRadius: "50%", flexShrink: 0, marginBottom: 8, background: "#4a7c5920", border: "1px solid #4a7c5955", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Lock size={20} color="#4a7c59" />
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>Life Story is locked</div>
+          <div style={{ fontSize: 9.5, color: "#8a8579", marginTop: 2, maxWidth: 250 }}>Enter your password to open this journal.</div>
+        </div>
+
+        <div style={{ position: "relative", marginBottom: error ? 6 : 14 }}>
+          <input
+            ref={inputRef}
+            type={show ? "text" : "password"}
+            value={pwd}
+            onChange={(e) => { setPwd(e.target.value); setError(false); }}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            placeholder="Enter password"
+            style={{
+              width: "100%", fontSize: 12, padding: "10px 34px 10px 12px", borderRadius: 10,
+              border: `1.5px solid ${error ? "#c0392b" : "#ddd6c4"}`, outline: "none", boxSizing: "border-box",
+              background: "rgba(255,255,255,0.7)", color: C.dark, fontWeight: 700, letterSpacing: show ? 0 : 2,
+            }}
+          />
+          <div onClick={() => setShow((v) => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", cursor: "pointer", color: "#a39c86", display: "flex" }}>
+            {show ? <EyeOff size={15} /> : <Eye size={15} />}
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+              style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9.5, color: "#c0392b", fontWeight: 700, marginBottom: 12, overflow: "hidden" }}
+            >
+              <AlertCircle size={12} /> Incorrect password — try again.
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div style={{ display: "flex", gap: 8, marginTop: error ? 0 : 4 }}>
+          <motion.button
+            onClick={onClose}
+            whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+            style={{ flex: 1, border: "1px solid #ddd6c4", background: "rgba(255,255,255,0.6)", borderRadius: 10, padding: "10px 0", fontSize: 11.5, fontWeight: 800, color: C.dark, cursor: "pointer" }}
+          >
+            Cancel
+          </motion.button>
+          <motion.button
+            onClick={submit}
+            disabled={!pwd}
+            whileHover={pwd ? { y: -1 } : undefined} whileTap={pwd ? { scale: 0.96 } : undefined}
+            style={{ flex: 1, border: "none", borderRadius: 10, padding: "10px 0", fontSize: 11.5, fontWeight: 900, color: "#fff", cursor: pwd ? "pointer" : "not-allowed", background: pwd ? "#4a7c59" : "#ddd6c4" }}
+          >
+            Unlock
+          </motion.button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 function LifeStoryTab({ state, update, onClose }) {
   const story = state.lifeStory || { profile: null, entries: {} };
+  // Lock gate (this update) — if a password is set on this journal, the
+  // tab opens locked every time and needs the correct password before
+  // showing any entries. Recomputed off story.security.password so
+  // setting/removing a password from the Account popup while the tab is
+  // open updates the gate immediately (e.g. clearing it unlocks right away).
+  const [unlocked, setUnlocked] = useState(!story.security?.password);
+  useEffect(() => {
+    if (!story.security?.password) setUnlocked(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [story.security?.password]);
   const entries = story.entries || {};
   const theme = { ...LIFE_STORY_DEFAULT_THEME, ...(story.theme || {}) };
   // Today's Entry popup uses its own bg/text colors (set in Theme →
@@ -10359,6 +10476,28 @@ function LifeStoryTab({ state, update, onClose }) {
     if (iso === today) { setTodayPopupOpen(true); return; }
     blockRefs.current[iso]?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
+
+  // Locked (this update) — password is set and hasn't been entered yet
+  // this time the tab was opened. Keeps the same header (back arrow / X
+  // still just close the tab) but swaps the diary content for the gate.
+  if (!unlocked) {
+    return (
+      <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, borderRadius: "10px 10px 0 0" }}>
+          <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
+            <ArrowLeft size={15} color={C.dark} />
+          </motion.div>
+          <Pencil size={14} color={C.dark} />
+          <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Life Story</span>
+          <div style={{ flex: 1 }} />
+          <motion.div whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: C.dark }}>
+            <X size={16} />
+          </motion.div>
+        </div>
+        <LifeStoryLockGate security={story.security} onUnlock={() => setUnlocked(true)} onClose={onClose} />
+      </div>
+    );
+  }
 
   return (
     <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
@@ -12442,30 +12581,48 @@ const fitnessCardVariants = {
   show: (i) => ({ opacity: 1, y: 0, scale: 1, transition: { delay: i * 0.05, type: "spring", stiffness: 280, damping: 24 } }),
 };
 
-function FitnessCard({ item, index, sectionColor, onInfo }) {
+function FitnessCard({ item, index, sectionColor, onInfo, selectable, selected, onToggleSelect }) {
   return (
     <motion.div
       custom={index} variants={fitnessCardVariants} initial="hidden" animate="show"
       whileHover={{ y: -4, boxShadow: "0 18px 36px rgba(37,36,34,0.18)" }}
+      whileTap={selectable ? { scale: 0.97 } : undefined}
+      onClick={selectable ? () => onToggleSelect(item.id) : undefined}
       style={{
-        borderRadius: 16, overflow: "hidden", position: "relative", cursor: "default",
+        borderRadius: 16, overflow: "hidden", position: "relative", cursor: selectable ? "pointer" : "default",
         ...glassCardStyle("#ffffff", hexToRgba(sectionColor, 0.35)),
+        outline: selected ? `2.5px solid ${sectionColor}` : "2.5px solid transparent",
+        outlineOffset: -2, transition: "outline-color 0.15s ease",
       }}
     >
       <div style={{ position: "relative", background: hexToRgba(sectionColor, 0.08) }}>
         <img src={item.gif} alt={item.name} style={{ width: "100%", height: 150, objectFit: "contain", display: "block" }} />
-        <motion.button
-          whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.92 }}
-          onClick={() => onInfo(item)}
-          title="Info — kaise karein & fayde"
-          style={{
-            position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.8)",
-            background: "rgba(255,255,255,0.75)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
-            display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 12px rgba(37,36,34,0.2)",
-          }}
-        >
-          <Info size={14} color={sectionColor} />
-        </motion.button>
+        {selectable ? (
+          <motion.div
+            initial={false} animate={{ scale: selected ? 1.1 : 1 }}
+            style={{
+              position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%",
+              border: `1.5px solid ${selected ? sectionColor : "rgba(255,255,255,0.9)"}`,
+              background: selected ? sectionColor : "rgba(255,255,255,0.75)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+              display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 12px rgba(37,36,34,0.2)",
+            }}
+          >
+            {selected && <CheckCircle2 size={16} color="#fff" />}
+          </motion.div>
+        ) : (
+          <motion.button
+            whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.92 }}
+            onClick={() => onInfo(item)}
+            title="Info — kaise karein & fayde"
+            style={{
+              position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.8)",
+              background: "rgba(255,255,255,0.75)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 4px 12px rgba(37,36,34,0.2)",
+            }}
+          >
+            <Info size={14} color={sectionColor} />
+          </motion.button>
+        )}
       </div>
       <div style={{ padding: "10px 12px 12px" }}>
         <div style={{ fontSize: 12.5, fontWeight: 800, color: C.dark, marginBottom: 4, lineHeight: 1.25 }}>{item.name}</div>
@@ -12487,6 +12644,254 @@ function FitnessEmptySection({ sectionColor, label }) {
   );
 }
 
+/* ---------------- FITNESS — GUIDED WORKOUT PLAYER (this update) ----------------
+   "Start" in the Fitness header turns the grid into a multi-select picker —
+   tap any cards to select them (checkmark badge, colored outline). Once at
+   least one is selected, a floating "OK" button appears bottom-right; it
+   opens a popup to set how long each exercise runs. "Apply" builds the
+   queue and hands off to a full-screen player: current exercise + countdown
+   ring, animated card, a 5-second "REST — get ready" beat between each one
+   (REST_SECONDS below), auto-advances through the whole queue, and a
+   Cancel button (top-right, always visible) that stops the workout
+   immediately from anywhere, no confirmation needed since it's meant as an
+   emergency out. Nothing here is saved to Firestore — it's a session-only
+   player, same as before this update, just guided instead of a static grid. */
+const REST_SECONDS = 5;
+const stepBtnStyle = {
+  width: 26, height: 26, borderRadius: "50%", border: "1px solid #ddd6c4", background: "#fff",
+  fontSize: 15, fontWeight: 900, color: C.dark, cursor: "pointer", display: "flex",
+  alignItems: "center", justifyContent: "center", lineHeight: 1, padding: 0,
+};
+
+function FitnessTimeModal({ count, onCancel, onApply }) {
+  const [minutes, setMinutes] = useState(0);
+  const [seconds, setSeconds] = useState(30);
+  const totalPerExercise = minutes * 60 + seconds;
+  const totalWorkout = totalPerExercise * count + REST_SECONDS * Math.max(0, count - 1);
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{
+        position: "absolute", inset: 0, background: "rgba(37,36,34,0.45)", zIndex: 90,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        backdropFilter: "blur(5px)", WebkitBackdropFilter: "blur(5px)",
+      }}
+      onClick={onCancel}
+    >
+      <motion.div
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.88, y: 24 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 16 }}
+        transition={{ type: "spring", stiffness: 320, damping: 26 }}
+        style={{
+          width: "min(340px, 90vw)", background: "rgba(255,252,242,0.94)",
+          backdropFilter: "blur(24px) saturate(190%)", WebkitBackdropFilter: "blur(24px) saturate(190%)",
+          border: "1px solid rgba(255,255,255,0.65)", borderRadius: 18,
+          boxShadow: "0 30px 70px rgba(37,36,34,0.3), inset 0 1px 0 rgba(255,255,255,0.6)",
+          padding: 20, boxSizing: "border-box",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+          <div style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0, background: "#e85d4c20", border: "1px solid #e85d4c45", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Timer size={17} color="#e85d4c" />
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>Set exercise time</div>
+            <div style={{ fontSize: 9.5, color: "#8a8579" }}>{count} exercise{count > 1 ? "s" : ""} selected</div>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 9.5, fontWeight: 700, color: "#8a8579", margin: "16px 0 8px", textAlign: "center" }}>Har exercise kitni der karni hai</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "center", marginBottom: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+            <motion.button whileTap={{ scale: 0.9 }} onClick={() => setMinutes((m) => Math.min(30, m + 1))} style={stepBtnStyle}>+</motion.button>
+            <div style={{ fontSize: 22, fontWeight: 900, color: C.dark, width: 40, textAlign: "center" }}>{minutes}</div>
+            <motion.button whileTap={{ scale: 0.9 }} onClick={() => setMinutes((m) => Math.max(0, m - 1))} style={stepBtnStyle}>−</motion.button>
+            <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86" }}>MIN</div>
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 900, color: "#a39c86", marginBottom: 22 }}>:</div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+            <motion.button whileTap={{ scale: 0.9 }} onClick={() => setSeconds((s) => (s + 5) % 60)} style={stepBtnStyle}>+</motion.button>
+            <div style={{ fontSize: 22, fontWeight: 900, color: C.dark, width: 40, textAlign: "center" }}>{String(seconds).padStart(2, "0")}</div>
+            <motion.button whileTap={{ scale: 0.9 }} onClick={() => setSeconds((s) => (s - 5 + 60) % 60)} style={stepBtnStyle}>−</motion.button>
+            <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86" }}>SEC</div>
+          </div>
+        </div>
+
+        <div style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: "#8a8579", margin: "12px 0 16px" }}>
+          Total workout: <b style={{ color: C.dark }}>{fmt(totalWorkout)}</b> ({REST_SECONDS}s rest between each)
+        </div>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <motion.button onClick={onCancel} whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }} style={{ flex: 1, border: "1px solid #ddd6c4", background: "rgba(255,255,255,0.6)", borderRadius: 10, padding: "10px 0", fontSize: 11.5, fontWeight: 800, color: C.dark, cursor: "pointer" }}>
+            Cancel
+          </motion.button>
+          <motion.button
+            onClick={() => totalPerExercise > 0 && onApply(totalPerExercise)}
+            disabled={totalPerExercise <= 0}
+            whileHover={totalPerExercise > 0 ? { y: -1 } : undefined} whileTap={totalPerExercise > 0 ? { scale: 0.96 } : undefined}
+            style={{ flex: 1, border: "none", borderRadius: 10, padding: "10px 0", fontSize: 11.5, fontWeight: 900, color: "#fff", cursor: totalPerExercise > 0 ? "pointer" : "not-allowed", background: totalPerExercise > 0 ? "#e85d4c" : "#ddd6c4" }}
+          >
+            Apply
+          </motion.button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function FitnessTimerRing({ timeLeft, total, color }) {
+  const pct = total > 0 ? Math.max(0, Math.min(1, timeLeft / total)) : 0;
+  const r = 46, c = 2 * Math.PI * r;
+  return (
+    <div style={{ position: "relative", width: 120, height: 120, flexShrink: 0 }}>
+      <svg width={120} height={120} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={60} cy={60} r={r} stroke="rgba(255,255,255,0.15)" strokeWidth={8} fill="none" />
+        <motion.circle
+          cx={60} cy={60} r={r} stroke={color} strokeWidth={8} fill="none" strokeLinecap="round"
+          strokeDasharray={c}
+          animate={{ strokeDashoffset: c * (1 - pct) }}
+          transition={{ duration: 0.9, ease: "linear" }}
+        />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 900, color: "#fff" }}>{timeLeft}</div>
+    </div>
+  );
+}
+
+function FitnessWorkoutPlayer({ queue, perExerciseSeconds, onFinish, onCancel }) {
+  const [index, setIndex] = useState(0);
+  const [phase, setPhase] = useState("exercise"); // "exercise" | "rest" | "done"
+  const [timeLeft, setTimeLeft] = useState(perExerciseSeconds);
+  const [paused, setPaused] = useState(false);
+
+  const current = queue[index];
+  const next = queue[index + 1];
+
+  useEffect(() => {
+    if (paused || phase === "done") return;
+    if (timeLeft <= 0) {
+      if (phase === "exercise") {
+        if (index < queue.length - 1) { setPhase("rest"); setTimeLeft(REST_SECONDS); }
+        else setPhase("done");
+      } else if (phase === "rest") {
+        setIndex((i) => i + 1); setPhase("exercise"); setTimeLeft(perExerciseSeconds);
+      }
+      return;
+    }
+    const t = setTimeout(() => setTimeLeft((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [timeLeft, phase, paused, index, queue.length, perExerciseSeconds]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 300, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", color: "#fff", padding: 24, boxSizing: "border-box",
+        background: phase === "rest" ? "linear-gradient(160deg,#122a20,#0e1614)" : "linear-gradient(160deg,#2b2926,#1c1c1e)",
+      }}
+    >
+      <motion.button
+        whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
+        onClick={onCancel} title="Emergency stop"
+        style={{
+          position: "absolute", top: 18, right: 18, display: "flex", alignItems: "center", gap: 6,
+          border: "1px solid rgba(255,255,255,0.35)", background: "rgba(255,255,255,0.08)", borderRadius: 999,
+          padding: "8px 14px", color: "#fff", fontSize: 11, fontWeight: 800, cursor: "pointer",
+        }}
+      >
+        <Square size={12} /> Cancel
+      </motion.button>
+
+      {phase !== "done" && (
+        <div style={{ position: "absolute", top: 20, left: 20, fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.65)" }}>
+          Exercise {index + 1} / {queue.length}
+        </div>
+      )}
+
+      <AnimatePresence mode="wait">
+        {phase === "exercise" && current && (
+          <motion.div
+            key={"ex-" + index}
+            initial={{ opacity: 0, scale: 0.85, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: -16 }}
+            transition={{ type: "spring", stiffness: 260, damping: 24 }}
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18, maxWidth: 340, textAlign: "center" }}
+          >
+            <motion.div
+              animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+              style={{ width: 190, height: 190, borderRadius: 24, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}
+            >
+              <img src={current.gif} alt={current.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            </motion.div>
+            <div style={{ fontSize: 19, fontWeight: 900 }}>{current.name}</div>
+            <FitnessTimerRing timeLeft={timeLeft} total={perExerciseSeconds} color="#e85d4c" />
+            {next && <div style={{ fontSize: 10.5, fontWeight: 700, color: "rgba(255,255,255,0.55)" }}>Next: {next.name}</div>}
+          </motion.div>
+        )}
+        {phase === "rest" && (
+          <motion.div
+            key={"rest-" + index}
+            initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 260, damping: 24 }}
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, textAlign: "center" }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 800, color: "rgba(255,255,255,0.65)", letterSpacing: 2 }}>REST</div>
+            <motion.div key={timeLeft} initial={{ scale: 1.3, opacity: 0.4 }} animate={{ scale: 1, opacity: 1 }} style={{ fontSize: 58, fontWeight: 900, color: "#4a7c59" }}>
+              {timeLeft}
+            </motion.div>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>Get ready: {next ? next.name : ""}</div>
+          </motion.div>
+        )}
+        {phase === "done" && (
+          <motion.div
+            key="done"
+            initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 260, damping: 24 }}
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, textAlign: "center", maxWidth: 300 }}
+          >
+            <motion.div animate={{ scale: [1, 1.15, 1], rotate: [0, 8, -8, 0] }} transition={{ duration: 0.8 }} style={{ width: 60, height: 60, borderRadius: "50%", background: "#4a7c5925", border: "1px solid #4a7c5960", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Sparkles size={26} color="#4a7c59" />
+            </motion.div>
+            <div style={{ fontSize: 17, fontWeight: 900 }}>Workout complete! 🎉</div>
+            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", fontWeight: 700 }}>{queue.length} exercise{queue.length > 1 ? "s" : ""} done.</div>
+            <motion.button
+              whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }} onClick={onFinish}
+              style={{ marginTop: 8, border: "none", borderRadius: 999, padding: "10px 24px", background: "#4a7c59", color: "#fff", fontSize: 12, fontWeight: 900, cursor: "pointer" }}
+            >
+              Close
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {phase !== "done" && (
+        <>
+          <div style={{ position: "absolute", bottom: 66, left: 24, right: 24, height: 4, borderRadius: 999, background: "rgba(255,255,255,0.15)", overflow: "hidden" }}>
+            <motion.div
+              animate={{ width: `${((index + (phase === "rest" ? 1 : 0)) / queue.length) * 100}%` }}
+              transition={{ duration: 0.4 }}
+              style={{ height: "100%", background: "#e85d4c" }}
+            />
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
+            onClick={() => setPaused((p) => !p)}
+            style={{
+              position: "absolute", bottom: 20, display: "flex", alignItems: "center", gap: 6,
+              border: "1px solid rgba(255,255,255,0.35)", background: "rgba(255,255,255,0.08)", borderRadius: 999,
+              padding: "8px 16px", color: "#fff", fontSize: 11, fontWeight: 800, cursor: "pointer",
+            }}
+          >
+            {paused ? <Play size={12} /> : <Pause size={12} />} {paused ? "Resume" : "Pause"}
+          </motion.button>
+        </>
+      )}
+    </motion.div>
+  );
+}
+
 function FitnessTab({ onClose }) {
   const [section, setSection] = useState("exercise");
   const [infoItem, setInfoItem] = useState(null);
@@ -12501,6 +12906,33 @@ function FitnessTab({ onClose }) {
       ? FITNESS_DATA.exerciseAlt || []
       : FITNESS_DATA[section] || [];
 
+  // Guided workout (this update) — "Start" turns the grid into a picker,
+  // an "OK" fab appears bottom-right once something's selected, that opens
+  // the time popup, and Apply hands the built queue off to the full-screen
+  // player. Selection resets whenever the visible list changes so a stale
+  // selection from a different section/list can't leak into the queue.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [timeModalOpen, setTimeModalOpen] = useState(false);
+  const [workout, setWorkout] = useState(null); // { queue, perExerciseSeconds } | null
+
+  useEffect(() => { setSelectedIds(new Set()); }, [section, showAltExercise]);
+
+  const startSelecting = () => { setSelectMode(true); setSelectedIds(new Set()); };
+  const stopSelecting = () => { setSelectMode(false); setSelectedIds(new Set()); };
+  const toggleSelect = (id) => setSelectedIds((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const selectedItems = items.filter((it) => selectedIds.has(it.id));
+
+  const applyTime = (perExerciseSeconds) => {
+    setWorkout({ queue: selectedItems.map((it) => ({ id: it.id, name: it.name, gif: it.gif })), perExerciseSeconds });
+    setTimeModalOpen(false);
+    stopSelecting();
+  };
+
   return (
     <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 8 }}>
@@ -12509,6 +12941,20 @@ function FitnessTab({ onClose }) {
         </motion.div>
         <Dumbbell size={14} color={C.dark} />
         <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Fitness</span>
+
+        <motion.button
+          onClick={() => (selectMode ? stopSelecting() : startSelecting())}
+          whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
+          title={selectMode ? "Selection cancel karein" : "Guided workout shuru karein"}
+          style={{
+            display: "flex", alignItems: "center", gap: 5, border: "none", borderRadius: 999,
+            padding: "6px 12px", cursor: "pointer", fontSize: 11, fontWeight: 800,
+            color: selectMode ? "#fff" : "#e85d4c",
+            background: selectMode ? "#e85d4c" : "#e85d4c1f",
+          }}
+        >
+          {selectMode ? <X size={12} /> : <Play size={12} />} {selectMode ? "Selecting…" : "Start"}
+        </motion.button>
 
         <div style={{ flex: 1 }} />
 
@@ -12560,6 +13006,12 @@ function FitnessTab({ onClose }) {
         </motion.div>
       </div>
 
+      {selectMode && (
+        <div style={{ padding: "8px 16px 0", fontSize: 10.5, fontWeight: 700, color: "#8a8579", textAlign: "center" }}>
+          Jitni exercises karni hain unpe tap karke select karein, phir neeche "OK" dabayein.
+        </div>
+      )}
+
       <div style={{ flex: 1, overflowY: "auto", padding: 16, background: `linear-gradient(180deg, ${hexToRgba(active.color, 0.05)} 0%, #fffcf2 220px)` }} className="btl-scroll">
         <AnimatePresence mode="wait">
           <motion.div
@@ -12570,7 +13022,10 @@ function FitnessTab({ onClose }) {
             {items.length ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 14, maxWidth: 980, margin: "0 auto" }}>
                 {items.map((item, i) => (
-                  <FitnessCard key={item.id} item={item} index={i} sectionColor={active.color} onInfo={setInfoItem} />
+                  <FitnessCard
+                    key={item.id} item={item} index={i} sectionColor={active.color} onInfo={setInfoItem}
+                    selectable={selectMode} selected={selectedIds.has(item.id)} onToggleSelect={toggleSelect}
+                  />
                 ))}
               </div>
             ) : (
@@ -12581,7 +13036,42 @@ function FitnessTab({ onClose }) {
       </div>
 
       <AnimatePresence>
+        {selectMode && selectedIds.size > 0 && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.7, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.7, y: 20 }}
+            whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
+            onClick={() => setTimeModalOpen(true)}
+            style={{
+              position: "absolute", right: 18, bottom: 18, zIndex: 40,
+              display: "flex", alignItems: "center", gap: 6, border: "none", borderRadius: 999,
+              padding: "12px 20px", background: "#e85d4c", color: "#fff", fontSize: 12.5, fontWeight: 900,
+              cursor: "pointer", boxShadow: "0 10px 26px rgba(232,93,76,0.45)",
+            }}
+          >
+            <CheckCircle2 size={15} /> OK ({selectedIds.size})
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {infoItem && <FitnessInfoModal item={infoItem} sectionColor={active.color} onClose={() => setInfoItem(null)} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {timeModalOpen && (
+          <FitnessTimeModal count={selectedItems.length} onCancel={() => setTimeModalOpen(false)} onApply={applyTime} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {workout && (
+          <FitnessWorkoutPlayer
+            queue={workout.queue}
+            perExerciseSeconds={workout.perExerciseSeconds}
+            onFinish={() => setWorkout(null)}
+            onCancel={() => setWorkout(null)}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
