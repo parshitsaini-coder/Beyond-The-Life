@@ -445,12 +445,13 @@ const ANALYTICS_SUMMARY_METRICS = [
   { id: "daily", label: "Daily", type: "ring", color: C.accent },
   { id: "extry", label: "Extry", type: "ring", color: C.blue },
   { id: "overall", label: "Overall", type: "ring", color: C.dark },
+  { id: "timeTable", label: "Time Table", type: "ring", color: "#8a6fd6" },
   { id: "streak", label: "Day Streak", type: "stat", icon: Flame },
   { id: "earned", label: "Total Earned", type: "money", color: "#2e7d32", icon: ArrowUpCircle },
   { id: "spent", label: "Total Spent", type: "money", color: "#c0392b", icon: ArrowDownCircle },
   { id: "net", label: "Net Money", type: "money", color: C.dark, icon: Wallet },
 ];
-const ANALYTICS_SUMMARY_DEFAULT_METRICS = ["daily", "extry", "overall", "streak"];
+const ANALYTICS_SUMMARY_DEFAULT_METRICS = ["daily", "extry", "overall", "timeTable", "streak"];
 function analyticsSummaryMetricMeta(id) {
   return ANALYTICS_SUMMARY_METRICS.find((m) => m.id === id) || null;
 }
@@ -464,6 +465,7 @@ const ANALYTICS_SUMMARY_ELEMENT_COLOR_FIELDS = [
   { key: "daily", label: "Daily ring", defaultHex: C.accent },
   { key: "extry", label: "Extry ring", defaultHex: C.blue },
   { key: "overall", label: "Overall ring", defaultHex: C.dark },
+  { key: "timeTable", label: "Time Table ring", defaultHex: "#8a6fd6" },
   { key: "streak", label: "Day Streak badge", defaultHex: C.dark },
   { key: "earned", label: "Total Earned value", defaultHex: "#2e7d32" },
   { key: "spent", label: "Total Spent value", defaultHex: "#c0392b" },
@@ -486,7 +488,22 @@ function normalizeAnalyticsSummaryTheme(t) {
     seen.add(id);
     return true;
   });
-  return { metrics: cleaned.length ? cleaned : ANALYTICS_SUMMARY_DEFAULT_METRICS.slice() };
+  if (!cleaned.length) {
+    return { metrics: ANALYTICS_SUMMARY_DEFAULT_METRICS.slice(), timeTableMigrated: true };
+  }
+  // One-time migration: existing saved lists (from before "Time Table" was
+  // added as a metric option) won't contain it yet — insert it right after
+  // "overall" so it lands in the same spot as the default order, instead of
+  // making users dig into Settings to re-add a metric that didn't exist
+  // when they set their list up. Gated by `timeTableMigrated` so this only
+  // ever runs once — if the person removes it afterwards in Settings, it
+  // stays removed instead of reappearing on every load.
+  if (!src.timeTableMigrated && !cleaned.includes("timeTable")) {
+    const overallIdx = cleaned.indexOf("overall");
+    const insertAt = overallIdx === -1 ? cleaned.length : overallIdx + 1;
+    cleaned.splice(insertAt, 0, "timeTable");
+  }
+  return { metrics: cleaned, timeTableMigrated: true };
 }
 /* Computes the live value for every metric from current app state —
    shared by the dashboard widget and the Theme panel's live preview
@@ -495,10 +512,11 @@ function computeAnalyticsSummaryValues(state) {
   const dailyPct = state.dailyGoals.length ? (state.dailyGoals.filter((g) => g.done).length / state.dailyGoals.length) * 100 : 0;
   const extryPct = state.extryGoals.length ? (state.extryGoals.filter((g) => g.done).length / state.extryGoals.length) * 100 : 0;
   const overallPct = (dailyPct + extryPct) / 2;
+  const timeTablePct = (state.timeTable || []).length ? ((state.timeTable || []).filter((t) => t.done).length / (state.timeTable || []).length) * 100 : 0;
   const earned = state.totalEarnLife || 0;
   const spent = state.totalSpendLife || 0;
   return {
-    daily: dailyPct, extry: extryPct, overall: overallPct,
+    daily: dailyPct, extry: extryPct, overall: overallPct, timeTable: timeTablePct,
     streak: state.streak || 0,
     earned, spent, net: earned - spent,
   };
@@ -3490,6 +3508,19 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
   };
 
   const dragControls = useDragControls();
+  // Drag "ghost trail" fix (this update): the modal's translucent
+  // backdrop-filter blur has to re-sample whatever's behind it on every
+  // single frame of the drag, and on Windows/Chrome that resampling can't
+  // keep up with fast pointer movement — the blur visibly lags a frame or
+  // two behind the actual (already-moved) panel, which reads as a smeared
+  // "copy" trailing the cursor, exactly like the marked-up screenshot.
+  // Fix: drop the blur only for the duration of the drag (background goes
+  // from translucent-glass to a plain, near-opaque fill instead, which
+  // needs no per-frame resampling), then restore the normal glass look the
+  // instant the drag ends. willChange hints the browser to keep this panel
+  // on its own GPU layer throughout, so the transform-based move itself
+  // stays smooth too.
+  const [isDraggingModal, setIsDraggingModal] = useState(false);
 
   return (
     <motion.div
@@ -3500,17 +3531,22 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
       dragMomentum={false}
       dragElastic={0}
       dragConstraints={{ left: -2000, right: 2000, top: -2000, bottom: 2000 }}
+      onDragStart={() => setIsDraggingModal(true)}
+      onDragEnd={() => setIsDraggingModal(false)}
       initial={{ opacity: 0, scale: 0.94, y: 16 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.94, y: 10 }}
       transition={{ type: "spring", stiffness: 340, damping: 28 }}
       style={{
-        width: "min(92%, 900px)", maxHeight: "88%", background: "rgba(255,255,255,0.68)",
-        backdropFilter: "blur(16px) saturate(160%)", WebkitBackdropFilter: "blur(16px) saturate(160%)",
+        width: "min(92%, 900px)", maxHeight: "88%",
+        background: isDraggingModal ? "#fbfaf5" : "rgba(255,255,255,0.68)",
+        backdropFilter: isDraggingModal ? "none" : "blur(16px) saturate(160%)",
+        WebkitBackdropFilter: isDraggingModal ? "none" : "blur(16px) saturate(160%)",
         border: "1px solid rgba(255,255,255,0.6)", borderRadius: 14,
         boxShadow: "0 12px 36px rgba(37,36,34,0.18)",
         display: "flex", flexDirection: "column", overflow: "hidden",
         pointerEvents: "auto", position: "relative",
+        willChange: "transform", transform: "translateZ(0)",
       }}>
       {/* Close button — pinned to the modal's own top-right corner (this
           update) instead of living inside the wrapping tab row. It used to
@@ -3857,7 +3893,10 @@ async function generateShareCard(state, lifeScore, userName, userPhoto) {
   ctx.fillStyle = "#a39c86";
   ctx.fillText(new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" }), W / 2, 150);
 
-  // Life score ring
+  // Daily Goal score ring — shows today's goal completion % (doneGoals /
+  // allGoals, the same count already shown in the modal's "X/Y goals done
+  // today" subtitle) instead of the overall Life Score.
+  const goalPct = allGoals.length ? Math.round((doneGoals.length / allGoals.length) * 100) : 0;
   const cx = W / 2, cy = 400, R = 150;
   ctx.lineWidth = 22;
   ctx.strokeStyle = "#ece7d8";
@@ -3865,14 +3904,17 @@ async function generateShareCard(state, lifeScore, userName, userPhoto) {
   ctx.strokeStyle = lifeScore.color;
   ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * lifeScore.score) / 100);
+  ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * goalPct) / 100);
   ctx.stroke();
   ctx.fillStyle = C.dark;
   ctx.font = "900 72px Inter, sans-serif";
-  ctx.fillText(String(lifeScore.score), cx, cy + 22);
+  ctx.fillText(`${goalPct}%`, cx, cy + 22);
   ctx.font = "700 22px Inter, sans-serif";
   ctx.fillStyle = "#a39c86";
-  ctx.fillText("LIFE SCORE", cx, cy + 58);
+  ctx.fillText("DAILY GOALS", cx, cy + 58);
+  ctx.font = "700 24px Inter, sans-serif";
+  ctx.fillStyle = lifeScore.color;
+  ctx.fillText(`${doneGoals.length}/${allGoals.length} completed`, cx, cy + 92);
   ctx.font = "700 30px Inter, sans-serif";
   ctx.fillStyle = lifeScore.color;
   ctx.fillText(`${lifeScore.emoji} ${lifeScore.label}`, cx, cy + 210);
@@ -12337,6 +12379,7 @@ function BTLDashboardInner() {
   const dailyPct = state.dailyGoals.length ? (state.dailyGoals.filter((g) => g.done).length / state.dailyGoals.length) * 100 : 0;
   const extryPct = state.extryGoals.length ? (state.extryGoals.filter((g) => g.done).length / state.extryGoals.length) * 100 : 0;
   const overallPct = (dailyPct + extryPct) / 2;
+  const timeTablePct = (state.timeTable || []).length ? ((state.timeTable || []).filter((t) => t.done).length / (state.timeTable || []).length) * 100 : 0;
   const headerLifeScore = computeLifeScore(state);
 
   const MILESTONES = [3, 7, 14, 21, 30, 50, 75, 100];
@@ -12992,6 +13035,7 @@ function BTLDashboardInner() {
               <RingStat pct={dailyPct} label="Daily Goal" sub="Staytus" color={theme.analyticsSummaryColors.daily || C.accent} textColor={theme.analyticsSummaryColors.text || undefined} />
               <RingStat pct={extryPct} label="Extry Goal" sub="Staytus" color={theme.analyticsSummaryColors.extry || C.blue} textColor={theme.analyticsSummaryColors.text || undefined} />
               <RingStat pct={overallPct} label="Goal" color={theme.analyticsSummaryColors.overall || dashTheme.text || C.dark} textColor={theme.analyticsSummaryColors.text || undefined} />
+              <RingStat pct={timeTablePct} label="Time Table" sub="Staytus" color={theme.analyticsSummaryColors.timeTable || "#8a6fd6"} textColor={theme.analyticsSummaryColors.text || undefined} />
               <div style={{ position: "relative" }}>
                 <ProfileButton user={fbUser} open={profileOpen} onToggle={() => setProfileOpen((v) => !v)} />
                 <ProfilePopup
