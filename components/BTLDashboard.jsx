@@ -9084,7 +9084,7 @@ function insertAtCaretRemovingTrigger(editableEl, node) {
    textarea) so an inline 📷 chip can sit exactly where you typed "@" and
    still be clickable to open that photo — nothing gets pushed below the
    text or shown as a separate thumbnail strip. */
-function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImage, onRemoveImage, blockRef, cardBg }) {
+function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImage, onRemoveImage, blockRef, cardBg, plain }) {
   const t = theme || LIFE_STORY_DEFAULT_THEME;
   const isDark = /^#/.test(t.textColor) && (() => {
     const hex = t.textColor.replace("#", "");
@@ -9219,6 +9219,34 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
     const chip = e.target.closest("[data-story-chip]");
     if (chip) setLightbox(Number(chip.dataset.idx));
   };
+
+  if (plain) {
+    // Minimal, card-free rendering for the past-entries list: just the
+    // date, left-aligned, with the story text directly underneath it —
+    // no gradient border, no background box, no centered pill.
+    return (
+      <div ref={blockRef} style={{ marginBottom: 22, textAlign: "left" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 800, color: C.dark, marginBottom: 6 }}>
+          <CalendarDays size={11} /> {formatStoryDate(iso)}
+        </div>
+        {entry?.html ? (
+          <div
+            onClick={handleChipClick}
+            style={{ fontSize: t.fontSize, fontWeight: t.bold ? 700 : 400, lineHeight: 1.6, color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word", textAlign: "left" }}
+            dangerouslySetInnerHTML={{ __html: entry.html }}
+          />
+        ) : (
+          <div style={{ fontSize: t.fontSize, color: "#c9c4b3", fontStyle: "italic", fontFamily: t.fontFamily }}>No story written this day.</div>
+        )}
+
+        <AnimatePresence>
+          {lightbox !== null && (
+            <LifeStoryLightbox src={images[lightbox]} onClose={() => setLightbox(null)} onDelete={() => { onRemoveImage(lightbox); setLightbox(null); }} />
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
 
   return (
     <div ref={blockRef} style={{ marginBottom: 20 }}>
@@ -9866,25 +9894,18 @@ function LifeStoryTab({ state, update, onClose }) {
       <GenieFilterDefs />
       <div style={{ flex: 1, position: "relative", padding: 16, background: theme.bgColor, overflow: "hidden" }}>
         <div ref={feedRef} style={{ position: "absolute", inset: 0, overflowY: "auto", padding: 16 }}>
-          {/* Past-day entry card — hugs just the entries themselves (not
-             the full tab height/width) — every day before today. Today's
+          {/* Past-day entries — no card/border/box at all, just the date
+             then the story text underneath it, left-aligned. Today's
              entry lives only in the glass popup below. */}
-          <div
-            ref={pastCardRef}
-            style={{
-              maxWidth: 620, margin: "0 auto", borderRadius: 20,
-              border: `1px solid ${C.text}22`, background: "rgba(255,255,255,0.4)",
-              boxShadow: "0 2px 16px rgba(37,36,34,0.06)", padding: 16,
-            }}
-          >
+          <div ref={pastCardRef} style={{ maxWidth: 620, textAlign: "left" }}>
             {pastDates.length === 0 ? (
-              <div style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#a39c86", padding: "40px 0" }}>
+              <div style={{ textAlign: "left", fontSize: 11, fontWeight: 700, color: "#a39c86", padding: "8px 0" }}>
                 No past entries yet — write today's first, then check back here tomorrow.
               </div>
             ) : (
               pastDates.map((iso) => (
                 <LifeStoryDayBlock
-                  key={iso} iso={iso} entry={entries[iso]} isToday={false} theme={theme}
+                  key={iso} iso={iso} entry={entries[iso]} isToday={false} theme={theme} plain
                   onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
                   blockRef={(el) => { blockRefs.current[iso] = el; }}
                 />

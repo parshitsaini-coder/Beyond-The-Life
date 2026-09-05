@@ -17,13 +17,13 @@ screenshots:
 - It's sized and anchored to sit *inside* the journal area (not a
   full-screen modal) — bottom-right, overlapping the past-entries card,
   same as the layout you sketched.
-- **Past-day entries** (every date except today) now render inside their
-  own bounded **"past-day entry card"** — a bordered, rounded panel that
-  **hugs just the entries themselves** (max-width 620px, height fits its
-  content) instead of stretching to fill the whole tab body — fixed after
-  the first pass made it span the entire empty area below. Scrolls
-  independently, with an empty-state message when there are no past
-  entries yet.
+- **Past-day entries** (every date except today) now render with **no
+  card, border, or background at all** — just the date, left-aligned,
+  with the story text directly underneath it (`LifeStoryDayBlock`'s new
+  `plain` mode). Went through two passes: first a bordered card that hugged
+  the content, now removed entirely per your last sketch — plain date +
+  text is all that's left. Today's entry is unaffected — it still gets
+  its own centered pill + gradient card, but only inside the glass popup.
 - **New in Theme (gear icon → "Today's Entry Card"):** two color pickers —
   **Card background** and **Card text** — control only the floating
   popup's own colors, independent from the Page Theme colors above it
