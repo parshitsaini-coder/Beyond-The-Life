@@ -12729,6 +12729,7 @@ function FitnessCard({ item, index, sectionColor, onInfo, selectable, selected, 
         <img src={item.gif} alt={item.name} style={{ width: "100%", height: 150, objectFit: "contain", display: "block" }} />
         {selectable ? (
           <motion.div
+            className="btl-fitness-tap"
             initial={false} animate={{ scale: selected ? 1.1 : 1 }}
             style={{
               position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%",
@@ -12741,6 +12742,7 @@ function FitnessCard({ item, index, sectionColor, onInfo, selectable, selected, 
           </motion.div>
         ) : (
           <motion.button
+            className="btl-fitness-tap"
             whileHover={{ scale: 1.12 }} whileTap={{ scale: 0.92 }}
             onClick={() => onInfo(item)}
             title="Info — kaise karein & fayde"
@@ -13992,6 +13994,15 @@ function BTLDashboardInner() {
             overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
           }
           .btl-mobile-statsrow::-webkit-scrollbar { display: none; }
+
+          /* ---------------- Step 8 — Fitness card tap targets ----------------
+             Desktop keeps the original 28x28 Info/select circles untouched
+             (inline style below). On mobile these are the only tap target on
+             a non-selectable FitnessCard, so bump them to the spec's 44px
+             minimum — position/inset stays the same (top:8/right:8), the
+             circle just grows outward from that anchor; icon size inside is
+             untouched, it just centers with more room around it. */
+          .btl-fitness-tap { width: 44px !important; height: 44px !important; }
         }
       `}</style>
 
