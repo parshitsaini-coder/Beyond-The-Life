@@ -1,5 +1,45 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## 🫧 "Liquid Glassic" — a Friend Celebration-only theme option (this update)
+Per your two screenshots: **Setting → 🎨 Theme → Friend Celebration** now has
+a new **"Liquid Glassic"** toggle card sitting above the existing
+Background/Border/Text color rows (`ScopeThemeEditor`'s new `friendPreset`
+option, `components/BTLDashboard.jsx`). Unlike the "Panel Theme" presets
+above the tabs, this one is scoped to **only** Friend Celebration — turning
+it on doesn't touch Dashboard, Analytics, Money, Focus Mode, or anything
+else.
+
+Tap it on and the whole Friend Celebration experience — hub, the "You VS
+Friend" split-screen, and the **Chat popup** — switches to a soft,
+neumorphic/liquid-glass look matching your 2nd (moodboard) screenshot:
+- Light, airy canvas + frosted glass cards with the embossed light/dark
+  dual "soft-UI" shadow (`GLASSIC_TOKENS` in `components/FriendCelebration.jsx`),
+  instead of the default dark glass.
+- **Every word renders in black** (`#1c1c1e`) — names, labels, goal text,
+  captions, chat messages.
+- **Every %/streak/score number stays colored** — the goal-completion
+  rings' percentage now reads in the ring's own accent color instead of
+  fixed white, so it still pops against the light card.
+- **Every money figure stays colored** — Total Earn/Total Spend keep
+  distinct green/red values (darkened slightly from the dark-theme
+  versions so they stay readable on the light card).
+- Inputs, buttons, icon chips (gear/close/back), request rows, the
+  Discover list, and the Friends grid all pick up the same light-glass
+  material — nothing is left on the old dark styling once it's on.
+- The **VS clash intro** animation keeps its text white on purpose (it
+  plays over the colored diagonal split panels, not the light canvas, so
+  white stays the readable choice there regardless of this toggle).
+
+Stored as `state.theme.friendCelebration.liquidGlassic: true/false`, same
+round-trip pattern as every other theme field — flip it off, or hit
+**Reset** on the Friend Celebration section, to go back to the original
+dark glass look.
+
+Didn't need `liquid-glass-js`: the neumorphic dual-shadow + frosted-blur
+look here is plain CSS (`box-shadow` + `backdrop-filter`), same approach
+the app already uses for its "Liquid Glass" Panel Theme preset elsewhere —
+no new runtime dependency required for this either.
+
 ## ⚙️ Friend Celebration now has a direct theme shortcut (this update)
 Per your two marked-up screenshots, added a small gear icon (⚙️) at the spot
 you circled in both:

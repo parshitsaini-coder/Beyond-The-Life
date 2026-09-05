@@ -405,6 +405,12 @@ export function normalizeScopeTheme(t) {
     font: typeof src.font === "string" ? src.font : "",
     bold: !!src.bold,
     scale: Math.round(scale * 100) / 100,
+    /* ---- "Liquid Glassic" — Friend Celebration-only preset (this update) ----
+       Only ever set/read for theme.friendCelebration (see ScopeThemeEditor's
+       `friendPreset` prop + FriendCelebration.jsx), but kept on the shared
+       scope-theme shape like every other field here so it survives the
+       normalize/merge round-trip through Firestore without a special case. */
+    liquidGlassic: !!src.liquidGlassic,
   };
 }
 /* Liquid Glass fine-tune knobs — only meaningful while panelPreset ===
@@ -7680,11 +7686,12 @@ function ColorSwatchRow({ icon, label, options, value, onChange, defaultSwatchHe
 
 /* One scope's full editor: preview card + background color + text color,
    and (for Analytics / Focus Mode) text size / bold / font too. */
-function ScopeThemeEditor({ title, icon, value, onChange, onReset, includeTextControls }) {
+function ScopeThemeEditor({ title, icon, value, onChange, onReset, includeTextControls, friendPreset }) {
   const v = normalizeScopeTheme(value);
-  const isDefault = !v.bg && !v.text && !v.border && (!includeTextControls || (!v.font && !v.bold && v.scale === 1));
+  const isDefault = !v.bg && !v.text && !v.border && !v.liquidGlassic && (!includeTextControls || (!v.font && !v.bold && v.scale === 1));
   const previewFamily = v.font ? fontStackFor(v.font) : "Inter, system-ui, sans-serif";
   const scalePct = Math.round(v.scale * 100);
+  const glassic = friendPreset && v.liquidGlassic;
 
   return (
     <motion.div
@@ -7709,24 +7716,88 @@ function ScopeThemeEditor({ title, icon, value, onChange, onReset, includeTextCo
 
       <div style={{ padding: "10px 10px 12px" }}>
         {/* live preview */}
-        <motion.div
-          key={`${title}-${v.bg}-${v.text}-${v.border}-${v.font}-${v.bold}-${scalePct}`}
-          initial={{ opacity: 0.4 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}
-          style={{
-            border: `1px solid ${v.border || "#ece7d8"}`, borderRadius: 8, padding: "10px 12px", marginBottom: 12,
-            background: v.bg || "#fff",
-          }}
-        >
-          <div style={{
-            fontSize: Math.round(13 * v.scale), fontWeight: v.bold ? 800 : 700,
-            color: v.text || C.text, fontFamily: previewFamily, lineHeight: 1.4,
-          }}>
-            {title} preview
+        {glassic ? (
+          <motion.div
+            key={`${title}-liquidGlassic`}
+            initial={{ opacity: 0.4 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}
+            style={{
+              borderRadius: 12, padding: "12px 14px", marginBottom: 12,
+              background: "linear-gradient(160deg,#eef0f3,#e6e9ee)",
+              boxShadow: "6px 6px 14px rgba(163,177,198,0.5), -6px -6px 14px rgba(255,255,255,0.85)",
+            }}
+          >
+            <div style={{
+              fontSize: Math.round(13 * v.scale), fontWeight: v.bold ? 900 : 800,
+              color: "#1c1c1e", fontFamily: previewFamily, lineHeight: 1.4,
+            }}>
+              {title} preview — Liquid Glassic
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+              <span style={{ fontSize: 9, color: "#1c1c1e", opacity: 0.6 }}>Only {title} will use this look</span>
+              <span style={{ fontSize: 11, fontWeight: 900, color: C.accent }}>72%</span>
+              <span style={{ fontSize: 11, fontWeight: 900, color: "#2e7d32" }}>₹800</span>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key={`${title}-${v.bg}-${v.text}-${v.border}-${v.font}-${v.bold}-${scalePct}`}
+            initial={{ opacity: 0.4 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}
+            style={{
+              border: `1px solid ${v.border || "#ece7d8"}`, borderRadius: 8, padding: "10px 12px", marginBottom: 12,
+              background: v.bg || "#fff",
+            }}
+          >
+            <div style={{
+              fontSize: Math.round(13 * v.scale), fontWeight: v.bold ? 800 : 700,
+              color: v.text || C.text, fontFamily: previewFamily, lineHeight: 1.4,
+            }}>
+              {title} preview
+            </div>
+            <div style={{ fontSize: 9, color: v.text ? v.text : "#b3ac99", opacity: v.text ? 0.7 : 1, marginTop: 4 }}>
+              Only {title} will use this look
+            </div>
+          </motion.div>
+        )}
+
+        {/* ---- Liquid Glassic (Friend Celebration only, this update) ----
+            One-tap preset: soft neumorphic/liquid-glass card, all text
+            black, %/streak/score numbers and money figures stay colored,
+            and the Friend Celebration chat popup picks up the same look.
+            Independent of the bg/border/text swatches below — while it's
+            on, Friend Celebration renders its own fixed light-glass
+            material instead of those (matching the reference moodboard). */}
+        {friendPreset && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+              <Sparkles size={10} /> Liquid Glassic
+            </div>
+            <motion.button
+              whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+              onClick={() => onChange({ liquidGlassic: !v.liquidGlassic })}
+              style={{
+                display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+                border: `1.5px solid ${v.liquidGlassic ? C.accent : "#ddd6c4"}`,
+                background: v.liquidGlassic ? "#fff7ec" : "#fff",
+                borderRadius: 10, padding: "8px 10px", cursor: "pointer",
+              }}
+            >
+              <span style={{
+                width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                background: "linear-gradient(135deg,#f3f5f8 0%,#e3e7ee 60%,#c8cfdb 100%)",
+                boxShadow: "2px 2px 5px rgba(163,177,198,0.6), -2px -2px 5px rgba(255,255,255,0.9)",
+              }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: C.dark }}>
+                  Liquid Glassic{v.liquidGlassic ? " — on" : ""}
+                </div>
+                <div style={{ fontSize: 8.5, color: "#8a8579", lineHeight: 1.35 }}>
+                  Soft neumorphic glass, black text, colored %/₹ numbers — also restyles the chat popup.
+                </div>
+              </div>
+              {v.liquidGlassic && <CheckCircle2 size={16} style={{ color: C.accent, flexShrink: 0 }} />}
+            </motion.button>
           </div>
-          <div style={{ fontSize: 9, color: v.text ? v.text : "#b3ac99", opacity: v.text ? 0.7 : 1, marginTop: 4 }}>
-            Only {title} will use this look
-          </div>
-        </motion.div>
+        )}
 
         <ColorSwatchRow icon={<Palette size={10} />} label="Background color" options={BG_COLOR_OPTIONS} value={v.bg} onChange={(bg) => onChange({ bg })} defaultSwatchHex="#ffffff" />
         <ColorSwatchRow icon={<Square size={10} />} label="Border color (panel edge)" options={TEXT_COLOR_OPTIONS} value={v.border} onChange={(border) => onChange({ border })} />
@@ -8398,7 +8469,7 @@ function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, on
           <ScopeThemeEditor
             key="friendCelebration" title="Friend Celebration" icon={<Users size={12} style={{ color: C.dark }} />}
             value={t.friendCelebration} onChange={(p) => onScopeChange("friendCelebration", p)} onReset={() => onScopeReset("friendCelebration")}
-            includeTextControls={true}
+            includeTextControls={true} friendPreset
           />
         )}
       </AnimatePresence>

@@ -28,6 +28,33 @@ const FRIEND_THEME_DEFAULT = {
 const FriendThemeCtx = createContext(FRIEND_THEME_DEFAULT);
 function useFriendTheme() { return useContext(FriendThemeCtx); }
 
+/* ---- "Liquid Glassic" theme (this update) ----
+   Setting -> Theme -> Friend Celebration -> "Liquid Glassic" toggle
+   (ScopeThemeEditor's `friendPreset` option, BTLDashboard.jsx) turns on
+   this fixed look, ONLY inside Friend Celebration (hub, VS split-screen,
+   chat popup) — nothing else in the app changes. Soft neumorphic/
+   liquid-glass cards on a light canvas, every word rendered in black,
+   and every %/streak/score number plus money figure keeps its own
+   accent color so it still reads at a glance against the light card. */
+const GLASSIC_TOKENS = {
+  pageBg: "linear-gradient(160deg,#eef0f3 0%,#e6e9ee 55%,#dfe3ea 100%)",
+  text: "#1c1c1e",
+  muted: "rgba(28,28,30,0.55)",
+  faint: "rgba(28,28,30,0.3)",
+  cardBg: "rgba(255,255,255,0.55)",
+  cardBorder: "1px solid rgba(255,255,255,0.8)",
+  cardShadow: "8px 8px 18px rgba(163,177,198,0.45), -8px -8px 18px rgba(255,255,255,0.85)",
+  innerBg: "rgba(255,255,255,0.55)",
+  innerBorder: "1px solid rgba(209,213,219,0.55)",
+  chipBg: "rgba(0,0,0,0.05)",
+  inputBg: "rgba(255,255,255,0.8)",
+  inputBorder: "1px solid rgba(190,196,206,0.9)",
+  ringTrack: "rgba(28,28,30,0.1)",
+  blur: "blur(22px) saturate(180%)",
+  earnColor: "#2e7d32",
+  spendColor: "#c0392b",
+};
+
 /* ============================================================
    FRIEND CELEBRATION
    Header icon (wired in BTLDashboard.jsx) opens this full-screen
@@ -72,26 +99,32 @@ function Avatar({ name, photoURL, size = 48 }) {
 }
 
 function MiniRing({ pct = 0, size = 42, color = C.accent, label }) {
+  const ft = useFriendTheme();
   const p = Math.min(100, Math.max(0, pct || 0));
   const r = (size - 6) / 2;
   const circ = 2 * Math.PI * r;
   const off = circ - (p / 100) * circ;
+  // On Liquid Glassic the ring sits on a light card, so the number reads
+  // in the ring's own accent color (not the fixed white used on dark cards).
+  const numberColor = ft.glassic ? color : "#fff";
+  const trackColor = ft.glassic ? GLASSIC_TOKENS.ringTrack : "rgba(255,255,255,0.14)";
+  const labelColor = ft.glassic ? GLASSIC_TOKENS.muted : "rgba(255,255,255,0.6)";
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
       <div style={{ position: "relative", width: size, height: size }}>
         <svg width={size} height={size} style={{ position: "absolute", inset: 0, transform: "rotate(-90deg)" }}>
-          <circle cx={size / 2} cy={size / 2} r={r} stroke="rgba(255,255,255,0.14)" strokeWidth={4} fill="none" />
+          <circle cx={size / 2} cy={size / 2} r={r} stroke={trackColor} strokeWidth={4} fill="none" />
           <motion.circle
             cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={4} fill="none" strokeLinecap="round"
             strokeDasharray={circ} initial={{ strokeDashoffset: circ }} animate={{ strokeDashoffset: off }}
             transition={{ type: "spring", stiffness: 70, damping: 16 }}
           />
         </svg>
-        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.24, fontWeight: 900, color: "#fff" }}>
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.24, fontWeight: 900, color: numberColor }}>
           {Math.round(p)}%
         </div>
       </div>
-      {label && <div style={{ fontSize: 8.5, fontWeight: 800, color: "rgba(255,255,255,0.6)" }}>{label}</div>}
+      {label && <div style={{ fontSize: 8.5, fontWeight: 800, color: labelColor }}>{label}</div>}
     </div>
   );
 }
@@ -110,6 +143,7 @@ function computeStatsFromState(state) {
 
 function VSIntro({ leftPhoto, leftName, rightPhoto, rightName, onDone }) {
   const ft = useFriendTheme();
+  const introText = ft.glassic ? "#fff" : ft.text; // stays legible on the colored diagonal split either way
   useEffect(() => {
     const t = setTimeout(onDone, 1500);
     return () => clearTimeout(t);
@@ -138,7 +172,7 @@ function VSIntro({ leftPhoto, leftName, rightPhoto, rightName, onDone }) {
       <motion.div
         initial={{ scale: 0, opacity: 0 }} animate={{ scale: [0, 1.4, 1], opacity: [0, 1, 1] }}
         transition={{ delay: 0.72, duration: 0.5, times: [0, 0.6, 1] }}
-        style={{ position: "absolute", zIndex: 2, fontSize: Math.round(44 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, fontStyle: "italic", letterSpacing: 2, textShadow: "0 0 30px rgba(255,255,255,0.85), 0 4px 20px rgba(0,0,0,0.5)" }}
+        style={{ position: "absolute", zIndex: 2, fontSize: Math.round(44 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: introText, fontStyle: "italic", letterSpacing: 2, textShadow: "0 0 30px rgba(255,255,255,0.85), 0 4px 20px rgba(0,0,0,0.5)" }}
       >VS</motion.div>
       <motion.div
         initial={{ scale: 0, opacity: 0.9 }} animate={{ scale: 3.2, opacity: 0 }}
@@ -146,7 +180,7 @@ function VSIntro({ leftPhoto, leftName, rightPhoto, rightName, onDone }) {
         style={{ position: "absolute", width: 56, height: 56, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,255,255,0.95), transparent 70%)", zIndex: 1 }}
       />
 
-      <div style={{ position: "absolute", bottom: 46, fontSize: Math.round(12 * ft.scale), fontWeight: ft.bold ? 900 : 800, color: ft.text, opacity: 0.8, letterSpacing: 1 }}>
+      <div style={{ position: "absolute", bottom: 46, fontSize: Math.round(12 * ft.scale), fontWeight: ft.bold ? 900 : 800, color: introText, opacity: 0.8, letterSpacing: 1 }}>
         🎉 Friend Celebration
       </div>
     </motion.div>
@@ -243,28 +277,40 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
             Setting -> Theme -> Friend Celebration instead of making the
             user close this popup and click through the tabs themselves. */}
         <motion.button whileHover={{ scale: 1.1, rotate: 25 }} whileTap={{ scale: 0.9 }} onClick={onOpenThemeSettings} title="Friend Celebration theme"
-          style={{ background: "rgba(255,255,255,0.12)", border: "none", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer" }}>
+          style={{ background: ft.glassic ? GLASSIC_TOKENS.chipBg : "rgba(255,255,255,0.12)", border: "none", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", color: ft.glassic ? GLASSIC_TOKENS.text : "#fff", cursor: "pointer" }}>
           <Settings size={16} />
         </motion.button>
         <motion.button whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose}
-          style={{ background: "rgba(255,255,255,0.12)", border: "none", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer" }}>
+          style={{ background: ft.glassic ? GLASSIC_TOKENS.chipBg : "rgba(255,255,255,0.12)", border: "none", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", color: ft.glassic ? GLASSIC_TOKENS.text : "#fff", cursor: "pointer" }}>
           <X size={17} />
         </motion.button>
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", marginTop: 22, display: "flex", flexDirection: "column", gap: 22 }} className="btl-scroll">
         {/* invite */}
-        <div style={{ background: "rgba(255,255,255,0.08)", backdropFilter: "blur(14px) saturate(150%)", WebkitBackdropFilter: "blur(14px) saturate(150%)", borderRadius: 16, padding: 16, border: "1px solid rgba(255,255,255,0.14)" }}>
+        <div style={{
+          background: ft.glassic ? GLASSIC_TOKENS.cardBg : "rgba(255,255,255,0.08)",
+          backdropFilter: ft.glassic ? GLASSIC_TOKENS.blur : "blur(14px) saturate(150%)",
+          WebkitBackdropFilter: ft.glassic ? GLASSIC_TOKENS.blur : "blur(14px) saturate(150%)",
+          borderRadius: 16, padding: 16,
+          border: ft.glassic ? GLASSIC_TOKENS.cardBorder : "1px solid rgba(255,255,255,0.14)",
+          boxShadow: ft.glassic ? GLASSIC_TOKENS.cardShadow : "none",
+        }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
             <UserPlus size={15} color={C.accent} />
-            <span style={{ fontSize: 13, fontWeight: 900, color: "#fff" }}>Invite a Friend</span>
+            <span style={{ fontSize: 13, fontWeight: 900, color: ft.glassic ? GLASSIC_TOKENS.text : "#fff" }}>Invite a Friend</span>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <input
               value={email} onChange={(e) => { setEmail(e.target.value); setStatus(null); }}
               onKeyDown={(e) => e.key === "Enter" && send()}
               placeholder="friend's email address..."
-              style={{ flex: 1, fontSize: 12, padding: "10px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", color: "#fff", outline: "none" }}
+              style={{
+                flex: 1, fontSize: 12, padding: "10px 12px", borderRadius: 10, outline: "none",
+                border: ft.glassic ? GLASSIC_TOKENS.inputBorder : "1px solid rgba(255,255,255,0.18)",
+                background: ft.glassic ? GLASSIC_TOKENS.inputBg : "rgba(255,255,255,0.08)",
+                color: ft.glassic ? GLASSIC_TOKENS.text : "#fff",
+              }}
             />
             <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={send} disabled={sending}
               style={{ border: "none", background: C.accent, color: "#fff", borderRadius: 10, padding: "0 16px", fontWeight: 800, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, opacity: sending ? 0.7 : 1 }}>
@@ -283,15 +329,15 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
 
         {/* incoming requests */}
         <div>
-          <div style={{ fontSize: 11, fontWeight: 900, color: "rgba(255,255,255,0.65)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          <div style={{ fontSize: 11, fontWeight: 900, color: ft.glassic ? GLASSIC_TOKENS.muted : "rgba(255,255,255,0.65)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
             Requests {incoming.length > 0 && `(${incoming.length})`}
           </div>
-          {incoming.length === 0 && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Koi naya friend request nahi hai.</div>}
+          {incoming.length === 0 && <div style={{ fontSize: 11, color: ft.glassic ? GLASSIC_TOKENS.faint : "rgba(255,255,255,0.4)" }}>Koi naya friend request nahi hai.</div>}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <AnimatePresence>
               {incoming.map((req) => (
                 <motion.div key={req.id} layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }}
-                  style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.08)", borderRadius: 12, padding: "9px 12px" }}>
+                  style={{ display: "flex", alignItems: "center", gap: 10, background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.08)", borderRadius: 12, padding: "9px 12px" }}>
                   <Avatar name={req.fromName} photoURL={req.fromPhoto} size={34} />
                   <div style={{ fontSize: Math.round(12 * ft.scale), fontWeight: ft.bold ? 900 : 800, color: ft.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{req.fromName}</div>
                   <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} disabled={busyId === req.id}
@@ -313,17 +359,17 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
         {/* outgoing */}
         {outgoing.length > 0 && (
           <div>
-            <div style={{ fontSize: 11, fontWeight: 900, color: "rgba(255,255,255,0.65)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Sent</div>
+            <div style={{ fontSize: 11, fontWeight: 900, color: ft.glassic ? GLASSIC_TOKENS.muted : "rgba(255,255,255,0.65)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Sent</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {outgoing.map((req) => (
-                <div key={req.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: "9px 12px" }}>
+                <div key={req.id} style={{ display: "flex", alignItems: "center", gap: 10, background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: "9px 12px" }}>
                   <Avatar name={req.toName} photoURL={req.toPhoto} size={28} />
-                  <div style={{ fontSize: 11.5, fontWeight: 700, color: "rgba(255,255,255,0.75)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: ft.glassic ? GLASSIC_TOKENS.text : "rgba(255,255,255,0.75)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     Waiting for {req.toName || "a reply"}...
                   </div>
                   <motion.button whileTap={{ scale: 0.9 }} disabled={busyId === req.id}
                     onClick={withBusy(req.id, () => cancelFriendRequest(req.id))}
-                    style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>
+                    style={{ background: "transparent", border: "none", color: ft.glassic ? GLASSIC_TOKENS.muted : "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>
                     Cancel
                   </motion.button>
                 </div>
@@ -335,19 +381,19 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
         {/* discover — every other user on the dashboard, request them directly */}
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8 }}>
-            <Users size={13} color="rgba(255,255,255,0.65)" />
-            <span style={{ fontSize: 11, fontWeight: 900, color: "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: 0.5 }}>
+            <Users size={13} color={ft.glassic ? GLASSIC_TOKENS.muted : "rgba(255,255,255,0.65)"} />
+            <span style={{ fontSize: 11, fontWeight: 900, color: ft.glassic ? GLASSIC_TOKENS.muted : "rgba(255,255,255,0.65)", textTransform: "uppercase", letterSpacing: 0.5 }}>
               Discover {allUsers && discoverList.length > 0 && `(${discoverList.length})`}
             </span>
           </div>
           {allUsers === null && (
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ fontSize: 11, color: ft.glassic ? GLASSIC_TOKENS.faint : "rgba(255,255,255,0.4)", display: "flex", alignItems: "center", gap: 6 }}>
               <Loader2 size={12} className="btl-spin" /> Users load ho rahe hain...
             </div>
           )}
-          {discoverErr && <div style={{ fontSize: 11, color: "#f4a261" }}>Users list load nahi ho payi, dobara try karein.</div>}
+          {discoverErr && <div style={{ fontSize: 11, color: "#c0392b" }}>Users list load nahi ho payi, dobara try karein.</div>}
           {allUsers !== null && !discoverErr && discoverList.length === 0 && (
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Abhi koi naya user dikhne ke liye nahi hai.</div>
+            <div style={{ fontSize: 11, color: ft.glassic ? GLASSIC_TOKENS.faint : "rgba(255,255,255,0.4)" }}>Abhi koi naya user dikhne ke liye nahi hai.</div>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <AnimatePresence>
@@ -355,7 +401,7 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
                 const st = discoverStatus[u.uid];
                 return (
                   <motion.div key={u.uid} layout initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 12 }}
-                    style={{ display: "flex", flexDirection: "column", gap: 4, background: "rgba(255,255,255,0.06)", borderRadius: 12, padding: "9px 12px" }}>
+                    style={{ display: "flex", flexDirection: "column", gap: 4, background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.06)", borderRadius: 12, padding: "9px 12px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <Avatar name={u.name} photoURL={u.photoURL} size={32} />
                       <div style={{ fontSize: Math.round(12 * ft.scale), fontWeight: ft.bold ? 900 : 800, color: ft.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</div>
@@ -366,7 +412,7 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
                       </motion.button>
                     </div>
                     {st && !st.ok && (
-                      <div style={{ fontSize: 10, fontWeight: 700, color: "#f4a261" }}>{STATUS_MSG[st.reason] || STATUS_MSG.error}</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: ft.glassic ? "#c0392b" : "#f4a261" }}>{STATUS_MSG[st.reason] || STATUS_MSG.error}</div>
                     )}
                   </motion.div>
                 );
@@ -377,14 +423,21 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
 
         {/* friends */}
         <div>
-          <div style={{ fontSize: 11, fontWeight: 900, color: "rgba(255,255,255,0.65)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          <div style={{ fontSize: 11, fontWeight: 900, color: ft.glassic ? GLASSIC_TOKENS.muted : "rgba(255,255,255,0.65)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>
             Your Friends {friendships.length > 0 && `(${friendships.length})`}
           </div>
-          {friendships.length === 0 && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>Abhi tak koi friend nahi — upar se invite bhejein.</div>}
+          {friendships.length === 0 && <div style={{ fontSize: 11, color: ft.glassic ? GLASSIC_TOKENS.faint : "rgba(255,255,255,0.4)" }}>Abhi tak koi friend nahi — upar se invite bhejein.</div>}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 12, paddingBottom: 10 }}>
             {friendships.map((f) => (
               <motion.div key={f.id} whileHover={{ y: -4, scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={() => onSelectFriend(f)}
-                style={{ cursor: "pointer", background: "rgba(255,255,255,0.08)", backdropFilter: "blur(14px) saturate(150%)", WebkitBackdropFilter: "blur(14px) saturate(150%)", borderRadius: 14, padding: "14px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, border: "1px solid rgba(255,255,255,0.12)" }}>
+                style={{
+                  cursor: "pointer", borderRadius: 14, padding: "14px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+                  background: ft.glassic ? GLASSIC_TOKENS.cardBg : "rgba(255,255,255,0.08)",
+                  backdropFilter: ft.glassic ? GLASSIC_TOKENS.blur : "blur(14px) saturate(150%)",
+                  WebkitBackdropFilter: ft.glassic ? GLASSIC_TOKENS.blur : "blur(14px) saturate(150%)",
+                  border: ft.glassic ? GLASSIC_TOKENS.cardBorder : "1px solid rgba(255,255,255,0.12)",
+                  boxShadow: ft.glassic ? GLASSIC_TOKENS.cardShadow : "none",
+                }}>
                 <Avatar name={f.name} photoURL={f.photoURL} size={48} />
                 <div style={{ fontSize: Math.round(11 * ft.scale), fontWeight: ft.bold ? 900 : 800, color: ft.text, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", width: "100%" }}>{f.name}</div>
                 <div style={{ fontSize: 8.5, fontWeight: 700, color: C.accent, display: "flex", alignItems: "center", gap: 3 }}><Handshake size={10} /> Open</div>
@@ -403,15 +456,15 @@ function GoalMiniList({ title, items }) {
   const ft = useFriendTheme();
   const done = items.filter((g) => g.done).length;
   return (
-    <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flex: 1, minHeight: 70, overflowY: "auto" }} className="btl-scroll">
+    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flex: 1, minHeight: 70, overflowY: "auto" }} className="btl-scroll">
       <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: 0.6, marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
         <span>{title}</span><span>{done}/{items.length}</span>
       </div>
-      {items.length === 0 && <div style={{ fontSize: Math.round(10 * ft.scale), color: ft.text, opacity: 0.3 }}>No goals yet.</div>}
+      {items.length === 0 && <div style={{ fontSize: Math.round(10 * ft.scale), color: ft.text, opacity: ft.glassic ? 0.5 : 0.3 }}>No goals yet.</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {items.map((g) => (
           <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: Math.round(10.5 * ft.scale), fontWeight: ft.bold ? 700 : 400, color: g.done ? ft.text : ft.text, opacity: g.done ? 0.4 : 1, textDecoration: g.done ? "line-through" : "none" }}>
-            {g.done ? <CheckCircle2 size={12} color="#7bd389" /> : <Circle size={12} color="rgba(255,255,255,0.35)" />}
+            {g.done ? <CheckCircle2 size={12} color="#2e7d32" /> : <Circle size={12} color={ft.glassic ? "rgba(28,28,30,0.3)" : "rgba(255,255,255,0.35)"} />}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.text || "Goal"}</span>
           </div>
         ))}
@@ -427,7 +480,14 @@ function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dail
     <motion.div
       initial={{ opacity: 0, x: side === "me" ? -20 : 20 }} animate={{ opacity: 1, x: 0 }}
       transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 22 }}
-      style={{ background: "rgba(255,255,255,0.06)", backdropFilter: "blur(16px) saturate(150%)", WebkitBackdropFilter: "blur(16px) saturate(150%)", border: `1px solid ${accent}44`, borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}
+      style={{
+        borderRadius: 18, padding: 16, display: "flex", flexDirection: "column", gap: 12, minHeight: 0,
+        background: ft.glassic ? GLASSIC_TOKENS.cardBg : "rgba(255,255,255,0.06)",
+        backdropFilter: ft.glassic ? GLASSIC_TOKENS.blur : "blur(16px) saturate(150%)",
+        WebkitBackdropFilter: ft.glassic ? GLASSIC_TOKENS.blur : "blur(16px) saturate(150%)",
+        border: ft.glassic ? `1px solid ${accent}55` : `1px solid ${accent}44`,
+        boxShadow: ft.glassic ? GLASSIC_TOKENS.cardShadow : "none",
+      }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Avatar name={name} photoURL={photoURL} size={54} />
@@ -445,11 +505,11 @@ function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dail
       <div style={{ display: "flex", gap: 8 }}>
         <div style={{ flex: 1, background: "rgba(74,124,89,0.18)", borderRadius: 10, padding: "7px 10px" }}>
           <div style={{ fontSize: Math.round(8.5 * ft.scale), fontWeight: ft.bold ? 800 : 700, color: ft.text, opacity: 0.6 }}>Total Earn</div>
-          <div style={{ fontSize: Math.round(13 * ft.scale), fontWeight: 900, color: "#7bd389" }}>₹{Math.round(totalEarn)}</div>
+          <div style={{ fontSize: Math.round(13 * ft.scale), fontWeight: 900, color: ft.glassic ? GLASSIC_TOKENS.earnColor : "#7bd389" }}>₹{Math.round(totalEarn)}</div>
         </div>
         <div style={{ flex: 1, background: "rgba(230,57,70,0.18)", borderRadius: 10, padding: "7px 10px" }}>
           <div style={{ fontSize: Math.round(8.5 * ft.scale), fontWeight: ft.bold ? 800 : 700, color: ft.text, opacity: 0.6 }}>Total Spend</div>
-          <div style={{ fontSize: Math.round(13 * ft.scale), fontWeight: 900, color: "#f4a261" }}>₹{Math.round(totalSpend)}</div>
+          <div style={{ fontSize: Math.round(13 * ft.scale), fontWeight: 900, color: ft.glassic ? GLASSIC_TOKENS.spendColor : "#f4a261" }}>₹{Math.round(totalSpend)}</div>
         </div>
       </div>
 
@@ -484,13 +544,13 @@ function FriendVSView({ user, myState, myStats, friend, friendState, onBack, onO
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
         <motion.button whileHover={{ x: -3 }} whileTap={{ scale: 0.92 }} onClick={onBack}
-          style={{ background: "rgba(255,255,255,0.12)", border: "none", borderRadius: 999, padding: "7px 14px", color: "#fff", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
+          style={{ background: ft.glassic ? GLASSIC_TOKENS.chipBg : "rgba(255,255,255,0.12)", border: "none", borderRadius: 999, padding: "7px 14px", color: ft.glassic ? GLASSIC_TOKENS.text : "#fff", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
           <ArrowLeft size={14} /> Back
         </motion.button>
         {/* Friend Celebration theme shortcut — same jump-to Setting ->
             Theme -> Friend Celebration as the hub header's gear icon. */}
         <motion.button whileHover={{ scale: 1.1, rotate: 25 }} whileTap={{ scale: 0.9 }} onClick={onOpenThemeSettings} title="Friend Celebration theme"
-          style={{ background: "rgba(255,255,255,0.12)", border: "none", borderRadius: "50%", width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer", flexShrink: 0 }}>
+          style={{ background: ft.glassic ? GLASSIC_TOKENS.chipBg : "rgba(255,255,255,0.12)", border: "none", borderRadius: "50%", width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", color: ft.glassic ? GLASSIC_TOKENS.text : "#fff", cursor: "pointer", flexShrink: 0 }}>
           <Settings size={14} />
         </motion.button>
         <div style={{ flex: 1, textAlign: "center", fontSize: Math.round(14 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minWidth: 0 }}>
@@ -572,31 +632,36 @@ function FriendChatModal({ user, friend, fsId, onClose }) {
         initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 14 }}
         transition={{ type: "spring", stiffness: 300, damping: 28 }}
         style={{
-          width: "min(420px, 92vw)", height: "min(560px, 82vh)", background: "rgba(37,36,34,0.78)",
-          backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)",
-          border: "1px solid rgba(255,255,255,0.18)", borderRadius: 22, boxShadow: "0 30px 80px rgba(0,0,0,0.5)",
+          width: "min(420px, 92vw)", height: "min(560px, 82vh)",
+          background: ft.glassic ? "linear-gradient(160deg, rgba(255,255,255,0.82), rgba(238,240,243,0.75))" : "rgba(37,36,34,0.78)",
+          backdropFilter: ft.glassic ? GLASSIC_TOKENS.blur : "blur(24px) saturate(180%)",
+          WebkitBackdropFilter: ft.glassic ? GLASSIC_TOKENS.blur : "blur(24px) saturate(180%)",
+          border: ft.glassic ? "1px solid rgba(255,255,255,0.85)" : "1px solid rgba(255,255,255,0.18)",
+          borderRadius: 22,
+          boxShadow: ft.glassic ? "0 30px 70px rgba(163,177,198,0.45), 0 2px 0 rgba(255,255,255,0.9) inset" : "0 30px 80px rgba(0,0,0,0.5)",
           display: "flex", flexDirection: "column", overflow: "hidden",
         }}
       >
-        <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid rgba(255,255,255,0.12)" }}>
+        <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: ft.glassic ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.12)" }}>
           <Avatar name={friend?.name} photoURL={friend?.photoURL} size={34} />
           <div style={{ fontSize: Math.round(13 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{friend?.name}</div>
           <motion.button whileHover={{ rotate: 90, scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={onClose}
-            style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: "50%", width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer" }}>
+            style={{ background: ft.glassic ? GLASSIC_TOKENS.chipBg : "rgba(255,255,255,0.1)", border: "none", borderRadius: "50%", width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", color: ft.glassic ? GLASSIC_TOKENS.text : "#fff", cursor: "pointer" }}>
             <X size={14} />
           </motion.button>
         </div>
 
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 14px 4px", display: "flex", flexDirection: "column", gap: 8 }} className="btl-scroll">
-          {messages.length === 0 && <div style={{ margin: "auto", fontSize: 11, color: "rgba(255,255,255,0.35)" }}>Say hi to {friend?.name}! 👋</div>}
+          {messages.length === 0 && <div style={{ margin: "auto", fontSize: 11, color: ft.glassic ? GLASSIC_TOKENS.faint : "rgba(255,255,255,0.35)" }}>Say hi to {friend?.name}! 👋</div>}
           {messages.map((m) => {
             const mine = m.fromUid === user.uid;
             return (
               <motion.div key={m.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
                 style={{
                   alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "78%",
-                  background: mine ? "linear-gradient(135deg,#fca311,#e07a5f)" : "rgba(255,255,255,0.1)",
-                  color: "#fff", borderRadius: mine ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                  background: mine ? "linear-gradient(135deg,#fca311,#e07a5f)" : (ft.glassic ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.1)"),
+                  color: mine ? "#fff" : (ft.glassic ? GLASSIC_TOKENS.text : "#fff"),
+                  borderRadius: mine ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
                   padding: "8px 12px", fontSize: 12, wordBreak: "break-word",
                 }}>
                 {m.text}
@@ -606,11 +671,16 @@ function FriendChatModal({ user, friend, fsId, onClose }) {
           <div ref={endRef} />
         </div>
 
-        <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid rgba(255,255,255,0.12)" }}>
+        <div style={{ display: "flex", gap: 8, padding: 12, borderTop: ft.glassic ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.12)" }}>
           <input
             value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()}
             placeholder="Type a message..."
-            style={{ flex: 1, fontSize: 12, padding: "10px 12px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.08)", color: "#fff", outline: "none" }}
+            style={{
+              flex: 1, fontSize: 12, padding: "10px 12px", borderRadius: 999, outline: "none",
+              border: ft.glassic ? GLASSIC_TOKENS.inputBorder : "1px solid rgba(255,255,255,0.18)",
+              background: ft.glassic ? GLASSIC_TOKENS.inputBg : "rgba(255,255,255,0.08)",
+              color: ft.glassic ? GLASSIC_TOKENS.text : "#fff",
+            }}
           />
           <motion.button whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.9 }} onClick={send} disabled={sending}
             style={{ width: 38, height: 38, borderRadius: "50%", border: "none", background: C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0, opacity: sending ? 0.7 : 1 }}>
@@ -677,12 +747,15 @@ export default function FriendCelebration({ user, myState, myStats, onClose, the
   const fsId = user && activeFriend ? friendshipId(user.uid, activeFriend.otherUid) : null;
 
   const ft = normalizeScopeTheme(theme);
+  const glassic = !!ft.liquidGlassic;
   const friendTheme = {
-    bg: ft.bg || FRIEND_THEME_DEFAULT.bg,
-    text: ft.text || FRIEND_THEME_DEFAULT.text,
+    bg: glassic ? GLASSIC_TOKENS.pageBg : (ft.bg || FRIEND_THEME_DEFAULT.bg),
+    text: glassic ? GLASSIC_TOKENS.text : (ft.text || FRIEND_THEME_DEFAULT.text),
     fontFamily: ft.font ? fontStackFor(ft.font) : undefined,
     bold: ft.bold,
     scale: ft.scale || 1,
+    glassic,
+    tokens: glassic ? GLASSIC_TOKENS : null,
   };
 
   return (
