@@ -1,6 +1,41 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🏋️ New — 19 more exercises added to Fitness → Exercise (this update)
+## 🏋️ New — 13 more exercises added to Fitness → Exercise (this update)
+13 more cards appended to `FITNESS_DATA.exerciseAlt`: Forearm Plank
+(Fists), Banded Side-Lying Clamshell, Standing Overhead Reach Stretch,
+Weighted Toe Reach (Dumbbell), Single-Leg Raise (Lying), Tabletop
+Crunch Hold, Seated Single-Leg Stretch, Lying Single-Leg Raise (Hands
+Behind Head), Banded Sumo Squat, Straight-Leg Toe Touch, V-Up (Toe
+Touch), Prone Single-Leg Raise, Prone Full-Body Reach. 14 files were
+sent this round but one was an exact duplicate upload (same GIF twice)
+— it was only added once. Total exerciseAlt count is now 64.
+
+## 🏋️ 7 more exercises added to Fitness → Exercise (earlier update)
+7 more cards appended to `FITNESS_DATA.exerciseAlt` in
+`components/BTLDashboard.jsx`: Figure-4 Stretch (Reclining Pigeon),
+Boat Pose Hold (V-Sit), Bicycle Crunch, Scissor Kicks, Superman Reach,
+Box Step-Up, Standing Mountain Pose (Posture Reset). Images live in
+`public/fitness/` (one is a `.jpg`, rest `.gif` — `<img>` handles both
+fine). Two of the images you sent this round (cat-cow-stretch,
+seated-leg-extension-bench) were exact duplicates of ones already
+added in the previous update, so they were skipped — not added twice.
+
+## 🏋️ 14 more exercises added to Fitness → Exercise (earlier update)
+14 new GIFs (mountain climber, standing knee drive, high knee march,
+three-legged downward dog, standard plank hold, seated half-split
+stretch, lying vertical leg raise, bodyweight squat with hands behind
+head, straight-leg raise hold, spiderman plank crunch, dumbbell
+pullover, standing wide-stance side bend, cat-cow stretch, seated leg
+extension on a bench) were dropped into `public/fitness/` and appended
+as new cards to `FITNESS_DATA.exerciseAlt` in
+`components/BTLDashboard.jsx` — same shape as every existing card
+(`id`, `name`, `duration`, `gif`, `steps`, `benefits`), so they show up
+automatically in **Fitness → Exercise** (the "alt" list, toggled with
+the swap button) with no other code changes. Exercise names/steps/
+benefits were inferred from the GIF poses — say the word if any need
+renaming or re-categorizing.
+
+## 🏋️ 19 more exercises added to Fitness → Exercise (earlier update)
 19 new GIFs (donkey kick, quadruped leg extension, straight-arm plank,
 child's pose stretch, cross-arm crunch, plank knee raise, reclined
 knee-bend rest, side-lying relaxation stretch, standing side leg raise,
