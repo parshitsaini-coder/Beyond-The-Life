@@ -46,17 +46,6 @@ const OUTER_RADIUS = 190;
 const SWEEP_DEG = 210; // total angular spread, centered straight up
 const DEADZONE = 34; // px — releasing inside this radius of the circle cancels
 const CHIP_SIZE = 56; // px, icon-only touch target
-// Cap on how far the orb's own "leash follow" can physically move it —
-// the drag itself is tracked over the full ring radius (up to OUTER_RADIUS)
-// for hover-matching, but the button visibly drifting that far would read
-// as broken rather than liquid. This keeps the leash to a believable nudge
-// while LiquidOrbButton's internal tail/stretch still scales with the full
-// drag distance.
-const LEASH_MAX = 26;
-
-function clamp(n, lo, hi) {
-  return Math.max(lo, Math.min(hi, n));
-}
 
 function ringPositions(count, radius, sweep, offsetDeg = 0) {
   const positions = [];
@@ -100,12 +89,13 @@ export default function RadialDialMenu({ onSelect }) {
   const [hoverId, setHoverId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [orbPulse, setOrbPulse] = useState(null);
-  // Raw pointer offset from the orb's own center, fed straight into
-  // LiquidOrbButton's `pull` prop for the drag-follow tail/mass-shift, and
-  // also used (scaled down) to give the whole button a small elastic
-  // leash-follow via framer-motion below — snaps back with a spring the
-  // instant this resets to {0,0} on release.
-  const [pull, setPull] = useState({ x: 0, y: 0 });
+  const [orbSplash, setOrbSplash] = useState(null);
+  // Raw finger offset from the orb's own center, updated every pointermove
+  // while held down — this is what LiquidOrbButton reads to slosh the
+  // liquid mass toward the finger. Kept separate from the DEADZONE-gated
+  // hoverId logic above: the liquid should react to the very first bit of
+  // movement, well before the drag is far enough to count as "over an item".
+  const [dragVector, setDragVector] = useState({ dx: 0, dy: 0 });
   const circleRef = useRef(null);
   const originRef = useRef({ x: 0, y: 0 });
 
@@ -129,7 +119,10 @@ export default function RadialDialMenu({ onSelect }) {
     originRef.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     setOpen(true);
     setHoverId(null);
-    setOrbPulse({ key: Date.now(), variant: "press" });
+    setDragVector({ dx: 0, dy: 0 });
+    const now = Date.now();
+    setOrbPulse({ key: now, variant: "press" });
+    setOrbSplash({ key: now }); // fast liquid pop the instant it's pressed
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp, { once: true });
   };
@@ -138,10 +131,7 @@ export default function RadialDialMenu({ onSelect }) {
     const dx = e.clientX - originRef.current.x;
     const dy = e.clientY - originRef.current.y;
     const dist = Math.hypot(dx, dy);
-    // Liquid follow tracks the full raw drag every move — independent of
-    // the menu's own DEADZONE below, so the orb already starts stretching
-    // toward the finger before the menu itself commits to a hover target.
-    setPull({ x: dx, y: dy });
+    setDragVector({ dx, dy }); // liquid mass tracks the finger every frame
     if (dist < DEADZONE) {
       setHoverId(null);
       return;
@@ -155,7 +145,7 @@ export default function RadialDialMenu({ onSelect }) {
     const dx = e.clientX - originRef.current.x;
     const dy = e.clientY - originRef.current.y;
     const dist = Math.hypot(dx, dy);
-    setPull({ x: 0, y: 0 });
+    setDragVector({ dx: 0, dy: 0 }); // release — liquid springs back to center
     if (dist < DEADZONE) {
       // released back near the circle — cancel, no selection
       setOpen(false);
@@ -262,21 +252,8 @@ export default function RadialDialMenu({ onSelect }) {
       <motion.button
         ref={circleRef}
         onPointerDown={handlePointerDown}
-        animate={{
-          scale: open ? 1.08 : 1,
-          x: clamp(pull.x * 0.22, -LEASH_MAX, LEASH_MAX),
-          y: clamp(pull.y * 0.22, -LEASH_MAX, LEASH_MAX),
-        }}
-        transition={{
-          scale: { type: "spring", stiffness: 400, damping: 24 },
-          // Snappier while actively being dragged so the orb feels
-          // "leashed" to the finger with barely any lag; springs back with
-          // a soft overshoot the moment pull resets to {0,0} on release —
-          // that overshoot is what reads as elastic/liquid rather than a
-          // rigid disc just re-centering.
-          x: open ? { type: "spring", stiffness: 900, damping: 26 } : { type: "spring", stiffness: 260, damping: 14 },
-          y: open ? { type: "spring", stiffness: 900, damping: 26 } : { type: "spring", stiffness: 260, damping: 14 },
-        }}
+        animate={{ scale: open ? 1.08 : 1 }}
+        transition={{ type: "spring", stiffness: 400, damping: 24 }}
         style={{
           pointerEvents: "auto",
           touchAction: "none",
@@ -294,7 +271,13 @@ export default function RadialDialMenu({ onSelect }) {
         }}
         aria-label="Open navigation dial"
       >
-        <LiquidOrbButton size={CIRCLE_SIZE} active={open} pulse={orbPulse} pull={{ dx: pull.x, dy: pull.y }} />
+        <LiquidOrbButton
+          size={CIRCLE_SIZE}
+          active={open}
+          pulse={orbPulse}
+          splash={orbSplash}
+          dragVector={dragVector}
+        />
       </motion.button>
     </div>
   );
