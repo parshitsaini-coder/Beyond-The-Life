@@ -355,6 +355,24 @@ const PANEL_THEME_PRESETS = [
      job of picking readable text for whatever ends up behind it. No card
      anywhere renders as a flat opaque fill under this preset. */
   { id: "glass", label: "Glass", bg: "#2b2f52", text: "#f5f3ff", widgetBg: "#ffffff", swatch: "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.35) 45%, #2b2f52 100%)" },
+  /* "Liquid Glass" (this update) — the real, vivid Apple-style Liquid Glass
+     look: near-black backdrop so the LiquidBackground's animated color
+     blobs read at full saturation, white `widgetBg` (same glassCardStyle()
+     frosted-card mechanism the "Glass" preset above already uses, so every
+     card app-wide instantly becomes a transparent/blurred glass pane), PLUS
+     a signature `liquidColors` field (below) that — only for this preset —
+     also recolors the Liquid Background itself to a vivid purple/cyan/rose/
+     amber rainbow instead of whatever the user last picked in Setting →
+     Background, so the blur blobs behind the glass read as colorful liquid
+     rather than muted brand hues. Fully "managed": once applied, the same
+     Setting → Background colour pickers + speed slider (state.liquidBg)
+     still edit these colours/blur speed directly, exactly like any other
+     preset's fine-tuning below. */
+  {
+    id: "liquidglass", label: "Liquid Glass", bg: "#05070d", text: "#f5f7ff", widgetBg: "#ffffff",
+    swatch: "linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.28) 38%, #7C3AED 55%, #06B6D4 70%, #F43F5E 85%, #F59E0B 100%)",
+    liquidColors: ["#7C3AED", "#06B6D4", "#F43F5E", "#F59E0B"],
+  },
 ];
 export function normalizeScopeTheme(t) {
   const src = t && typeof t === "object" ? t : {};
@@ -12540,6 +12558,18 @@ function BTLDashboardInner() {
     theme.widgets = normalizeWidgetThemes(widgets);
     theme.panelPreset = preset.id;
     s.theme = theme;
+    // "Liquid Glass" also drives the animated LiquidBackground's own palette
+    // (state.liquidBg) so its blur blobs show the signature vivid rainbow
+    // behind the new frosted-white glass cards, instead of whatever colors
+    // were previously picked in Setting → Background. Every other preset
+    // leaves state.liquidBg completely untouched, same as before.
+    if (Array.isArray(preset.liquidColors)) {
+      s.liquidBg = {
+        colors: [...preset.liquidColors],
+        speed: Number.isFinite(s.liquidBg?.speed) && s.liquidBg.speed > 0 ? s.liquidBg.speed : 1,
+        enabled: true,
+      };
+    }
     return s;
   });
   const resetPanelPreset = () => update((s) => {

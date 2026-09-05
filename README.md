@@ -1,5 +1,36 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## 🌈 New — "Liquid Glass" added to Panel Theme (this update)
+Setting → 🎨 Theme → **Panel Theme** now has a 9th preset, **Liquid Glass**,
+next to Ocean/Sunset/.../Glass:
+- One tap gives the whole dashboard the real, vivid Apple-style Liquid
+  Glass look — every widget/panel card already renders through the app's
+  existing `glassCardStyle()` (frosted, 20px blur + saturate), and this
+  preset pairs that with a near-black backdrop (`#05070d`) so the
+  transparent/blurred cards read as true floating glass, not muted flat
+  color.
+- **Colorful blur blobs, managed:** applying it also recolors the
+  existing animated Liquid Background (the gradient + morphing blobs +
+  particles system, Setting → Background) to a vivid purple/cyan/rose/
+  amber palette (`#7C3AED #06B6D4 #F43F5E #F59E0B`) instead of whatever
+  was picked before, so the blur behind the glass cards is genuinely
+  colorful liquid, matching the reference look. Every other preset leaves
+  Setting → Background completely untouched, same as always.
+- **Still fully managed afterward** — Setting → Background's 4 color
+  pickers and the animation-speed slider keep editing these exact same
+  colors/blur directly (`state.liquidBg`), so you can retint or reset
+  individual hues, slow/speed up the flow, or turn it off entirely,
+  without leaving the preset.
+- Implementation note: rather than pulling in the external
+  `liquid-glass-js` library (which does per-element specular/refraction
+  via its own render pipeline and would've meant restructuring how every
+  widget is drawn), this reuses the app's own already-built frosted-glass
+  recipe (`glassCardStyle()`) + its own animated color-blob background
+  (`LiquidBackground.jsx`) — same visual family, zero new dependencies,
+  and it "just works" across every existing card instantly. Say the word
+  if you'd rather have the actual npm package wired in for a specific
+  spot (e.g. a hero card) instead.
+
 ## ✨ Life Story — Today's Entry is now a liquid-glass popup (this update)
 Redesigned `LifeStoryTab` in `components/BTLDashboard.jsx` per the marked-up
 screenshots:
