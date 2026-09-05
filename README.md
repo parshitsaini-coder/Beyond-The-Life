@@ -1,6 +1,29 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🏋️ New — 13 more exercises added to Fitness → Exercise (this update)
+## 🧘 New — 2 more yoga poses added (this update)
+2 more cards appended to `FITNESS_DATA.yoga` (now 13 total): High
+Plank Pose (Full-Body Stretch), Savasana (Corpse Pose). Images added
+to `public/yoga/`.
+
+## 🧘 8 more yoga poses added (earlier update)
+8 more cards appended to `FITNESS_DATA.yoga` (now 11 total): Ustrasana
+(Camel Pose), Constructive Rest Pose, Makarasana (Crocodile Pose),
+Virabhadrasana II (Warrior II), Marjaryasana (Cat Pose), Supported
+Savasana (Knees Bent), Salamba Bhujangasana (Sphinx Pose), Phalakasana
+(Plank Pose). Images added to `public/yoga/`. Same card shape as
+before (`id`, `name`, `duration`, `gif`, `steps`, `benefits`).
+
+## 🧘 Fitness → Yoga section populated (earlier update)
+`FITNESS_DATA.yoga` was empty before (`yoga: []`, showing the "Yoga
+jaldi aa rahe hain" placeholder) — 3 real-photo poses were added:
+Ardha Halasana (Half Plow Pose), Navasana (Boat Pose), and Ardha
+Sarvangasana (Half Shoulder Stand). Images live in a new
+`public/yoga/` folder (kept separate from `public/fitness/` for
+clarity). Same card shape as Exercise (`id`, `name`, `duration`,
+`gif`, `steps`, `benefits`) — Fitness → Yoga tab now shows these
+instead of the empty state.
+
+## 🏋️ 13 more exercises added to Fitness → Exercise (earlier update)
 13 more cards appended to `FITNESS_DATA.exerciseAlt`: Forearm Plank
 (Fists), Banded Side-Lying Clamshell, Standing Overhead Reach Stretch,
 Weighted Toe Reach (Dumbbell), Single-Leg Raise (Lying), Tabletop
