@@ -22,6 +22,8 @@ import { ensurePublicProfile, useIncomingFriendRequestCount } from "@/lib/friend
 import FriendCelebration from "@/components/FriendCelebration";
 import BTLLoadingScreen from "@/components/BTLLoadingScreen";
 import LiquidBackground, { LIQUID_BG_DEFAULT_COLORS } from "@/components/LiquidBackground";
+import RadialDialMenu from "@/components/RadialDialMenu";
+import RadialPanel from "@/components/RadialPanel";
 
 /* ============================================================
    BEYOND THE LIFE (BTL)  —  personal life-goals dashboard
@@ -13267,6 +13269,13 @@ function BTLDashboardInner() {
   const [focusMode, setFocusMode] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [friendOpen, setFriendOpen] = useState(false); // Friend Celebration panel
+  // Step 7 — mobile radial nav. Only "widget" kind items (Daily Goal, Entry Goals,
+  // Life Big Goals, Clock & Alarm, Life Rules, Timer, Time Table, Calendar) need this:
+  // they don't have a full-screen or modal presentation today, so selecting one opens
+  // the same widgetsMap[...] content (used by the desktop grid) inside a RadialPanel.
+  // "tab" and "modal" kind items reuse existing setTab/setMemOpen/etc — see
+  // handleRadialSelect below — since those already ARE full screens or overlays.
+  const [activeRadialWidget, setActiveRadialWidget] = useState(null);
   const [saveStatus, setSaveStatus] = useState("idle"); // "idle" | "saving" | "saved"
   const [activeAlarm, setActiveAlarm] = useState(null); // { id, time } | null — Clock & Alarm widget (this update)
   const incomingFriendReqCount = useIncomingFriendRequestCount(fbUser?.uid);
@@ -13829,9 +13838,24 @@ function BTLDashboardInner() {
     focusTimer: <FocusTimerWidget focusTimer={normalizeFocusTimer(state.focusTimer)} onToggle={toggleFocusTimer} onAddCategory={addFocusCategory} onRemoveCategory={removeFocusCategory} accent={C.accent} cardBg={theme.widgets.focusTimer?.bg} />,
   };
 
+  // Step 7 — the one thing every radial item selection funnels through. Deliberately
+  // thin: it doesn't introduce any new navigation concept, it just calls whatever the
+  // existing control for that feature already called (setTab, setMemOpen, openSettings,
+  // setFriendOpen, setShowShare) — same state, same Firestore-synced data, same
+  // components. Only "widget" kind needs a new presentation (see activeRadialWidget).
+  const handleRadialSelect = (item) => {
+    if (item.kind === "widget") { setActiveRadialWidget(item); return; }
+    if (item.kind === "tab") { setTab(item.id); return; }
+    // kind === "modal"
+    if (item.id === "memory") setMemOpen(true);
+    else if (item.id === "settings") openSettings();
+    else if (item.id === "friend") setFriendOpen(true);
+    else if (item.id === "share") setShowShare(true);
+  };
+
   return (
     <DashboardThemeCtx.Provider value={dashTheme}>
-    <div ref={dashboardRootRef} style={{
+    <div ref={dashboardRootRef} className="btl-app-root" style={{
       fontFamily: "Inter, system-ui, sans-serif", background: dashTheme.bg, color: dashTheme.text,
       height: "100%", maxHeight: "100%", borderRadius: 14, padding: 14, position: "relative", overflow: "hidden",
       border: `1px solid #ece7d8`, fontSize: 11, boxSizing: "border-box",
@@ -13921,16 +13945,70 @@ function BTLDashboardInner() {
         }
         .btl-milestone-banner { animation: btlMilestonePop 2.6s ease forwards; }
         input, textarea, button { font-family: inherit; }
+
+        /* ---------------- Step 5 — Mobile top bar (Back + Profile only) ----------------
+           Design tokens for the radial mobile UI (Part A of the spec), kept as CSS custom
+           properties per the design-token pattern rather than repeating hex literals —
+           RadialDialMenu.jsx / RadialPanel.jsx already hardcode these two colors; a later
+           pass can point them at these same vars. Defining them here doesn't touch any
+           existing selector, so it's zero-risk for desktop.
+           HARD CONSTRAINT: everything below is gated behind the 768px breakpoint, same
+           pattern as the mobile-only stylesheet approach from the prior Trading Journal
+           project. Desktop keeps rendering .btl-desktop-header exactly as before; the two
+           mobile-only blocks are display:none until that breakpoint. */
+        :root {
+          --btl-radial-bg: #c0d6df;
+          --btl-radial-dark: #403d39;
+        }
+        .btl-mobile-topbar, .btl-mobile-statsrow, .btl-mobile-dial-home { display: none; }
+        @media (max-width: 768px) {
+          .btl-desktop-header { display: none !important; }
+          /* Step 6 — same #c0d6df override as app/layout.jsx's <body>, applied to this
+             card too so there's no gap between the two backgrounds. This intentionally
+             overrides the user's own Settings > Theme > Dashboard background color choice
+             on mobile — the radial redesign is a fixed shell look, same call as the
+             top/bottom bar colors already hardcoded into RadialDialMenu.jsx and
+             RadialPanel.jsx. Desktop keeps the customizable dashTheme.bg exactly as
+             before; nothing here touches that inline style or the value it reads from. */
+          .btl-app-root { background: var(--btl-radial-bg) !important; }
+          .btl-desktop-only-fab { display: none !important; }
+          .btl-desktop-only-grid { display: none !important; }
+          .btl-mobile-dial-home { display: block !important; flex: 1; min-height: 0; }
+          .btl-mobile-topbar {
+            display: flex; align-items: center; justify-content: space-between;
+            flex-shrink: 0; padding: calc(6px + env(safe-area-inset-top, 0px)) 2px 6px;
+          }
+          .btl-mobile-topbar-back {
+            width: 40px; height: 40px; min-width: 44px; min-height: 44px; border: none; border-radius: 50%;
+            background: var(--btl-radial-dark); color: #fffcf2; display: flex; align-items: center;
+            justify-content: center; cursor: pointer;
+          }
+          /* Quick-glance stats (streak / save status / progress rings) — kept as their own
+             slim row just below the top bar rather than crammed into it, per the "always
+             visible" decision. Horizontally scrollable so it never wraps or clips on the
+             narrowest supported width (360px). */
+          .btl-mobile-statsrow {
+            align-items: center; gap: 14px; flex-shrink: 0; padding: 0 4px 8px;
+            overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+          }
+          .btl-mobile-statsrow::-webkit-scrollbar { display: none; }
+        }
       `}</style>
 
       <ShineOverlay active={shine} />
       <Confetti active={confetti} />
       <MilestoneBanner streak={milestoneStreak} visible={!!milestoneStreak} />
-      <QuickNavFab
-        tab={tab} setTab={setTab}
-        focusMode={focusMode} setFocusMode={setFocusMode}
-        setMemOpen={setMemOpen} setSettingsOpen={openSettings}
-      />
+      {/* Step 7: QuickNavFab is desktop-only now — RadialDialMenu (rendered further down,
+          mobile-only, inside the "dashboard" tab branch) takes over its job on mobile.
+          Wrapping rather than editing QuickNavFab itself keeps it byte-for-byte identical
+          for desktop. */}
+      <div className="btl-desktop-only-fab">
+        <QuickNavFab
+          tab={tab} setTab={setTab}
+          focusMode={focusMode} setFocusMode={setFocusMode}
+          setMemOpen={setMemOpen} setSettingsOpen={openSettings}
+        />
+      </div>
 
       {tab === "layout" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
@@ -13954,8 +14032,54 @@ function BTLDashboardInner() {
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          {/* ---------- HEADER ---------- */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8, flexShrink: 0 }}>
+          {/* ---------- HEADER (mobile) — Step 5 ----------
+               Spec point 3: top bar is ONLY a Back button (left) + Profile icon (right),
+               nothing else. This is the dial home screen (root of the mobile nav), so
+               there's no "previous panel" to return to here — RadialPanel already renders
+               its own Back button once a panel is open (it's a full-screen overlay above
+               this). Back at the root falls back to browser history so it's still a real,
+               functional control rather than a dead decoration, per the spec's wording.
+               Reuses the existing ProfileButton/ProfilePopup as-is — same account popup,
+               just relocated. Focus Mode is intentionally NOT here per your call to keep
+               it desktop-only. */}
+          <div className="btl-mobile-topbar">
+            <button
+              type="button"
+              className="btl-mobile-topbar-back"
+              aria-label="Back"
+              onClick={() => { if (typeof window !== "undefined" && window.history.length > 1) window.history.back(); }}
+            >
+              <ArrowLeft size={19} />
+            </button>
+            <div style={{ position: "relative" }}>
+              <ProfileButton user={fbUser} open={profileOpen} onToggle={() => setProfileOpen((v) => !v)} />
+              <ProfilePopup
+                user={fbUser} open={profileOpen} onClose={() => setProfileOpen(false)}
+                onSignOut={() => { signOutUser(); setProfileOpen(false); }}
+                onSignIn={() => { signInWithGoogle(); setProfileOpen(false); }}
+              />
+            </div>
+          </div>
+
+          {/* ---------- QUICK STATS ROW (mobile) — Step 5 ----------
+               Your call: streak / save-status / progress rings move to their own always-
+               visible slim row below the top bar, rather than the top bar itself or
+               scattered into individual panels. Same live values as the desktop header,
+               just smaller rings so four of them plus the streak badge fit the row. */}
+          <div className="btl-mobile-statsrow">
+            <SaveStatus status={saveStatus} />
+            <DayStreakBadge streak={state.streak} accent={C.accent} dark={theme.analyticsSummaryColors.streak || C.dark} />
+            <RingStat size={44} pct={dailyPct} label="Daily" color={theme.analyticsSummaryColors.daily || C.accent} textColor={theme.analyticsSummaryColors.text || undefined} />
+            <RingStat size={44} pct={extryPct} label="Entry" color={theme.analyticsSummaryColors.extry || C.blue} textColor={theme.analyticsSummaryColors.text || undefined} />
+            <RingStat size={44} pct={overallPct} label="Goal" color={theme.analyticsSummaryColors.overall || dashTheme.text || C.dark} textColor={theme.analyticsSummaryColors.text || undefined} />
+            <RingStat size={44} pct={timeTablePct} label="Time Table" color={theme.analyticsSummaryColors.timeTable || "#8a6fd6"} textColor={theme.analyticsSummaryColors.text || undefined} />
+          </div>
+
+          {/* ---------- HEADER (desktop) ----------
+               Step 5 hard constraint: this block is untouched — same JSX, same inline
+               styles, same everything — only a className was added so mobile (<=768px)
+               can hide it via CSS. It still renders pixel-identical on desktop. */}
+          <div className="btl-desktop-header" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8, flexShrink: 0 }}>
             <motion.div
               animate={{ scale: [1, 1.025, 1] }}
               transition={{ duration: 3.4, repeat: Infinity, ease: "easeInOut" }}
@@ -14060,10 +14184,43 @@ function BTLDashboardInner() {
               )}
             </div>
           ) : (
-            /* ---------- CUSTOMIZABLE DASHBOARD (reorder/resize via the Layout tab; read-only here) ---------- */
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }} className="btl-scroll">
-              <WidgetGrid layout={state.layout} widgets={widgetsMap} />
-            </div>
+            <>
+              {/* ---------- CUSTOMIZABLE DASHBOARD (reorder/resize via the Layout tab; read-only here) ----------
+                   Step 7: desktop-only now. Same className-only pattern as the header —
+                   the JSX and WidgetGrid call are untouched, just newly wrapped so mobile
+                   can hide it via CSS. */}
+              <div className="btl-desktop-only-grid" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+                <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }} className="btl-scroll">
+                  <WidgetGrid layout={state.layout} widgets={widgetsMap} />
+                </div>
+              </div>
+
+              {/* ---------- RADIAL DIAL HOME (mobile) — Step 7 ----------
+                   This is the dial home screen itself: mostly empty by design (the
+                   #c0d6df background from Step 6 IS the screen), with RadialDialMenu
+                   fixed at the bottom. The 8 "widget" kind items reuse the exact same
+                   widgetsMap[...] JSX the desktop grid uses above — same Firestore-synced
+                   state, same components — just shown one at a time, full-screen, via
+                   RadialPanel instead of all at once in a grid. "tab" and "modal" kind
+                   items never reach here at all — handleRadialSelect routes those straight
+                   to the existing setTab/setMemOpen/openSettings/setFriendOpen/setShowShare
+                   calls, which is why only activeRadialWidget (never a tab/modal item) is
+                   ever passed into RadialPanel below. */}
+              <div className="btl-mobile-dial-home">
+                <RadialDialMenu onSelect={handleRadialSelect} />
+              </div>
+              <AnimatePresence>
+                {activeRadialWidget && (
+                  <RadialPanel
+                    key={activeRadialWidget.id}
+                    title={activeRadialWidget.label}
+                    onClose={() => setActiveRadialWidget(null)}
+                  >
+                    <div style={{ paddingTop: 8 }}>{widgetsMap[activeRadialWidget.id]}</div>
+                  </RadialPanel>
+                )}
+              </AnimatePresence>
+            </>
           )}
         </div>
       )}

@@ -4,18 +4,21 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2, ListChecks, Trophy, AlarmClock, ShieldCheck, Timer,
   CalendarClock, CalendarDays, Camera, BookOpen, Dumbbell, Settings,
-  PartyPopper, BarChart3, Share2,
+  PartyPopper, BarChart3, Share2, Wallet,
 } from "lucide-react";
 
 /* ---------------- CONFIG ----------------
-   Exact 15 items + order from the spec. Each carries the `tab` id it
-   should eventually open (Step 7 wiring) — filled in now so wiring
-   later is a one-line lookup, not a second pass through this list.
-   `kind` records what Step 1's audit found: "widget" items are the 7
-   that live on the freeform dashboard grid today and (per your Step 1
-   decision) will each become their own dedicated full-screen panel;
-   "tab" items already have a real full-screen; "modal" items already
-   open as an overlay. */
+   The spec's 15 items + order, PLUS Money Management as a 16th item
+   (added in Step 5: the header audit found it had an existing full tab
+   but no slot in the original list — you chose "add as a 16th radial
+   item" over folding it into Analytics or Settings-only). Each carries
+   the `tab` id it should eventually open (Step 7 wiring) — filled in
+   now so wiring later is a one-line lookup, not a second pass through
+   this list. `kind` records what Step 1's audit found: "widget" items
+   are the 7 that live on the freeform dashboard grid today and (per
+   your Step 1 decision) will each become their own dedicated
+   full-screen panel; "tab" items already have a real full-screen;
+   "modal" items already open as an overlay. */
 export const RADIAL_ITEMS = [
   { id: "dailyGoals", label: "Daily Goal", icon: CheckCircle2, kind: "widget" },
   { id: "extryGoals", label: "Entry Goals", icon: ListChecks, kind: "widget" },
@@ -32,6 +35,7 @@ export const RADIAL_ITEMS = [
   { id: "friend", label: "Friend Celebration", icon: PartyPopper, kind: "modal" },
   { id: "analytics", label: "Analytics", icon: BarChart3, kind: "tab" },
   { id: "share", label: "Share Journal", icon: Share2, kind: "modal" },
+  { id: "money", label: "Money Management", icon: Wallet, kind: "tab" },
 ];
 
 const CIRCLE_COLOR = "#403d39";

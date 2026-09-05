@@ -565,7 +565,12 @@ function FriendVSView({ user, myState, myStats, friend, friendState, onBack, onO
         </motion.button>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 18, overflowY: "auto" }} className="btl-scroll">
+      {/* Step 8 — mobile responsive pass: desktop keeps the original hardcoded
+          "1fr 1fr" side-by-side split (untouched, per the hard constraint).
+          On mobile (<=768px) the "btl-vs-grid" class below overrides it to a
+          single column so You/Friend stack vertically instead of squeezing
+          two columns into a narrow screen — user's explicit call. */}
+      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 18, overflowY: "auto" }} className="btl-scroll btl-vs-grid">
         <PlayerColumn
           side="me"
           name={user?.displayName || user?.email || "You"}
@@ -767,6 +772,17 @@ export default function FriendCelebration({ user, myState, myStats, onClose, the
       <style>{`
         @keyframes btlFriendSpin { to { transform: rotate(360deg); } }
         .btl-spin { animation: btlFriendSpin 0.9s linear infinite; }
+
+        /* ---------------- Step 8 — VS screen mobile stack ----------------
+           Desktop: .btl-vs-grid keeps its inline "1fr 1fr" (untouched).
+           Mobile (<=768px, same breakpoint as the rest of the radial redesign):
+           single column, You's card first then Friend's card below it, with a
+           bit less gap since vertical space is scarcer than horizontal on a
+           360-430px phone. Nothing inside PlayerColumn itself changes — it
+           already sizes off its own container width. */
+        @media (max-width: 768px) {
+          .btl-vs-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+        }
       `}</style>
 
       <AnimatePresence mode="wait">
