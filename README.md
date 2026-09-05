@@ -1,5 +1,22 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## ⚙️ Friend Celebration's gear icon now opens Setting *on top of* it (this update)
+Per your marked-up screenshot of the "dev VS dev" screen: tapping the gear
+icon (top-left, next to **← Back**) used to close Friend Celebration first
+and *then* open the Setting popup over the plain Dashboard — so you'd
+briefly lose the VS screen you were looking at. Now the Setting popup
+floats directly on top of whichever Friend Celebration screen you were on
+(hub or VS split-screen) and lands on **Theme → Friend Celebration** as
+before; closing it drops you right back where you were, VS screen intact.
+
+Technically: the Setting modal's stacking order (`zIndex`) in
+`components/BTLDashboard.jsx` is now one level above Friend Celebration's,
+and its gear-icon handler no longer closes Friend Celebration first — same
+two lines that used to force the app back to the Dashboard, removed. The
+header's normal **Setting** button and the Quick-Nav fab still behave
+exactly as before, since nothing else in the app used the numbers in
+between.
+
 ## 🫧 "Liquid Glassic" — a Friend Celebration-only theme option (this update)
 Per your two screenshots: **Setting → 🎨 Theme → Friend Celebration** now has
 a new **"Liquid Glassic"** toggle card sitting above the existing

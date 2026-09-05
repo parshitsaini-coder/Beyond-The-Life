@@ -13041,13 +13041,19 @@ function BTLDashboardInner() {
         </div>
       )}
 
-      {/* ---------- SETTINGS MODAL (Glassmorphism 2.0 / Liquid Glass — same style as Memories) ---------- */}
+      {/* ---------- SETTINGS MODAL (Glassmorphism 2.0 / Liquid Glass — same style as Memories) ----------
+           zIndex 96 — one above Friend Celebration's 95 (this update) — so opening
+           this from the Friend Celebration gear icon (see onOpenThemeSettings below)
+           floats the Setting card directly on top of the Friend Celebration screen
+           instead of requiring Friend Celebration to close first. Every other place
+           this modal opens from (the header Setting button, Quick-Nav fab) still
+           behaves exactly the same since nothing else in the app uses 65–95. */}
       <AnimatePresence>
         {settingsOpen && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
             style={{
-              position: "absolute", inset: 0, zIndex: 65,
+              position: "absolute", inset: 0, zIndex: 96,
               display: "flex", alignItems: "center", justifyContent: "center",
               pointerEvents: "none",
             }}>
@@ -13090,7 +13096,7 @@ function BTLDashboardInner() {
             myStats={{ dailyPct, extryPct, overallPct, streak: state.streak, lifeScore: headerLifeScore }}
             onClose={() => setFriendOpen(false)}
             theme={theme.friendCelebration}
-            onOpenThemeSettings={() => { openSettings({ mode: "theme", section: "friendCelebration" }); setFriendOpen(false); }}
+            onOpenThemeSettings={() => openSettings({ mode: "theme", section: "friendCelebration" })}
           />
         )}
       </AnimatePresence>
