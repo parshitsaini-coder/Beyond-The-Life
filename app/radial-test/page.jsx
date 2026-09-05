@@ -1,92 +1,76 @@
 "use client";
-
 import { useState } from "react";
-import { ChevronLeft, UserCircle2 } from "lucide-react";
-import RadialDialMenu, { BTL_RADIAL_ITEMS } from "@/components/RadialDialMenu";
+import { AnimatePresence } from "framer-motion";
+import RadialDialMenu from "@/components/RadialDialMenu";
+import RadialPanel from "@/components/RadialPanel";
 
-// Temporary isolated route to visually verify the radial dial before it
-// gets wired into BTLDashboard.jsx (Step 7). Safe to delete once approved.
+/* Temporary isolated route — visit /radial-test to try the full flow:
+   press-hold -> drag -> release -> panel emerges from the circle ->
+   Back collapses it away. Safe to delete once confirmed; nothing in
+   BTLDashboard.jsx is touched by this route. */
 export default function RadialTestPage() {
-  const [lastSelected, setLastSelected] = useState(null);
+  const [activeItem, setActiveItem] = useState(null);
 
   return (
     <div
       style={{
-        minHeight: "100dvh",
+        minHeight: "100vh",
         background: "#c0d6df",
-        position: "relative",
-        overflow: "hidden",
-        fontFamily: "Inter, system-ui, sans-serif",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        paddingTop: 48,
+        fontFamily: "system-ui, sans-serif",
       }}
     >
-      {/* Top bar — Back (left) + Profile (right) only, per Step 5 target shape */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "14px 16px",
-        }}
-      >
-        <button
-          type="button"
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: "50%",
-            border: "none",
-            background: "rgba(255,255,255,0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <ChevronLeft size={22} color="#403d39" />
-        </button>
-        <button
-          type="button"
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: "50%",
-            border: "none",
-            background: "rgba(255,255,255,0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <UserCircle2 size={24} color="#403d39" />
-        </button>
+      <div style={{ textAlign: "center", padding: "0 24px", color: "#403d39" }}>
+        <h1 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
+          Radial dial test — Step 4
+        </h1>
+        <p style={{ fontSize: 14, opacity: 0.8 }}>
+          Press and hold the circle, drag to an item, release to open its
+          panel. Tap the back arrow inside the panel to close it.
+        </p>
       </div>
 
-      <div
-        style={{
-          textAlign: "center",
-          marginTop: 40,
-          color: "#403d39",
-          fontSize: 13,
-          fontWeight: 600,
-          opacity: 0.7,
-          padding: "0 24px",
-        }}
-      >
-        Press &amp; hold the circle below, drag toward an item, release to
-        open it.
-        {lastSelected && (
-          <div style={{ marginTop: 10, fontSize: 15 }}>
-            Last selected: <b>{lastSelected}</b>
-          </div>
+      <RadialDialMenu onSelect={(item) => setActiveItem(item)} />
+
+      <AnimatePresence>
+        {activeItem && (
+          <RadialPanel
+            key={activeItem.id}
+            title={activeItem.label}
+            onClose={() => setActiveItem(null)}
+          >
+            <div style={{ paddingTop: 24, color: "#403d39" }}>
+              <p style={{ fontSize: 14, opacity: 0.75, marginBottom: 16 }}>
+                Placeholder body — Step 7 replaces this with the real{" "}
+                {activeItem.kind === "widget"
+                  ? "widget content, promoted to its own full-screen panel"
+                  : activeItem.kind === "tab"
+                  ? "tab content (already a full screen today)"
+                  : "modal content (already an overlay today)"}
+                .
+              </p>
+              <div
+                style={{
+                  height: 400,
+                  borderRadius: 12,
+                  background: "#fffcf2",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13,
+                  color: "#403d39",
+                  opacity: 0.5,
+                }}
+              >
+                {activeItem.label} content goes here
+              </div>
+            </div>
+          </RadialPanel>
         )}
-      </div>
-
-      <RadialDialMenu
-        items={BTL_RADIAL_ITEMS}
-        onSelect={(key) => {
-          const item = BTL_RADIAL_ITEMS.find((i) => i.key === key);
-          setLastSelected(item?.label || key);
-        }}
-      />
+      </AnimatePresence>
     </div>
   );
 }
