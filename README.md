@@ -19,8 +19,21 @@ screenshots:
   same as the layout you sketched.
 - **Past-day entries** (every date except today) now render inside their
   own bounded **"past-day entry card"** — a bordered, rounded panel that
-  fills the tab body, scrollable independently, with an empty-state
-  message when there are no past entries yet.
+  **hugs just the entries themselves** (max-width 620px, height fits its
+  content) instead of stretching to fill the whole tab body — fixed after
+  the first pass made it span the entire empty area below. Scrolls
+  independently, with an empty-state message when there are no past
+  entries yet.
+- **New in Theme (gear icon → "Today's Entry Card"):** two color pickers —
+  **Card background** and **Card text** — control only the floating
+  popup's own colors, independent from the Page Theme colors above it
+  (which still only affect past-day entries). Both feed into the glass
+  gradient/border/gloss tinting and the entry text itself, so picking a
+  dark background (e.g. black) automatically gives a dark glass card with
+  whatever text color you choose, not a white glass panel with a
+  mismatched dark card inside it. Saved to `state.lifeStory.theme.todayCardBg`
+  / `.todayCardTextColor`; defaults to white background + the normal dark
+  text so nothing changes until you open Theme.
 - `jump to date → Today` in the filters dropdown now opens the popup
   instead of trying to scroll to an inline block that no longer exists.
 - The old `GenieHidable` inline hide/show component is no longer used

@@ -8784,6 +8784,8 @@ const LIFE_STORY_DEFAULT_THEME = {
   bold: false,
   textColor: C.text,
   bgColor: "linear-gradient(180deg, #fbf9f2, #f5f2e8)",
+  todayCardBg: "#ffffff",
+  todayCardTextColor: C.text,
 };
 
 /* 10 curated presets — swatch shows page bg + text color together so it's
@@ -9082,7 +9084,7 @@ function insertAtCaretRemovingTrigger(editableEl, node) {
    textarea) so an inline 📷 chip can sit exactly where you typed "@" and
    still be clickable to open that photo — nothing gets pushed below the
    text or shown as a separate thumbnail strip. */
-function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImage, onRemoveImage, blockRef }) {
+function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImage, onRemoveImage, blockRef, cardBg }) {
   const t = theme || LIFE_STORY_DEFAULT_THEME;
   const isDark = /^#/.test(t.textColor) && (() => {
     const hex = t.textColor.replace("#", "");
@@ -9241,7 +9243,7 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
         animate={{ backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"] }}
         transition={{ duration: isToday ? 5 : 9, repeat: Infinity, ease: "linear" }}
       >
-        <div style={{ position: "relative", background: isDark ? "rgba(20,20,20,0.94)" : "rgba(255,255,255,0.92)", borderRadius: 16, padding: 14 }}>
+        <div style={{ position: "relative", background: cardBg || (isDark ? "rgba(20,20,20,0.94)" : "rgba(255,255,255,0.92)"), borderRadius: 16, padding: 14 }}>
           {isToday ? (
             <div
               ref={editableRef}
@@ -9385,6 +9387,31 @@ function LifeStoryThemeSettings({ theme, onChange, onClose }) {
           <input
             type="color" value={/^#[0-9a-fA-F]{6}$/.test(theme.bgColor) ? theme.bgColor : "#fbf9f2"}
             onChange={(e) => set({ bgColor: e.target.value })}
+            style={{ width: "100%", height: 28, borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
+          />
+        </div>
+      </div>
+
+      {/* Today's Entry (glass popup) — its own colors, independent from
+         the page/past-entries theme above, since it floats on its own
+         translucent glass rather than sitting on the page background. */}
+      <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginTop: 12, marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+        <BookOpen size={10} /> TODAY'S ENTRY CARD
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 8.5, fontWeight: 700, color: "#a39c86", marginBottom: 4 }}>Card background</div>
+          <input
+            type="color" value={/^#[0-9a-fA-F]{6}$/.test(theme.todayCardBg) ? theme.todayCardBg : "#ffffff"}
+            onChange={(e) => set({ todayCardBg: e.target.value })}
+            style={{ width: "100%", height: 28, borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 8.5, fontWeight: 700, color: "#a39c86", marginBottom: 4 }}>Card text</div>
+          <input
+            type="color" value={/^#[0-9a-fA-F]{6}$/.test(theme.todayCardTextColor) ? theme.todayCardTextColor : "#403d39"}
+            onChange={(e) => set({ todayCardTextColor: e.target.value })}
             style={{ width: "100%", height: 28, borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
           />
         </div>
@@ -9549,7 +9576,7 @@ function GenieHidable({ hidden, onHiddenChange, toggleRef, children, placeholder
    instead of an inline block). Sized to sit inside the "past-day entry
    card" area rather than covering the whole screen, and dismissible by
    the toggle button, the ✕, an outside click, or Escape. */
-function LifeStoryTodayGlassPopup({ open, toggleRef, children, onClose }) {
+function LifeStoryTodayGlassPopup({ open, toggleRef, children, onClose, cardBg = "#ffffff", textColor = C.dark }) {
   const wrapRef = useRef(null);
   const [mounted, setMounted] = useState(false);
   const prevOpenRef = useRef(false);
@@ -9650,8 +9677,8 @@ function LifeStoryTodayGlassPopup({ open, toggleRef, children, onClose }) {
       <div
         style={{
           position: "relative", width: "100%", height: "100%", borderRadius: 26,
-          background: "linear-gradient(150deg, rgba(255,255,255,0.62), rgba(255,255,255,0.22) 55%, rgba(255,255,255,0.34))",
-          border: "1px solid rgba(255,255,255,0.75)",
+          background: `linear-gradient(150deg, ${hexToRgba(cardBg, 0.62)}, ${hexToRgba(cardBg, 0.22)} 55%, ${hexToRgba(cardBg, 0.34)})`,
+          border: `1px solid ${hexToRgba(cardBg, 0.75)}`,
           boxShadow: "0 26px 64px rgba(37,36,34,0.32), 0 2px 0 rgba(255,255,255,0.6) inset, 0 -1px 0 rgba(255,255,255,0.25) inset",
           backdropFilter: "blur(26px) saturate(200%)", WebkitBackdropFilter: "blur(26px) saturate(200%)",
           display: "flex", flexDirection: "column", overflow: "hidden",
@@ -9669,14 +9696,14 @@ function LifeStoryTodayGlassPopup({ open, toggleRef, children, onClose }) {
 
         <div style={{
           position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.45)",
+          padding: "10px 14px", borderBottom: `1px solid ${hexToRgba(cardBg, 0.45)}`,
         }}>
-          <span style={{ fontSize: 11, fontWeight: 900, color: C.dark, display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 900, color: textColor, display: "flex", alignItems: "center", gap: 6 }}>
             <Sparkles size={12} /> Today's Entry
           </span>
           <motion.div
             whileHover={{ scale: 1.15, rotate: 90 }} whileTap={{ scale: 0.9 }}
-            onClick={onClose} style={{ cursor: "pointer", color: C.dark, display: "flex" }}
+            onClick={onClose} style={{ cursor: "pointer", color: textColor, display: "flex" }}
           >
             <X size={14} />
           </motion.div>
@@ -9694,6 +9721,12 @@ function LifeStoryTab({ state, update, onClose }) {
   const story = state.lifeStory || { profile: null, entries: {} };
   const entries = story.entries || {};
   const theme = { ...LIFE_STORY_DEFAULT_THEME, ...(story.theme || {}) };
+  // Today's Entry popup uses its own bg/text colors (set in Theme →
+  // Today's Entry Card) rather than the page/past-entries ones above,
+  // since it floats on its own translucent glass. Falls back safely if
+  // a saved theme predates these two fields.
+  const todayCardBgHex = /^#[0-9a-fA-F]{6}$/.test(theme.todayCardBg) ? theme.todayCardBg : "#ffffff";
+  const todayCardTextHex = /^#[0-9a-fA-F]{6}$/.test(theme.todayCardTextColor) ? theme.todayCardTextColor : (/^#/.test(theme.textColor) ? theme.textColor : C.dark);
   const today = todayISO();
   const [jumpOpen, setJumpOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -9832,40 +9865,45 @@ function LifeStoryTab({ state, update, onClose }) {
 
       <GenieFilterDefs />
       <div style={{ flex: 1, position: "relative", padding: 16, background: theme.bgColor, overflow: "hidden" }}>
-        {/* Past-day entry card — the bounded journal area holding every day
-           before today. Today's entry lives only in the glass popup below. */}
-        <div
-          ref={pastCardRef}
-          style={{
-            position: "absolute", inset: 16, borderRadius: 20, overflow: "hidden",
-            border: `1px solid ${C.text}22`, background: "rgba(255,255,255,0.4)",
-            boxShadow: "0 2px 16px rgba(37,36,34,0.06)",
-          }}
-        >
-          <div ref={feedRef} style={{ position: "absolute", inset: 0, overflowY: "auto", padding: 16 }}>
-            <div style={{ maxWidth: 620, margin: "0 auto" }}>
-              {pastDates.length === 0 ? (
-                <div style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#a39c86", padding: "40px 0" }}>
-                  No past entries yet — write today's first, then check back here tomorrow.
-                </div>
-              ) : (
-                pastDates.map((iso) => (
-                  <LifeStoryDayBlock
-                    key={iso} iso={iso} entry={entries[iso]} isToday={false} theme={theme}
-                    onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
-                    blockRef={(el) => { blockRefs.current[iso] = el; }}
-                  />
-                ))
-              )}
-            </div>
+        <div ref={feedRef} style={{ position: "absolute", inset: 0, overflowY: "auto", padding: 16 }}>
+          {/* Past-day entry card — hugs just the entries themselves (not
+             the full tab height/width) — every day before today. Today's
+             entry lives only in the glass popup below. */}
+          <div
+            ref={pastCardRef}
+            style={{
+              maxWidth: 620, margin: "0 auto", borderRadius: 20,
+              border: `1px solid ${C.text}22`, background: "rgba(255,255,255,0.4)",
+              boxShadow: "0 2px 16px rgba(37,36,34,0.06)", padding: 16,
+            }}
+          >
+            {pastDates.length === 0 ? (
+              <div style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#a39c86", padding: "40px 0" }}>
+                No past entries yet — write today's first, then check back here tomorrow.
+              </div>
+            ) : (
+              pastDates.map((iso) => (
+                <LifeStoryDayBlock
+                  key={iso} iso={iso} entry={entries[iso]} isToday={false} theme={theme}
+                  onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
+                  blockRef={(el) => { blockRefs.current[iso] = el; }}
+                />
+              ))
+            )}
           </div>
         </div>
 
         {/* Today's entry — opens as a full liquid-glass popup out of the
-           "today" toggle button in the header above. */}
-        <LifeStoryTodayGlassPopup open={todayPopupOpen} toggleRef={hideToggleRef} onClose={() => setTodayPopupOpen(false)}>
+           "today" toggle button in the header above. Its background/text
+           color come from Theme → Today's Entry Card. */}
+        <LifeStoryTodayGlassPopup
+          open={todayPopupOpen} toggleRef={hideToggleRef} onClose={() => setTodayPopupOpen(false)}
+          cardBg={todayCardBgHex} textColor={todayCardTextHex}
+        >
           <LifeStoryDayBlock
-            iso={today} entry={entries[today]} isToday theme={theme}
+            iso={today} entry={entries[today]} isToday
+            theme={{ ...theme, textColor: todayCardTextHex }}
+            cardBg={hexToRgba(todayCardBgHex, 0.92)}
             onChangeHtml={setEntryHtml(today)} onAddImage={addImage(today)} onRemoveImage={removeImage(today)}
             blockRef={(el) => { blockRefs.current[today] = el; }}
           />
