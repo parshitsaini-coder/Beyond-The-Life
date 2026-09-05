@@ -9052,11 +9052,11 @@ export function MemoriesModal({ state, onAddMemory, onClose, readOnly }) {
           border: "1px solid rgba(255,255,255,0.65)", borderRadius: 20,
           boxShadow: "0 30px 80px rgba(37,36,34,0.28), inset 0 1px 0 rgba(255,255,255,0.6)",
           display: "flex", overflow: "hidden", position: "relative",
-        }}>
+        }} className="btl-mem-card">
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)", zIndex: 1 }} />
 
       {/* ---------- SIDEBAR: date timeline ---------- */}
-      <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid rgba(255,255,255,0.55)", display: "flex", flexDirection: "column", background: "rgba(255,255,255,0.25)" }}>
+      <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid rgba(255,255,255,0.55)", display: "flex", flexDirection: "column", background: "rgba(255,255,255,0.25)" }} className="btl-mem-sidebar">
         <div style={{ padding: "14px 14px 8px", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
           <Sparkles size={14} color={C.accent} />
           <span style={{ fontWeight: 900, fontSize: 13, color: C.dark }}>{readOnly ? "Friend's Memories" : "Memories"}</span>
@@ -14010,6 +14010,18 @@ function BTLDashboardInner() {
              on mobile this bumps all of them to the spec's 44px minimum in
              one place instead of a one-off class per panel. */
           .btl-tap44 { width: 44px !important; height: 44px !important; }
+
+          /* ---------------- Step 8 — Memories modal mobile stack ----------------
+             Desktop: date sidebar (220px) sits left of the detail pane, side by
+             side (untouched). On mobile that 220px sidebar leaves almost no room
+             for the detail pane on a 360-430px screen — so below 768px the card
+             stacks vertically instead: date list on top (height-capped, its own
+             scroll), detail pane below. */
+          .btl-mem-card { flex-direction: column !important; width: 92vw !important; height: 85vh !important; }
+          .btl-mem-sidebar {
+            width: 100% !important; max-height: 150px !important;
+            border-right: none !important; border-bottom: 1px solid rgba(255,255,255,0.55) !important;
+          }
         }
       `}</style>
 
@@ -14234,7 +14246,17 @@ function BTLDashboardInner() {
                     title={activeRadialWidget.label}
                     onClose={() => setActiveRadialWidget(null)}
                   >
-                    <div style={{ paddingTop: 8 }}>{widgetsMap[activeRadialWidget.id]}</div>
+                    {/* Fix: these widgets (Calendar, Clock, Timer, etc.) are built to
+                        fill a definite-height container — that's how they size on the
+                        desktop grid, where WidgetGrid gives each tile an explicit pixel
+                        height. Here on mobile they were dropped into an auto-height div,
+                        so their internal `height:"100%"` resolved to nothing — Calendar's
+                        day-grid (absolutely positioned inside a collapsed 0-height area)
+                        never got room to draw, even though the month header above it
+                        (normal document flow) still showed. Giving this wrapper a real
+                        height off RadialPanel's own scroll area fixes all 8 widgets at
+                        once, not just Calendar. */}
+                    <div style={{ paddingTop: 8, height: "calc(100% - 8px)", boxSizing: "border-box" }}>{widgetsMap[activeRadialWidget.id]}</div>
                   </RadialPanel>
                 )}
               </AnimatePresence>
