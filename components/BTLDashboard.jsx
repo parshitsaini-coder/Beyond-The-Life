@@ -11,7 +11,7 @@ import {
   Type, Palette, Bold, Italic, Underline, Baseline, User, LogIn,
   Users, Clock, PieChart as PieChartIcon, Bell, BellOff, Square,
   AlarmClock, Volume2, Play, Waves, Gauge,
-  Dumbbell, Info, Timer, Flower2, Wind,
+  Dumbbell, Info, Timer, Flower2, Wind, KeyRound, HelpCircle, ShieldAlert, CalendarClock,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -9277,6 +9277,290 @@ function LifeStoryProfileSetup({ onSave }) {
   );
 }
 
+/* ---------------- Life Story Account popup — name/photo/reset + password
+   (this update) ----------------
+   Opened by tapping the profile pill (avatar + name) in the Life Story
+   header. Three things live here:
+   1. Name + photo — same fields as the first-time setup, editable anytime.
+   2. Reset — clears the profile back to the "Start your Life Story" state.
+   3. Password — a personal lock for this journal, with a proper forgot-
+      password recovery path:
+        - First time (no password yet): tapping "Set Password" asks two
+          security questions (best friend's name, birthday) *before* the
+          new-password fields, with a note that these exact questions are
+          what unlock recovery later.
+        - Once set: "Change Password" (re-answer the questions, then pick a
+          new one) and "Forgot Password" (answer the questions → a Yes/No
+          confirmation → saying Yes schedules the password to clear itself
+          automatically 17 days from now, rather than wiping it instantly).
+   Nothing here is stored in plaintext — answers/password are run through a
+   small one-way hash before being saved to Firestore. */
+function simpleHash(str) {
+  let h = 5381;
+  const s = String(str || "");
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+function formatFutureDate(ts) {
+  return new Date(ts).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+}
+
+function LifeStoryAccountModal({ story, onSaveProfile, onSaveSecurity, onClose }) {
+  const profile = story.profile || { name: "", image: "" };
+  const security = story.security || null;
+  const hasPassword = !!security?.password;
+
+  const [name, setName] = useState(profile.name || "");
+  const [image, setImage] = useState(profile.image || "");
+  const fileRef = useRef(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  // pwStep: null (menu) | "setup" | "change_verify" | "change_new" |
+  // "forgot_verify" | "forgot_permission" | "forgot_scheduled"
+  const [pwStep, setPwStep] = useState(null);
+  const [q1, setQ1] = useState(""); const [q2, setQ2] = useState("");
+  const [newPw, setNewPw] = useState(""); const [newPw2, setNewPw2] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [formErr, setFormErr] = useState("");
+
+  const pickImage = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    resizeImageDataUrl(file, 360, 0.8).then(setImage).catch(() => alert("Couldn't read that image, try another one."));
+    e.target.value = "";
+  };
+
+  const saveProfile = () => {
+    if (!name.trim()) return;
+    onSaveProfile({ name: name.trim(), image });
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 1600);
+  };
+
+  const doReset = () => {
+    onSaveProfile(null);
+    onClose();
+  };
+
+  const resetPwForm = () => { setQ1(""); setQ2(""); setNewPw(""); setNewPw2(""); setFormErr(""); setShowPw(false); };
+  const closePwFlow = () => { setPwStep(null); resetPwForm(); };
+
+  const submitNewPassword = (isChange) => {
+    if (!q1.trim() || !q2.trim()) { setFormErr("Please answer both security questions."); return; }
+    if (newPw.length < 4) { setFormErr("Password should be at least 4 characters."); return; }
+    if (newPw !== newPw2) { setFormErr("Passwords don't match — check both fields."); return; }
+    onSaveSecurity({
+      password: simpleHash(newPw),
+      q1: simpleHash(q1.trim().toLowerCase()),
+      q2: simpleHash(q2.trim().toLowerCase()),
+      setAt: Date.now(),
+      forgotResetAt: null,
+    });
+    closePwFlow();
+  };
+
+  const verifyAndProceed = (nextStep) => {
+    if (!q1.trim() || !q2.trim()) { setFormErr("Please answer both security questions."); return; }
+    const ok = simpleHash(q1.trim().toLowerCase()) === security.q1 && simpleHash(q2.trim().toLowerCase()) === security.q2;
+    if (!ok) { setFormErr("Those answers don't match what's on file — try again."); return; }
+    setFormErr("");
+    setPwStep(nextStep);
+  };
+
+  const confirmForgotYes = () => {
+    const forgotResetAt = Date.now() + 17 * 24 * 60 * 60 * 1000;
+    onSaveSecurity({ ...security, forgotResetAt });
+    setPwStep("forgot_scheduled");
+  };
+
+  const inputStyle = {
+    width: "100%", boxSizing: "border-box", fontSize: 12, padding: "10px 12px", borderRadius: 10,
+    border: "1px solid #ddd6c4", background: "rgba(255,255,255,0.85)", outline: "none",
+    fontWeight: 700, color: C.dark,
+  };
+  const primaryBtn = (disabled) => ({
+    width: "100%", border: "none", borderRadius: 12, padding: "11px 0", fontSize: 12.5, fontWeight: 900,
+    background: disabled ? "#cfc9b8" : C.dark, color: "#fff", cursor: disabled ? "not-allowed" : "pointer",
+  });
+  const ghostBtn = {
+    width: "100%", border: "1px solid #ddd6c4", borderRadius: 12, padding: "10px 0", fontSize: 12, fontWeight: 800,
+    background: "rgba(255,255,255,0.6)", color: C.dark, cursor: "pointer",
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 260, display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(20,19,17,0.5)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)", padding: 20,
+      }}
+    >
+      <motion.div
+        onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 12 }}
+        transition={{ type: "spring", stiffness: 320, damping: 28 }}
+        style={{
+          width: 360, maxWidth: "100%", maxHeight: "86vh", overflowY: "auto",
+          background: "rgba(255,255,255,0.78)", backdropFilter: "blur(26px) saturate(190%)", WebkitBackdropFilter: "blur(26px) saturate(190%)",
+          border: "1px solid rgba(255,255,255,0.85)", borderRadius: 20, boxShadow: "0 30px 70px rgba(37,36,34,0.35)", padding: 22,
+        }}
+        className="btl-scroll"
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <div style={{ fontSize: 15, fontWeight: 900, color: C.dark, flex: 1 }}>Life Story Account</div>
+          <motion.span whileHover={{ scale: 1.15, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: C.dark }}><X size={17} /></motion.span>
+        </div>
+
+        <AnimatePresence mode="wait">
+          {pwStep === null ? (
+            <motion.div key="menu" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }}>
+              <div style={{ fontSize: 10.5, color: "#8a8579", marginBottom: 16 }}>Your name, photo, and a personal password for this journal.</div>
+
+              <motion.div
+                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => fileRef.current?.click()}
+                style={{
+                  width: 76, height: 76, borderRadius: "50%", margin: "0 auto 14px", cursor: "pointer", position: "relative",
+                  background: image ? `url(${image}) center/cover` : "rgba(255,255,255,0.6)",
+                  border: `2px dashed ${image ? "transparent" : C.text}`, display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                {!image && <User size={24} color="#a39c86" />}
+                <div style={{ position: "absolute", bottom: -2, right: -2, background: C.dark, borderRadius: "50%", padding: 6, display: "flex", boxShadow: "0 3px 8px rgba(0,0,0,0.3)" }}>
+                  <Camera size={11} color="#fff" />
+                </div>
+              </motion.div>
+              <input ref={fileRef} type="file" accept="image/*" onChange={pickImage} style={{ display: "none" }} />
+
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" style={{ ...inputStyle, textAlign: "center", marginBottom: 10 }} />
+
+              <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} onClick={saveProfile} disabled={!name.trim()} style={{ ...primaryBtn(!name.trim()), marginBottom: 8 }}>
+                {savedFlash ? "Saved ✓" : "Save changes"}
+              </motion.button>
+
+              {!confirmReset ? (
+                <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} onClick={() => setConfirmReset(true)} style={{ ...ghostBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 18 }}>
+                  <RotateCcw size={12} /> Reset profile
+                </motion.button>
+              ) : (
+                <div style={{ border: "1px solid #e6b0a8", background: "#fdf0ee", borderRadius: 10, padding: 10, marginBottom: 18 }}>
+                  <div style={{ fontSize: 10, color: "#8b3a2f", fontWeight: 700, marginBottom: 8 }}>Clear your name & photo and go back to "Start your Life Story"? Your written entries stay untouched.</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => setConfirmReset(false)} style={{ flex: 1, border: "1px solid #ddd6c4", background: "#fff", borderRadius: 8, padding: "6px 0", fontSize: 10.5, fontWeight: 800, color: C.dark, cursor: "pointer" }}>Cancel</button>
+                    <button onClick={doReset} style={{ flex: 1, border: "none", background: "#c0392b", color: "#fff", borderRadius: 8, padding: "6px 0", fontSize: 10.5, fontWeight: 800, cursor: "pointer" }}>Yes, reset</button>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ borderTop: "1px solid rgba(64,61,57,0.15)", paddingTop: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: C.dark, display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                  <Lock size={13} /> Password
+                </div>
+
+                {!hasPassword ? (
+                  <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} onClick={() => setPwStep("setup")} style={{ ...primaryBtn(false), display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <KeyRound size={13} /> Set Password
+                  </motion.button>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ fontSize: 9.5, color: "#8a8579", display: "flex", alignItems: "center", gap: 5 }}>
+                      <ShieldCheck size={12} color="#4a7c59" /> Password protection is on.
+                    </div>
+                    {security?.forgotResetAt && (
+                      <div style={{ fontSize: 9, color: "#a8762f", background: "#fff3e0", border: "1px solid #f0d9b0", borderRadius: 8, padding: "6px 8px", display: "flex", alignItems: "flex-start", gap: 5 }}>
+                        <CalendarClock size={12} style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span>Auto-clearing on {formatFutureDate(security.forgotResetAt)} — set a new one before then, or wait and set a fresh password after.</span>
+                      </div>
+                    )}
+                    <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} onClick={() => setPwStep("change_verify")} style={{ ...ghostBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <KeyRound size={12} /> Change Password
+                    </motion.button>
+                    <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} onClick={() => setPwStep("forgot_verify")} style={{ ...ghostBtn, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, color: "#c0392b" }}>
+                      <ShieldAlert size={12} /> Forgot Password
+                    </motion.button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          ) : pwStep === "setup" || pwStep === "change_new" ? (
+            <motion.div key="pwform" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }}>
+              <div style={{ fontSize: 9.5, color: "#8a8579", lineHeight: 1.5, marginBottom: 12, background: "rgba(255,252,242,0.7)", border: "1px solid #ece7d8", borderRadius: 10, padding: "8px 10px" }}>
+                <HelpCircle size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
+                Answer these two — later, if you forget your password, these exact questions are what let you recover access.
+              </div>
+
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: "#8a8579", marginBottom: 4 }}>Your best friend's name</div>
+              <input value={q1} onChange={(e) => setQ1(e.target.value)} placeholder="Answer" style={{ ...inputStyle, marginBottom: 10 }} />
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: "#8a8579", marginBottom: 4 }}>Your birthday</div>
+              <input value={q2} onChange={(e) => setQ2(e.target.value)} placeholder="Answer" style={{ ...inputStyle, marginBottom: 14 }} />
+
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: "#8a8579", marginBottom: 4 }}>New password</div>
+              <div style={{ position: "relative", marginBottom: 10 }}>
+                <input type={showPw ? "text" : "password"} value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="New password" style={{ ...inputStyle, paddingRight: 34 }} />
+                <span onClick={() => setShowPw((v) => !v)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", cursor: "pointer", color: "#a39c86" }}>
+                  {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                </span>
+              </div>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: "#8a8579", marginBottom: 4 }}>Confirm password</div>
+              <input type={showPw ? "text" : "password"} value={newPw2} onChange={(e) => setNewPw2(e.target.value)} placeholder="Re-enter password" style={{ ...inputStyle, marginBottom: 6 }} />
+
+              {formErr && <div style={{ fontSize: 9.5, color: "#c0392b", fontWeight: 700, marginBottom: 8 }}>{formErr}</div>}
+
+              <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                <button onClick={closePwFlow} style={{ ...ghostBtn, flex: 1 }}>Cancel</button>
+                <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} onClick={() => submitNewPassword(pwStep === "change_new")} style={{ ...primaryBtn(false), flex: 1.4 }}>Done</motion.button>
+              </div>
+            </motion.div>
+          ) : pwStep === "change_verify" || pwStep === "forgot_verify" ? (
+            <motion.div key="pwverify" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }}>
+              <div style={{ fontSize: 9.5, color: "#8a8579", lineHeight: 1.5, marginBottom: 12, background: "rgba(255,252,242,0.7)", border: "1px solid #ece7d8", borderRadius: 10, padding: "8px 10px" }}>
+                <HelpCircle size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
+                First, answer your two security questions to confirm it's you.
+              </div>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: "#8a8579", marginBottom: 4 }}>Your best friend's name</div>
+              <input value={q1} onChange={(e) => setQ1(e.target.value)} placeholder="Answer" style={{ ...inputStyle, marginBottom: 10 }} />
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: "#8a8579", marginBottom: 4 }}>Your birthday</div>
+              <input value={q2} onChange={(e) => setQ2(e.target.value)} placeholder="Answer" style={{ ...inputStyle, marginBottom: 6 }} />
+              {formErr && <div style={{ fontSize: 9.5, color: "#c0392b", fontWeight: 700, marginBottom: 8 }}>{formErr}</div>}
+              <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                <button onClick={closePwFlow} style={{ ...ghostBtn, flex: 1 }}>Cancel</button>
+                <motion.button
+                  whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }}
+                  onClick={() => verifyAndProceed(pwStep === "change_verify" ? "change_new" : "forgot_permission")}
+                  style={{ ...primaryBtn(false), flex: 1.4 }}
+                >Verify</motion.button>
+              </div>
+            </motion.div>
+          ) : pwStep === "forgot_permission" ? (
+            <motion.div key="pwpermission" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} style={{ textAlign: "center" }}>
+              <ShieldAlert size={26} color="#a8762f" style={{ marginBottom: 8 }} />
+              <div style={{ fontSize: 12.5, fontWeight: 900, color: C.dark, marginBottom: 6 }}>Reset your password?</div>
+              <div style={{ fontSize: 10, color: "#8a8579", lineHeight: 1.5, marginBottom: 16 }}>
+                Verified ✓ Your current password keeps working for now — but if you say yes, it'll clear itself
+                automatically 17 days from today, so you can come back and set a fresh one.
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={closePwFlow} style={{ ...ghostBtn, flex: 1 }}>No</button>
+                <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} onClick={confirmForgotYes} style={{ ...primaryBtn(false), flex: 1 }}>Yes</motion.button>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div key="pwscheduled" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} style={{ textAlign: "center" }}>
+              <CheckCircle2 size={26} color="#4a7c59" style={{ marginBottom: 8 }} />
+              <div style={{ fontSize: 12.5, fontWeight: 900, color: C.dark, marginBottom: 6 }}>Scheduled</div>
+              <div style={{ fontSize: 10, color: "#8a8579", lineHeight: 1.5, marginBottom: 16 }}>
+                Your password will auto-clear on <b>{security?.forgotResetAt ? formatFutureDate(security.forgotResetAt) : ""}</b>. Come back here anytime before or after that to set a new one.
+              </div>
+              <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.97 }} onClick={closePwFlow} style={primaryBtn(false)}>Got it</motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 function formatStoryDate(iso) {
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString(undefined, { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
@@ -10024,17 +10308,18 @@ function LifeStoryTab({ state, update, onClose }) {
     requestAnimationFrame(() => { feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight }); });
   }, []);
 
-  const setProfile = (profile) => update((s) => ({ ...s, lifeStory: { profile, entries: s.lifeStory?.entries || {}, theme: s.lifeStory?.theme } }));
-  const setTheme = (nextTheme) => update((s) => ({ ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: s.lifeStory?.entries || {}, theme: nextTheme } }));
+  const setProfile = (profile) => update((s) => ({ ...s, lifeStory: { profile, entries: s.lifeStory?.entries || {}, theme: s.lifeStory?.theme, security: s.lifeStory?.security || null } }));
+  const setSecurity = (security) => update((s) => ({ ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: s.lifeStory?.entries || {}, theme: s.lifeStory?.theme, security } }));
+  const setTheme = (nextTheme) => update((s) => ({ ...s, lifeStory: { profile: s.lifeStory?.profile || null, entries: s.lifeStory?.entries || {}, theme: nextTheme, security: s.lifeStory?.security || null } }));
   const setEntryHtml = (iso) => (html) => update((s) => ({
-    ...s, lifeStory: { profile: s.lifeStory?.profile || null, theme: s.lifeStory?.theme, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...(s.lifeStory?.entries?.[iso] || {}), html } } },
+    ...s, lifeStory: { profile: s.lifeStory?.profile || null, theme: s.lifeStory?.theme, security: s.lifeStory?.security || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...(s.lifeStory?.entries?.[iso] || {}), html } } },
   }));
   // dataUrl arrives already resized (LifeStoryDayBlock does the resizing) —
   // indices must stay stable forever since inline 📷 chips reference them.
   const addImage = (iso) => (dataUrl) => update((s) => {
     const cur = s.lifeStory?.entries?.[iso] || {};
     const images = [...(cur.images || []), dataUrl];
-    return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, theme: s.lifeStory?.theme, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images } } } };
+    return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, theme: s.lifeStory?.theme, security: s.lifeStory?.security || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images } } } };
   });
   // Nulls the slot instead of splicing (keeps every other chip's index
   // valid) and strips that one chip out of the saved HTML.
@@ -10049,8 +10334,25 @@ function LifeStoryTab({ state, update, onClose }) {
       if (chip) chip.remove();
       html = tmp.innerHTML;
     }
-    return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, theme: s.lifeStory?.theme, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images, html } } } };
+    return { ...s, lifeStory: { profile: s.lifeStory?.profile || null, theme: s.lifeStory?.theme, security: s.lifeStory?.security || null, entries: { ...(s.lifeStory?.entries || {}), [iso]: { ...cur, images, html } } } };
   });
+
+  // Password auto-forget (this update) — after saying "Yes" to a Forgot
+  // Password recovery, the password is scheduled to clear itself 17 days
+  // later rather than being wiped instantly. This checks that schedule
+  // once whenever the tab is open (and again if the schedule ever
+  // changes), and clears the password + security answers the moment the
+  // date has passed, silently — the person just finds password protection
+  // off again and can set a fresh one from the account popup.
+  useEffect(() => {
+    const sec = state.lifeStory?.security;
+    if (sec?.forgotResetAt && Date.now() >= sec.forgotResetAt) {
+      setSecurity(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.lifeStory?.security?.forgotResetAt]);
+
+  const [accountOpen, setAccountOpen] = useState(false);
 
   const jumpTo = (iso) => {
     setJumpOpen(false);
@@ -10124,12 +10426,21 @@ function LifeStoryTab({ state, update, onClose }) {
         </div>
 
         {story.profile && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div style={{ width: 26, height: 26, borderRadius: "50%", background: story.profile.image ? `url(${story.profile.image}) center/cover` : C.dark, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 800 }}>
+          <motion.div
+            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.96 }} onClick={() => setAccountOpen(true)}
+            title="Account settings"
+            style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", borderRadius: 999, padding: "2px 8px 2px 2px", border: "1px solid transparent" }}
+          >
+            <div style={{ width: 26, height: 26, borderRadius: "50%", background: story.profile.image ? `url(${story.profile.image}) center/cover` : C.dark, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 800, position: "relative" }}>
               {!story.profile.image && story.profile.name?.[0]?.toUpperCase()}
+              {story.security?.password && (
+                <div style={{ position: "absolute", bottom: -2, right: -2, background: "#4a7c59", borderRadius: "50%", width: 12, height: 12, display: "flex", alignItems: "center", justifyContent: "center", border: "1.5px solid #fff" }}>
+                  <Lock size={7} color="#fff" />
+                </div>
+              )}
             </div>
             <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>{story.profile.name}</span>
-          </div>
+          </motion.div>
         )}
         <motion.div whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: C.dark }}>
           <X size={16} />
@@ -10177,6 +10488,16 @@ function LifeStoryTab({ state, update, onClose }) {
       </div>
 
       <AnimatePresence>{!story.profile && <LifeStoryProfileSetup onSave={setProfile} />}</AnimatePresence>
+      <AnimatePresence>
+        {accountOpen && story.profile && (
+          <LifeStoryAccountModal
+            story={story}
+            onSaveProfile={setProfile}
+            onSaveSecurity={setSecurity}
+            onClose={() => setAccountOpen(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
