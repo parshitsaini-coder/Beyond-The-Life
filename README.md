@@ -1,6 +1,29 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🧊 New "Liquid Glass" Panel Theme + adjustable Glass Intensity (this update)
+## 🩶 New "Soft UI" (neumorphic) Panel Theme (this update)
+9th one-click preset in **Settings → Theme → Panel Theme**, matching
+the light-gray neumorphic kit screenshot (cards/pills/toggles carved
+out of one flat surface using a light+dark dual shadow instead of
+color contrast or blur):
+- Flat `#e6e7eb` background *and* widget background — same tone on
+  purpose, so cards read as embossed out of the page rather than
+  sitting on top of it like every glass preset does.
+- `glassCardStyle()` (the one function every widget/panel card already
+  renders through) now branches on a new `neumorphic` flag: instead of
+  its usual blur+translucency, it fills the card flat and swaps the
+  single soft shadow for a raised dual shadow — dark bottom-right +
+  light top-left — the classic soft-UI "embossed" look.
+- Blur/backdrop is fully off under this preset (there's nothing to
+  frost on a flat card), so the **Glass Intensity** sliders below the
+  preset row gray out (still visible, not hidden) with a note
+  explaining why, the same "disabled but present" treatment already
+  used for the Liquid Background on/off switch.
+- Saved as `state.theme.neumorphic` (bool) alongside the existing
+  `glassBlur`/`glassSaturate`; picking any other preset (or Reset)
+  clears it, so switching back to Ocean/Glass/Liquid Glass/etc.
+  immediately returns to normal frosted cards.
+
+## 🧊 "Liquid Glass" Panel Theme + adjustable Glass Intensity (earlier update)
 **Settings → Theme → Panel Theme** now has an 8th one-click preset —
 **Liquid Glass** — next to Ocean/Sunset/Forest/Berry/Midnight/Charcoal/
 Black & White/Glass:

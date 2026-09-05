@@ -232,12 +232,35 @@ const GLASS_SATURATE_MAX = 260;
 const GLASS_SATURATE_DEFAULT = 200;
 let _glassBlurPx = GLASS_BLUR_DEFAULT;
 let _glassSaturatePct = GLASS_SATURATE_DEFAULT;
-function setGlassIntensity(blurPx, saturatePct) {
+let _neumorphicMode = false;
+function setGlassIntensity(blurPx, saturatePct, neumorphic) {
   _glassBlurPx = Number.isFinite(blurPx) ? Math.min(GLASS_BLUR_MAX, Math.max(GLASS_BLUR_MIN, blurPx)) : GLASS_BLUR_DEFAULT;
   _glassSaturatePct = Number.isFinite(saturatePct) ? Math.min(GLASS_SATURATE_MAX, Math.max(GLASS_SATURATE_MIN, saturatePct)) : GLASS_SATURATE_DEFAULT;
+  _neumorphicMode = !!neumorphic;
 }
+/* ---- "Soft UI" preset (this update) ----
+   The other reference screenshot (light-gray neumorphic kit — cards,
+   pill buttons, toggles, sliders all carved out of the *same* flat
+   gray surface using a light+dark dual shadow instead of color
+   contrast or blur). Every widget already renders its card through
+   this one function, so branching here is all that's needed to turn
+   any card into a neumorphic "soft UI" tile instead of frosted glass —
+   flat fill (no blur/backdrop), no border, and a raised dual shadow
+   (dark bottom-right + light top-left) that reads as embossed on a
+   matching-color background, same as the reference. */
 function glassCardStyle(cardBg, borderColor) {
   const isDark = hexLuminance(cardBg || "#fffdf7") < 0.5;
+  if (_neumorphicMode) {
+    return {
+      background: /^#[0-9a-fA-F]{6}$/.test(cardBg) ? cardBg : "#e6e7eb",
+      backdropFilter: "none",
+      WebkitBackdropFilter: "none",
+      border: "none",
+      boxShadow: isDark
+        ? "8px 8px 16px rgba(0,0,0,0.55), -8px -8px 16px rgba(255,255,255,0.05)"
+        : "7px 7px 15px rgba(163,163,163,0.55), -7px -7px 15px rgba(255,255,255,0.9)",
+    };
+  }
   return {
     background: hexToRgba(cardBg || "#fffdf7", isDark ? 0.56 : 0.66),
     backdropFilter: `blur(${_glassBlurPx}px) saturate(${_glassSaturatePct}%)`,
@@ -393,6 +416,20 @@ const PANEL_THEME_PRESETS = [
     blur: 28, saturate: 220,
     swatch: "linear-gradient(160deg, #f4f5f8 0%, #ffffff 40%, #d7dbe3 100%)",
   },
+  /* "Soft UI" (this update) — the neumorphic reference kit (light gray
+     cards/pills/toggles carved from one flat surface via light+dark
+     dual shadow, no blur, no color contrast). `widgetBg` matches `bg`
+     almost exactly on purpose — that's what makes cards look "embossed
+     out of" the page instead of sitting on top of it, the way glass
+     cards do. `neumorphic: true` is what applyPanelPreset uses to flip
+     glassCardStyle() into its flat dual-shadow branch instead of the
+     usual blur/frost one. */
+  {
+    id: "softui", label: "Soft UI",
+    bg: "#e6e7eb", text: "#3c3c3c", widgetBg: "#e6e7eb",
+    neumorphic: true, blur: 0, saturate: 100,
+    swatch: "linear-gradient(135deg, #f5f6f8 0%, #e6e7eb 55%, #c7c9d0 100%)",
+  },
 ];
 export function normalizeScopeTheme(t) {
   const src = t && typeof t === "object" ? t : {};
@@ -503,6 +540,9 @@ function normalizeTheme(t) {
        active, so "Liquid Glass" isn't a one-shot fixed look. */
     glassBlur: Number.isFinite(src.glassBlur) ? Math.min(GLASS_BLUR_MAX, Math.max(GLASS_BLUR_MIN, src.glassBlur)) : GLASS_BLUR_DEFAULT,
     glassSaturate: Number.isFinite(src.glassSaturate) ? Math.min(GLASS_SATURATE_MAX, Math.max(GLASS_SATURATE_MIN, src.glassSaturate)) : GLASS_SATURATE_DEFAULT,
+    // "Soft UI" preset flag — flat embossed dual-shadow cards instead of
+    // frosted glass. See glassCardStyle()'s _neumorphicMode branch above.
+    neumorphic: !!src.neumorphic,
   };
 }
 function defaultTheme() { return normalizeTheme({}); }
@@ -8165,7 +8205,7 @@ function AnalyticsSummaryThemeEditor({ state, metrics, colors, onChange, onReset
    app (every scope + every widget) in a single tap. Sits above the
    per-section tabs so it reads as the fast option, with the detailed
    editors below still available for fine-tuning afterward. */
-function PanelPresetRow({ activePreset, onApply, onReset, glassBlur, glassSaturate, onGlassBlurChange, onGlassSaturateChange, onGlassIntensityReset }) {
+function PanelPresetRow({ activePreset, onApply, onReset, glassBlur, glassSaturate, neumorphic, onGlassBlurChange, onGlassSaturateChange, onGlassIntensityReset }) {
   const blur = Number.isFinite(glassBlur) ? glassBlur : GLASS_BLUR_DEFAULT;
   const saturate = Number.isFinite(glassSaturate) ? glassSaturate : GLASS_SATURATE_DEFAULT;
   const glassChanged = blur !== GLASS_BLUR_DEFAULT || saturate !== GLASS_SATURATE_DEFAULT;
@@ -8221,39 +8261,47 @@ function PanelPresetRow({ activePreset, onApply, onReset, glassBlur, glassSatura
       {/* Glass Intensity (this update) — blur + saturate behind every
           frosted card, manageable no matter which preset is active
           (not just "Liquid Glass"), so the amount of frost/refraction
-          is a real dial rather than a fixed baked-in look. */}
+          is a real dial rather than a fixed baked-in look. Grayed out
+          (still visible, not hidden) under "Soft UI" since that preset
+          renders flat dual-shadow cards with no blur/backdrop at all —
+          same "disabled but not gone" treatment as the Liquid Background
+          on/off switch elsewhere in Settings. */}
       <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #ece7d8" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
           <Waves size={11} style={{ color: C.dark }} />
           <span style={{ fontSize: 10, fontWeight: 800, color: C.dark }}>Glass Intensity</span>
           <div style={{ flex: 1 }} />
-          {glassChanged && (
+          {glassChanged && !neumorphic && (
             <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={onGlassIntensityReset} title="Reset glass intensity" style={{
               border: "1px solid #ddd6c4", background: "#fff", color: "#8a8579", borderRadius: 999,
               padding: "2px 8px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
             }}><RefreshCw size={10} /> Reset</motion.button>
           )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", width: 44, flexShrink: 0 }}>Blur</span>
-          <input
-            type="range" min={GLASS_BLUR_MIN} max={GLASS_BLUR_MAX} step={1} value={blur}
-            onChange={(e) => onGlassBlurChange(parseInt(e.target.value, 10))}
-            style={{ flex: 1, accentColor: C.accent, cursor: "pointer" }}
-          />
-          <span style={{ fontSize: 10, fontWeight: 800, color: C.dark, width: 34, textAlign: "right" }}>{blur}px</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", width: 44, flexShrink: 0 }}>Tint</span>
-          <input
-            type="range" min={GLASS_SATURATE_MIN} max={GLASS_SATURATE_MAX} step={5} value={saturate}
-            onChange={(e) => onGlassSaturateChange(parseInt(e.target.value, 10))}
-            style={{ flex: 1, accentColor: C.accent, cursor: "pointer" }}
-          />
-          <span style={{ fontSize: 10, fontWeight: 800, color: C.dark, width: 34, textAlign: "right" }}>{saturate}%</span>
+        <div style={{ opacity: neumorphic ? 0.4 : 1, pointerEvents: neumorphic ? "none" : "auto", transition: "opacity 160ms ease" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", width: 44, flexShrink: 0 }}>Blur</span>
+            <input
+              type="range" min={GLASS_BLUR_MIN} max={GLASS_BLUR_MAX} step={1} value={blur}
+              onChange={(e) => onGlassBlurChange(parseInt(e.target.value, 10))}
+              style={{ flex: 1, accentColor: C.accent, cursor: "pointer" }}
+            />
+            <span style={{ fontSize: 10, fontWeight: 800, color: C.dark, width: 34, textAlign: "right" }}>{blur}px</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", width: 44, flexShrink: 0 }}>Tint</span>
+            <input
+              type="range" min={GLASS_SATURATE_MIN} max={GLASS_SATURATE_MAX} step={5} value={saturate}
+              onChange={(e) => onGlassSaturateChange(parseInt(e.target.value, 10))}
+              style={{ flex: 1, accentColor: C.accent, cursor: "pointer" }}
+            />
+            <span style={{ fontSize: 10, fontWeight: 800, color: C.dark, width: 34, textAlign: "right" }}>{saturate}%</span>
+          </div>
         </div>
         <div style={{ fontSize: 8.5, color: "#8a8579", marginTop: 6, lineHeight: 1.4 }}>
-          Blur controls how frosted every card looks; Tint controls how much color from behind bleeds through the glass. Liquid Glass preset starts at 28px / 220%.
+          {neumorphic
+            ? "Soft UI renders flat embossed cards (dual shadow, no blur) — Blur/Tint don't apply here. Pick another preset to use them again."
+            : "Blur controls how frosted every card looks; Tint controls how much color from behind bleeds through the glass. Liquid Glass preset starts at 28px / 220%."}
         </div>
       </div>
     </div>
@@ -8277,7 +8325,7 @@ function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, on
     <div>
       <PanelPresetRow
         activePreset={t.panelPreset} onApply={onApplyPreset} onReset={onResetPreset}
-        glassBlur={t.glassBlur} glassSaturate={t.glassSaturate}
+        glassBlur={t.glassBlur} glassSaturate={t.glassSaturate} neumorphic={t.neumorphic}
         onGlassBlurChange={onGlassBlurChange} onGlassSaturateChange={onGlassSaturateChange} onGlassIntensityReset={onGlassIntensityReset}
       />
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
@@ -12637,6 +12685,7 @@ function BTLDashboardInner() {
     // so switching between presets doesn't leave a stale heavy blur on.
     theme.glassBlur = Number.isFinite(preset.blur) ? preset.blur : GLASS_BLUR_DEFAULT;
     theme.glassSaturate = Number.isFinite(preset.saturate) ? preset.saturate : GLASS_SATURATE_DEFAULT;
+    theme.neumorphic = !!preset.neumorphic;
     s.theme = theme;
     return s;
   });
@@ -12649,6 +12698,7 @@ function BTLDashboardInner() {
     theme.panelPreset = "";
     theme.glassBlur = GLASS_BLUR_DEFAULT;
     theme.glassSaturate = GLASS_SATURATE_DEFAULT;
+    theme.neumorphic = false;
     s.theme = theme;
     return s;
   });
@@ -12679,7 +12729,7 @@ function BTLDashboardInner() {
   const theme = normalizeTheme(state.theme);
   // Refresh the shared glass blur/saturate before any card in this render
   // computes its glassCardStyle() — see setGlassIntensity() definition above.
-  setGlassIntensity(theme.glassBlur, theme.glassSaturate);
+  setGlassIntensity(theme.glassBlur, theme.glassSaturate, theme.neumorphic);
   const dashTheme = { bg: theme.dashboard.bg || C.bg, text: theme.dashboard.text || C.text };
   const fm = theme.focusMode;
   const fmFontFamily = fm.font ? fontStackFor(fm.font) : undefined;
