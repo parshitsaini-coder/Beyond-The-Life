@@ -1,36 +1,32 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## ✍️ Life Story tab rebuilt — full-screen feed + bottom dock (this update)
-The old top header bar (back arrow, "Life Story" title, hide/show, filters,
-theme, profile, close) has been removed entirely. The feed now runs
-full-screen from the very top of the tab — only the date pills and story
-cards are visible up there, nothing else.
+## ✨ Life Story — Today's Entry is now a liquid-glass popup (this update)
+Redesigned `LifeStoryTab` in `components/BTLDashboard.jsx` per the marked-up
+screenshots:
+- **"hide" → "today" toggle** (top of the Life Story header, next to the
+  title) now opens **Today's Entry as a floating popup** instead of
+  showing/hiding it inline in the feed. Click it again (or the ✕ inside,
+  or click outside, or press Escape) to close.
+- The popup is **full liquid glass**: heavy `backdrop-filter: blur + saturate`,
+  a translucent gradient fill, a soft top gloss "sheen" band and a frosted
+  border/shadow — matching the reference glass-key look. It genie-opens
+  and genie-closes out of the toggle button using the same SVG
+  `feTurbulence`/`feDisplacementMap` liquid-warp filter + squeeze/scale
+  animation that used to hide/show the inline card (`GenieFilterDefs`,
+  reused as-is), just landing on a floating card instead of an inline one.
+- It's sized and anchored to sit *inside* the journal area (not a
+  full-screen modal) — bottom-right, overlapping the past-entries card,
+  same as the layout you sketched.
+- **Past-day entries** (every date except today) now render inside their
+  own bounded **"past-day entry card"** — a bordered, rounded panel that
+  fills the tab body, scrollable independently, with an empty-state
+  message when there are no past entries yet.
+- `jump to date → Today` in the filters dropdown now opens the popup
+  instead of trying to scroll to an inline block that no longer exists.
+- The old `GenieHidable` inline hide/show component is no longer used
+  (left in place, unreferenced) — replaced by `LifeStoryTodayGlassPopup`.
 
-- **Floating glass bottom dock** — every control that used to live in the
-  header (back, profile, hide/show today's entry, filters/jump-to-date,
-  theme) now lives in a pill-shaped glass dock floating at the bottom of
-  the screen. The "filters" and "theme" popovers now open **upward** from
-  the dock instead of dropping down, since their anchor moved to the
-  bottom.
-- **Bigger, "glassic" story cards** — each day's card is wider
-  (`min(94%, 860px)` instead of a fixed 620px), more padding, a proper
-  frosted-glass surface (`backdrop-filter: blur`) instead of a flat white
-  fill, and now animates in with a spring fade/slide-up as you scroll
-  through the feed.
-- **Settings rebuilt** — the theme gear now opens a two-tab panel
-  (**Style** / **Text**) instead of one long list:
-  - *Style*: 10 presets, Text color, Page background color, and a new
-    **Card roundness** slider.
-  - *Text*: Font, Text size, new **Line height** slider, new **Letter
-    spacing** slider, new **Alignment** control (left/center/justify),
-    and Bold toggle.
-  - Still one global theme (applies to every day's entry, same as
-    before) — just far more of the page's look is now customizable from
-    it. `state.lifeStory.theme` gained `lineHeight`, `align`,
-    `letterSpacing`, `cardRadius` fields; old saved themes fall back to
-    sensible defaults for all of them automatically.
-
-## 🧘 New — 7 more yoga poses added (earlier update)
+## 🧘 New — 7 more yoga poses added (this update)
 7 more cards appended to `FITNESS_DATA.yoga` (now 20 total): Reclining
 Single-Leg Stretch (Bedtime Pose), Pelvic Tilt Tabletop Pose,
 Vasisthasana (Side Plank Pose), Supine Knee Bend Relaxation Pose,

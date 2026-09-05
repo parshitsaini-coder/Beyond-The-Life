@@ -12,7 +12,6 @@ import {
   Users, Clock, PieChart as PieChartIcon, Bell, BellOff, Square,
   AlarmClock, Volume2, Play, Waves, Gauge,
   Dumbbell, Info, Timer, Flower2, Wind,
-  AlignLeft, AlignCenter, AlignJustify,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -8785,10 +8784,6 @@ const LIFE_STORY_DEFAULT_THEME = {
   bold: false,
   textColor: C.text,
   bgColor: "linear-gradient(180deg, #fbf9f2, #f5f2e8)",
-  lineHeight: 1.6,
-  align: "left",
-  letterSpacing: 0,
-  cardRadius: 18,
 };
 
 /* 10 curated presets — swatch shows page bg + text color together so it's
@@ -9223,49 +9218,30 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
     if (chip) setLightbox(Number(chip.dataset.idx));
   };
 
-  const radius = t.cardRadius ?? 18;
-  const textStyle = {
-    fontSize: t.fontSize, fontWeight: t.bold ? 700 : 400, lineHeight: t.lineHeight ?? 1.6,
-    color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word",
-    textAlign: t.align || "left", letterSpacing: `${t.letterSpacing ?? 0}px`,
-  };
   return (
-    <motion.div
-      ref={blockRef}
-      initial={{ opacity: 0, y: 26, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ type: "spring", stiffness: 260, damping: 26 }}
-      style={{ marginBottom: 28, width: "100%" }}
-    >
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+    <div ref={blockRef} style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
         <span style={{
-          display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 800, color: isToday ? "#fff" : C.dark,
+          display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 800, color: isToday ? "#fff" : C.dark,
           background: isToday ? C.accent : "rgba(255,255,255,0.75)", border: `1px solid ${isToday ? C.accent : "#ece7d8"}`,
-          borderRadius: 999, padding: "6px 16px", boxShadow: isToday ? "0 4px 14px rgba(252,163,17,0.35)" : "none",
-          backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+          borderRadius: 999, padding: "5px 14px", boxShadow: isToday ? "0 4px 14px rgba(252,163,17,0.35)" : "none",
         }}>
-          <CalendarDays size={12} /> {formatStoryDate(iso)} {isToday && "· Today"}
+          <CalendarDays size={11} /> {formatStoryDate(iso)} {isToday && "· Today"}
         </span>
       </div>
 
       <motion.div
         style={{
-          position: "relative", borderRadius: radius + 2, padding: 2, backgroundSize: "300% 300%",
+          position: "relative", borderRadius: 18, padding: 2, backgroundSize: "300% 300%",
           background: isDark
             ? "linear-gradient(120deg, #fca311, rgba(255,255,255,0.25), #fca311, #98c1d9, #fca311)"
             : "linear-gradient(120deg, #fca311, #ffe3b8, #fca311, #98c1d9, #fca311)",
-          boxShadow: isToday ? "0 10px 34px rgba(252,163,17,0.28)" : "0 4px 18px rgba(37,36,34,0.08)",
+          boxShadow: isToday ? "0 6px 22px rgba(252,163,17,0.28)" : "0 2px 10px rgba(37,36,34,0.06)",
         }}
         animate={{ backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"] }}
         transition={{ duration: isToday ? 5 : 9, repeat: Infinity, ease: "linear" }}
       >
-        <div style={{
-          position: "relative", borderRadius: radius,
-          background: isDark ? "rgba(20,20,20,0.9)" : "rgba(255,255,255,0.82)",
-          backdropFilter: "blur(18px) saturate(180%)", WebkitBackdropFilter: "blur(18px) saturate(180%)",
-          border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.9)"}`,
-          padding: 22,
-        }}>
+        <div style={{ position: "relative", background: isDark ? "rgba(20,20,20,0.94)" : "rgba(255,255,255,0.92)", borderRadius: 16, padding: 14 }}>
           {isToday ? (
             <div
               ref={editableRef}
@@ -9276,12 +9252,12 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
               onPaste={handlePaste}
               onClick={handleChipClick}
               data-placeholder="Write today's story... type @ for emoji & photos"
-              style={{ width: "100%", minHeight: 110, outline: "none", ...textStyle }}
+              style={{ width: "100%", minHeight: 76, outline: "none", fontSize: t.fontSize, fontWeight: t.bold ? 700 : 400, lineHeight: 1.6, color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
             />
           ) : entry?.html ? (
             <div
               onClick={handleChipClick}
-              style={textStyle}
+              style={{ fontSize: t.fontSize, fontWeight: t.bold ? 700 : 400, lineHeight: 1.6, color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
               dangerouslySetInnerHTML={{ __html: entry.html }}
             />
           ) : (
@@ -9307,7 +9283,7 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
           <LifeStoryLightbox src={images[lightbox]} onClose={() => setLightbox(null)} onDelete={() => { onRemoveImage(lightbox); setLightbox(null); }} />
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }
 
@@ -9317,167 +9293,107 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
    sit next to swatch presets so any color is reachable, not just the 10
    curated themes. */
 function LifeStoryThemeSettings({ theme, onChange, onClose }) {
-  const [section, setSection] = useState("style"); // "style" | "text"
   const set = (patch) => onChange({ ...theme, presetId: "custom", ...patch });
-  const applyPreset = (p) => onChange({ ...theme, presetId: p.id, textColor: p.text, bgColor: p.bg });
-  const label = { fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 5, display: "flex", alignItems: "center", gap: 4, letterSpacing: 0.4 };
+  const applyPreset = (p) => onChange({ presetId: p.id, fontFamily: theme.fontFamily, fontSize: theme.fontSize, bold: theme.bold, textColor: p.text, bgColor: p.bg });
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.92, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 10 }}
+      initial={{ opacity: 0, scale: 0.92, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: -6 }}
       transition={{ type: "spring", stiffness: 400, damping: 28 }}
       style={{
-        position: "absolute", bottom: "125%", right: 0, width: 268, maxHeight: 420, overflowY: "auto", zIndex: 90,
-        background: "rgba(255,255,255,0.88)", backdropFilter: "blur(26px) saturate(190%)", WebkitBackdropFilter: "blur(26px) saturate(190%)",
-        border: "1px solid rgba(255,255,255,0.9)", borderRadius: 18, boxShadow: "0 -6px 10px rgba(37,36,34,0.06), 0 20px 50px rgba(37,36,34,0.28)", padding: 12,
+        position: "absolute", top: "115%", right: 0, width: 250, maxHeight: 380, overflowY: "auto", zIndex: 50,
+        background: "rgba(255,255,255,0.85)", backdropFilter: "blur(20px) saturate(180%)", WebkitBackdropFilter: "blur(20px) saturate(180%)",
+        border: "1px solid rgba(255,255,255,0.85)", borderRadius: 12, boxShadow: "0 16px 40px rgba(37,36,34,0.25)", padding: 10,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={{ fontSize: 12, fontWeight: 900, color: C.dark, display: "flex", alignItems: "center", gap: 6 }}>
-          <Sparkles size={13} color={C.accent} /> Page Theme
-        </div>
-        <motion.div whileHover={{ scale: 1.15, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: "#a39c86" }}>
-          <X size={13} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86" }}>PAGE THEME</div>
+        <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: "#a39c86" }}>
+          <X size={12} />
         </motion.div>
       </div>
 
-      {/* Section tabs */}
-      <div style={{ display: "flex", gap: 4, background: "rgba(0,0,0,0.045)", borderRadius: 999, padding: 3, marginBottom: 12 }}>
-        {[{ id: "style", label: "Style", icon: Palette }, { id: "text", label: "Text", icon: Type }].map((s) => (
+      {/* Preset swatches */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 10 }}>
+        {LIFE_STORY_THEME_PRESETS.map((p) => (
           <motion.div
-            key={s.id} onClick={() => setSection(s.id)} whileTap={{ scale: 0.96 }}
+            key={p.id} whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.94 }} onClick={() => applyPreset(p)}
+            title={p.name}
             style={{
-              flex: 1, textAlign: "center", padding: "6px 0", borderRadius: 999, cursor: "pointer",
-              fontSize: 10.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-              color: section === s.id ? "#fff" : C.dark,
-              background: section === s.id ? C.dark : "transparent",
+              width: "100%", aspectRatio: "1", borderRadius: 8, cursor: "pointer", background: p.swatchBg,
+              border: theme.presetId === p.id ? `2px solid ${C.accent}` : "1px solid rgba(0,0,0,0.12)",
+              display: "flex", alignItems: "center", justifyContent: "center", boxShadow: theme.presetId === p.id ? "0 0 0 2px rgba(252,163,17,0.25)" : "none",
             }}
-          ><s.icon size={11} /> {s.label}</motion.div>
+          >
+            <span style={{ fontSize: 11, fontWeight: 900, color: p.text }}>Aa</span>
+          </motion.div>
         ))}
       </div>
 
-      {section === "style" && (
-        <>
-          {/* Preset swatches */}
-          <div style={label}>PRESETS</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 12 }}>
-            {LIFE_STORY_THEME_PRESETS.map((p) => (
-              <motion.div
-                key={p.id} whileHover={{ scale: 1.1, y: -2 }} whileTap={{ scale: 0.92 }} onClick={() => applyPreset(p)}
-                title={p.name}
-                style={{
-                  width: "100%", aspectRatio: "1", borderRadius: 9, cursor: "pointer", background: p.swatchBg,
-                  border: theme.presetId === p.id ? `2px solid ${C.accent}` : "1px solid rgba(0,0,0,0.12)",
-                  display: "flex", alignItems: "center", justifyContent: "center", boxShadow: theme.presetId === p.id ? "0 0 0 3px rgba(252,163,17,0.22)" : "none",
-                }}
-              >
-                <span style={{ fontSize: 11, fontWeight: 900, color: p.text }}>Aa</span>
-              </motion.div>
-            ))}
+      {/* Font family */}
+      <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+        <Type size={10} /> FONT
+      </div>
+      <select
+        value={theme.fontFamily}
+        onChange={(e) => set({ fontFamily: e.target.value })}
+        style={{ width: "100%", fontSize: 11, fontWeight: 700, color: C.dark, padding: "6px 8px", borderRadius: 8, border: "1px solid #ece7d8", background: "#fff", marginBottom: 10, cursor: "pointer" }}
+      >
+        {LIFE_STORY_FONTS.map((f) => (
+          <option key={f.id} value={f.stack} style={{ fontFamily: f.stack }}>{f.label}</option>
+        ))}
+      </select>
+
+      {/* Text size */}
+      <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+        <Baseline size={10} /> TEXT SIZE — {theme.fontSize}px
+      </div>
+      <input
+        type="range" min={11} max={22} step={1} value={theme.fontSize}
+        onChange={(e) => set({ fontSize: Number(e.target.value) })}
+        style={{ width: "100%", marginBottom: 10, accentColor: C.accent }}
+      />
+
+      {/* Bold toggle */}
+      <motion.div
+        whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+        onClick={() => set({ bold: !theme.bold })}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 10, cursor: "pointer",
+          fontSize: 11, fontWeight: 800, color: theme.bold ? "#fff" : C.dark,
+          background: theme.bold ? C.accent : "#fff", border: `1px solid ${theme.bold ? C.accent : "#ece7d8"}`,
+          borderRadius: 999, padding: "6px 0",
+        }}
+      ><Bold size={12} /> Bold text {theme.bold ? "On" : "Off"}</motion.div>
+
+      {/* Text color + Background color */}
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            <Palette size={10} /> TEXT COLOR
           </div>
-
-          {/* Text color + Background color */}
-          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
-            <div style={{ flex: 1 }}>
-              <div style={label}><Palette size={10} /> TEXT COLOR</div>
-              <input
-                type="color" value={/^#/.test(theme.textColor) ? theme.textColor : "#403d39"}
-                onChange={(e) => set({ textColor: e.target.value })}
-                style={{ width: "100%", height: 30, borderRadius: 9, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={label}><Palette size={10} /> PAGE BG</div>
-              <input
-                type="color" value={/^#[0-9a-fA-F]{6}$/.test(theme.bgColor) ? theme.bgColor : "#fbf9f2"}
-                onChange={(e) => set({ bgColor: e.target.value })}
-                style={{ width: "100%", height: 30, borderRadius: 9, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
-              />
-            </div>
+          <input
+            type="color" value={/^#/.test(theme.textColor) ? theme.textColor : "#403d39"}
+            onChange={(e) => set({ textColor: e.target.value })}
+            style={{ width: "100%", height: 28, borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+            <Palette size={10} /> PAGE BG
           </div>
-
-          {/* Card roundness */}
-          <div style={label}>CARD ROUNDNESS — {theme.cardRadius ?? 18}px</div>
           <input
-            type="range" min={4} max={30} step={1} value={theme.cardRadius ?? 18}
-            onChange={(e) => set({ cardRadius: Number(e.target.value) })}
-            style={{ width: "100%", marginBottom: 4, accentColor: C.accent }}
+            type="color" value={/^#[0-9a-fA-F]{6}$/.test(theme.bgColor) ? theme.bgColor : "#fbf9f2"}
+            onChange={(e) => set({ bgColor: e.target.value })}
+            style={{ width: "100%", height: 28, borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
           />
-        </>
-      )}
-
-      {section === "text" && (
-        <>
-          {/* Font family */}
-          <div style={label}><Type size={10} /> FONT</div>
-          <select
-            value={theme.fontFamily}
-            onChange={(e) => set({ fontFamily: e.target.value })}
-            style={{ width: "100%", fontSize: 11, fontWeight: 700, color: C.dark, padding: "7px 8px", borderRadius: 9, border: "1px solid #ece7d8", background: "#fff", marginBottom: 12, cursor: "pointer" }}
-          >
-            {LIFE_STORY_FONTS.map((f) => (
-              <option key={f.id} value={f.stack} style={{ fontFamily: f.stack }}>{f.label}</option>
-            ))}
-          </select>
-
-          {/* Text size */}
-          <div style={label}><Baseline size={10} /> TEXT SIZE — {theme.fontSize}px</div>
-          <input
-            type="range" min={11} max={22} step={1} value={theme.fontSize}
-            onChange={(e) => set({ fontSize: Number(e.target.value) })}
-            style={{ width: "100%", marginBottom: 12, accentColor: C.accent }}
-          />
-
-          {/* Line height */}
-          <div style={label}>LINE HEIGHT — {(theme.lineHeight ?? 1.6).toFixed(1)}</div>
-          <input
-            type="range" min={1.2} max={2.2} step={0.1} value={theme.lineHeight ?? 1.6}
-            onChange={(e) => set({ lineHeight: Number(e.target.value) })}
-            style={{ width: "100%", marginBottom: 12, accentColor: C.accent }}
-          />
-
-          {/* Letter spacing */}
-          <div style={label}>LETTER SPACING — {theme.letterSpacing ?? 0}px</div>
-          <input
-            type="range" min={-1} max={3} step={0.5} value={theme.letterSpacing ?? 0}
-            onChange={(e) => set({ letterSpacing: Number(e.target.value) })}
-            style={{ width: "100%", marginBottom: 12, accentColor: C.accent }}
-          />
-
-          {/* Alignment */}
-          <div style={label}>ALIGNMENT</div>
-          <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-            {[{ id: "left", icon: AlignLeft }, { id: "center", icon: AlignCenter }, { id: "justify", icon: AlignJustify }].map((a) => (
-              <motion.div
-                key={a.id} whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={() => set({ align: a.id })}
-                style={{
-                  flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "7px 0", borderRadius: 9, cursor: "pointer",
-                  color: (theme.align || "left") === a.id ? "#fff" : C.dark,
-                  background: (theme.align || "left") === a.id ? C.accent : "#fff",
-                  border: `1px solid ${(theme.align || "left") === a.id ? C.accent : "#ece7d8"}`,
-                }}
-              ><a.icon size={13} /></motion.div>
-            ))}
-          </div>
-
-          {/* Bold toggle */}
-          <motion.div
-            whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
-            onClick={() => set({ bold: !theme.bold })}
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 4, cursor: "pointer",
-              fontSize: 11, fontWeight: 800, color: theme.bold ? "#fff" : C.dark,
-              background: theme.bold ? C.accent : "#fff", border: `1px solid ${theme.bold ? C.accent : "#ece7d8"}`,
-              borderRadius: 999, padding: "7px 0",
-            }}
-          ><Bold size={12} /> Bold text {theme.bold ? "On" : "Off"}</motion.div>
-        </>
-      )}
+        </div>
+      </div>
 
       <motion.div
         whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
         onClick={() => onChange(LIFE_STORY_DEFAULT_THEME)}
-        style={{ marginTop: 10, textAlign: "center", fontSize: 10, fontWeight: 800, color: C.dark, border: "1px solid #ece7d8", borderRadius: 999, padding: "7px 0", cursor: "pointer", background: "#fff" }}
+        style={{ marginTop: 10, textAlign: "center", fontSize: 10, fontWeight: 800, color: C.dark, border: "1px solid #ece7d8", borderRadius: 999, padding: "6px 0", cursor: "pointer", background: "#fff" }}
       >
         Reset to default
       </motion.div>
@@ -9625,6 +9541,155 @@ function GenieHidable({ hidden, onHiddenChange, toggleRef, children, placeholder
   return <div ref={wrapRef}>{children}</div>;
 }
 
+/* ---------------- TODAY'S ENTRY — LIQUID GLASS POPUP ----------------
+   Today's journal entry no longer sits inline in the feed. It lives
+   inside a floating, fully-glass card that genie-opens/closes out of
+   the header's "today" toggle button (same liquid-warp filter + squeeze
+   animation as GenieHidable above, just landing on a floating popup
+   instead of an inline block). Sized to sit inside the "past-day entry
+   card" area rather than covering the whole screen, and dismissible by
+   the toggle button, the ✕, an outside click, or Escape. */
+function LifeStoryTodayGlassPopup({ open, toggleRef, children, onClose }) {
+  const wrapRef = useRef(null);
+  const [mounted, setMounted] = useState(false);
+  const prevOpenRef = useRef(false);
+
+  // Drives open → mount+emerge, and close → shrink+unmount, off of the
+  // `open` prop (parent just flips a boolean; this owns the animation).
+  useEffect(() => {
+    const wasOpen = prevOpenRef.current;
+    prevOpenRef.current = open;
+
+    if (open && !wasOpen) { setMounted(true); return; }
+
+    if (!open && wasOpen) {
+      const el = wrapRef.current;
+      const btn = toggleRef.current;
+      if (!el || !btn) { setMounted(false); return; }
+      const elRect = el.getBoundingClientRect();
+      const btnRect = btn.getBoundingClientRect();
+      const dx = (btnRect.left + btnRect.width / 2) - (elRect.left + elRect.width / 2);
+      const dy = (btnRect.top + btnRect.height / 2) - (elRect.top + elRect.height / 2);
+      el.style.transformOrigin = "50% 50%";
+      el.style.filter = "url(#ls-genie-warp)";
+      try {
+        document.getElementById("ls-genie-turb-anim")?.beginElement();
+        document.getElementById("ls-genie-disp-anim")?.beginElement();
+      } catch (e) { /* SMIL restart can throw on rapid re-clicks in some engines */ }
+      animate(el, {
+        x: [0, dx * 0.45, dx], y: [0, dy * 0.55, dy],
+        scaleX: [1, 1.16, 0.04], scaleY: [1, 0.7, 0.05],
+        opacity: [1, 1, 0],
+      }, {
+        duration: 0.55, times: [0, 0.42, 1], ease: "easeInOut",
+        onComplete: () => setMounted(false),
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Once mounted for an "open", play the emerge-from-button animation.
+  useEffect(() => {
+    if (!mounted || !open) return;
+    const el = wrapRef.current;
+    const btn = toggleRef.current;
+    if (!el || !btn) return;
+    const elRect = el.getBoundingClientRect();
+    const btnRect = btn.getBoundingClientRect();
+    const dx = (btnRect.left + btnRect.width / 2) - (elRect.left + elRect.width / 2);
+    const dy = (btnRect.top + btnRect.height / 2) - (elRect.top + elRect.height / 2);
+    el.style.transformOrigin = "50% 50%";
+    el.style.transform = `translate(${dx}px, ${dy}px) scale(0.04, 0.05)`;
+    el.style.opacity = "0";
+    el.style.filter = "url(#ls-genie-warp)";
+    try {
+      document.getElementById("ls-genie-turb-anim")?.beginElement();
+      document.getElementById("ls-genie-disp-anim")?.beginElement();
+    } catch (e) { /* see above */ }
+    requestAnimationFrame(() => {
+      animate(el, {
+        x: [dx, dx * 0.4, 0], y: [dy, dy * 0.5, 0],
+        scaleX: [0.04, 1.16, 1], scaleY: [0.05, 0.7, 1],
+        opacity: [0, 1, 1],
+      }, {
+        duration: 0.6, times: [0, 0.55, 1], ease: "easeOut",
+        onComplete: () => { el.style.filter = ""; el.style.transform = ""; el.style.opacity = ""; },
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
+
+  // Outside click + Escape both close it — only wired up while it's showing.
+  useEffect(() => {
+    if (!mounted) return;
+    const handleClick = (e) => {
+      if (wrapRef.current?.contains(e.target)) return;
+      if (toggleRef.current?.contains(e.target)) return;
+      onClose();
+    };
+    const handleKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [mounted, onClose, toggleRef]);
+
+  if (!mounted) return null;
+
+  return (
+    <div
+      ref={wrapRef}
+      style={{
+        position: "absolute", right: "3%", bottom: "8%",
+        width: "min(440px, 58%)", height: "44%", minWidth: 250, minHeight: 220,
+        zIndex: 45,
+      }}
+    >
+      <div
+        style={{
+          position: "relative", width: "100%", height: "100%", borderRadius: 26,
+          background: "linear-gradient(150deg, rgba(255,255,255,0.62), rgba(255,255,255,0.22) 55%, rgba(255,255,255,0.34))",
+          border: "1px solid rgba(255,255,255,0.75)",
+          boxShadow: "0 26px 64px rgba(37,36,34,0.32), 0 2px 0 rgba(255,255,255,0.6) inset, 0 -1px 0 rgba(255,255,255,0.25) inset",
+          backdropFilter: "blur(26px) saturate(200%)", WebkitBackdropFilter: "blur(26px) saturate(200%)",
+          display: "flex", flexDirection: "column", overflow: "hidden",
+        }}
+      >
+        {/* top gloss sheen — the "glass key" highlight from the reference look */}
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0, height: "48%", pointerEvents: "none",
+          background: "linear-gradient(180deg, rgba(255,255,255,0.65), rgba(255,255,255,0))",
+        }} />
+        <div style={{
+          position: "absolute", top: 10, left: "8%", right: "8%", height: 10, borderRadius: 999, pointerEvents: "none",
+          background: "linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.85), rgba(255,255,255,0))", filter: "blur(2px)",
+        }} />
+
+        <div style={{
+          position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.45)",
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 900, color: C.dark, display: "flex", alignItems: "center", gap: 6 }}>
+            <Sparkles size={12} /> Today's Entry
+          </span>
+          <motion.div
+            whileHover={{ scale: 1.15, rotate: 90 }} whileTap={{ scale: 0.9 }}
+            onClick={onClose} style={{ cursor: "pointer", color: C.dark, display: "flex" }}
+          >
+            <X size={14} />
+          </motion.div>
+        </div>
+
+        <div style={{ position: "relative", flex: 1, overflowY: "auto", padding: 14 }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LifeStoryTab({ state, update, onClose }) {
   const story = state.lifeStory || { profile: null, entries: {} };
   const entries = story.entries || {};
@@ -9632,16 +9697,21 @@ function LifeStoryTab({ state, update, onClose }) {
   const today = todayISO();
   const [jumpOpen, setJumpOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
-  const [todayHidden, setTodayHidden] = useState(false);
+  const [todayPopupOpen, setTodayPopupOpen] = useState(false);
   const feedRef = useRef(null);
   const blockRefs = useRef({});
   const hideToggleRef = useRef(null);
+  const pastCardRef = useRef(null);
 
   const dates = useMemo(() => {
     const keys = new Set(Object.keys(entries));
     keys.add(today);
     return [...keys].sort(); // ascending — oldest at top, today at bottom
   }, [entries, today]);
+  // Everything except today — this is what lives inside the bounded
+  // "past-day entry card" area. Today's entry now lives only in the
+  // glass popup, opened from the header toggle.
+  const pastDates = useMemo(() => dates.filter((d) => d !== today), [dates, today]);
 
   useEffect(() => {
     // land on today's entry when the tab opens, like a chat scrolled to latest
@@ -9678,89 +9748,48 @@ function LifeStoryTab({ state, update, onClose }) {
 
   const jumpTo = (iso) => {
     setJumpOpen(false);
+    if (iso === today) { setTodayPopupOpen(true); return; }
     blockRefs.current[iso]?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
   return (
-    <div style={{ borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative", overflow: "hidden" }}>
-      <GenieFilterDefs />
-
-      {/* Full-screen feed — no header on top, only the dates/story cards */}
-      <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: "18px 16px 96px", background: theme.bgColor }}>
-        <div style={{ maxWidth: "min(94%, 860px)", margin: "0 auto" }}>
-          {dates.map((iso) => {
-            const block = (
-              <LifeStoryDayBlock
-                key={iso} iso={iso} entry={entries[iso]} isToday={iso === today} theme={theme}
-                onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
-                blockRef={(el) => { blockRefs.current[iso] = el; }}
-              />
-            );
-            return iso === today ? (
-              <GenieHidable key="today-genie" hidden={todayHidden} onHiddenChange={setTodayHidden} toggleRef={hideToggleRef} placeholderLabel="Today's entry is hidden">
-                {block}
-              </GenieHidable>
-            ) : block;
-          })}
-        </div>
-      </div>
-
-      {/* Floating glass dock — everything that used to live in the top
-          header now sits here, anchored to the bottom, so the feed above
-          it can go edge-to-edge / full-screen. */}
-      <motion.div
-        initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 300, damping: 28, delay: 0.1 }}
-        style={{
-          position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", zIndex: 40,
-          maxWidth: "calc(100% - 20px)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "center",
-          background: "rgba(255,255,255,0.78)", backdropFilter: "blur(22px) saturate(190%)", WebkitBackdropFilter: "blur(22px) saturate(190%)",
-          border: "1px solid rgba(255,255,255,0.9)", borderRadius: 999, boxShadow: "0 14px 38px rgba(37,36,34,0.22)", padding: "7px 8px",
-        }}
-      >
-        <motion.div
-          whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} title="Back to dashboard"
-          style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: "50%", background: "rgba(0,0,0,0.05)" }}
-        >
-          <ArrowLeft size={14} color={C.dark} />
+    <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 6 }}>
+        <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
+          <ArrowLeft size={15} color={C.dark} />
         </motion.div>
-
-        {story.profile && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px" }}>
-            <div style={{ width: 26, height: 26, borderRadius: "50%", background: story.profile.image ? `url(${story.profile.image}) center/cover` : C.dark, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
-              {!story.profile.image && story.profile.name?.[0]?.toUpperCase()}
-            </div>
-            <span style={{ fontSize: 11, fontWeight: 800, color: C.dark, whiteSpace: "nowrap" }}>{story.profile.name}</span>
-          </div>
-        )}
+        <Pencil size={14} color={C.dark} />
+        <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Life Story</span>
 
         <motion.button
           ref={hideToggleRef}
           whileHover={{ y: -1 }} whileTap={{ scale: 0.9 }}
-          onClick={() => hideToggleRef.current?.__genieToggle?.()}
-          title={todayHidden ? "Show today's entry" : "Hide today's entry"}
+          onClick={() => setTodayPopupOpen((v) => !v)}
+          title={todayPopupOpen ? "Close today's entry" : "Open today's entry"}
           style={{
-            border: "none", borderRadius: 999, padding: "7px 11px", background: todayHidden ? "#fff2dc" : "rgba(0,0,0,0.05)",
-            display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, fontWeight: 800, color: todayHidden ? C.accent : C.dark,
+            border: `1px solid ${todayPopupOpen ? C.accent : C.text}`, borderRadius: 999, padding: "4px 9px", background: todayPopupOpen ? "#fff7ea" : "#fff",
+            display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, fontWeight: 800, color: todayPopupOpen ? C.accent : C.dark,
           }}
         >
-          {todayHidden ? <EyeOff size={12} /> : <Eye size={12} />} {todayHidden ? "show" : "hide"}
+          <BookOpen size={11} /> {todayPopupOpen ? "close" : "today"}
         </motion.button>
+
+        <div style={{ flex: 1 }} />
 
         <div style={{ position: "relative" }}>
           <motion.button
-            whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }} onClick={() => { setThemeOpen(false); setJumpOpen((v) => !v); }}
-            style={{ border: "none", borderRadius: 999, padding: "7px 11px", background: "rgba(0,0,0,0.05)", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: C.dark }}
+            whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }} onClick={() => setJumpOpen((v) => !v)}
+            style={{ border: `1px solid ${C.text}`, borderRadius: 999, padding: "5px 11px", background: "#fff", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: C.dark }}
           ><Filter size={12} /> filters</motion.button>
           <AnimatePresence>
             {jumpOpen && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.92, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 10 }}
+                initial={{ opacity: 0, scale: 0.92, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: -6 }}
                 transition={{ type: "spring", stiffness: 400, damping: 28 }}
                 style={{
-                  position: "absolute", bottom: "125%", right: 0, width: 190, maxHeight: 240, overflowY: "auto", zIndex: 90,
-                  background: "rgba(255,255,255,0.9)", backdropFilter: "blur(22px) saturate(190%)", WebkitBackdropFilter: "blur(22px) saturate(190%)",
-                  border: "1px solid rgba(255,255,255,0.9)", borderRadius: 14, boxShadow: "0 20px 50px rgba(37,36,34,0.28)", padding: 6,
+                  position: "absolute", top: "115%", right: 0, width: 190, maxHeight: 240, overflowY: "auto", zIndex: 50,
+                  background: "rgba(255,255,255,0.85)", backdropFilter: "blur(20px) saturate(180%)", WebkitBackdropFilter: "blur(20px) saturate(180%)",
+                  border: "1px solid rgba(255,255,255,0.85)", borderRadius: 12, boxShadow: "0 16px 40px rgba(37,36,34,0.25)", padding: 6,
                 }}
               >
                 <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", padding: "4px 6px" }}>JUMP TO DATE</div>
@@ -9778,8 +9807,8 @@ function LifeStoryTab({ state, update, onClose }) {
 
         <div style={{ position: "relative" }}>
           <motion.button
-            whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }} onClick={() => { setJumpOpen(false); setThemeOpen((v) => !v); }}
-            style={{ border: "none", borderRadius: 999, padding: "7px 11px", background: "rgba(0,0,0,0.05)", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: C.dark }}
+            whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }} onClick={() => setThemeOpen((v) => !v)}
+            style={{ border: `1px solid ${C.text}`, borderRadius: 999, padding: "5px 11px", background: "#fff", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: C.dark }}
           ><Settings size={12} /> theme</motion.button>
           <AnimatePresence>
             {themeOpen && (
@@ -9787,7 +9816,61 @@ function LifeStoryTab({ state, update, onClose }) {
             )}
           </AnimatePresence>
         </div>
-      </motion.div>
+
+        {story.profile && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 26, height: 26, borderRadius: "50%", background: story.profile.image ? `url(${story.profile.image}) center/cover` : C.dark, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 800 }}>
+              {!story.profile.image && story.profile.name?.[0]?.toUpperCase()}
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>{story.profile.name}</span>
+          </div>
+        )}
+        <motion.div whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: C.dark }}>
+          <X size={16} />
+        </motion.div>
+      </div>
+
+      <GenieFilterDefs />
+      <div style={{ flex: 1, position: "relative", padding: 16, background: theme.bgColor, overflow: "hidden" }}>
+        {/* Past-day entry card — the bounded journal area holding every day
+           before today. Today's entry lives only in the glass popup below. */}
+        <div
+          ref={pastCardRef}
+          style={{
+            position: "absolute", inset: 16, borderRadius: 20, overflow: "hidden",
+            border: `1px solid ${C.text}22`, background: "rgba(255,255,255,0.4)",
+            boxShadow: "0 2px 16px rgba(37,36,34,0.06)",
+          }}
+        >
+          <div ref={feedRef} style={{ position: "absolute", inset: 0, overflowY: "auto", padding: 16 }}>
+            <div style={{ maxWidth: 620, margin: "0 auto" }}>
+              {pastDates.length === 0 ? (
+                <div style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: "#a39c86", padding: "40px 0" }}>
+                  No past entries yet — write today's first, then check back here tomorrow.
+                </div>
+              ) : (
+                pastDates.map((iso) => (
+                  <LifeStoryDayBlock
+                    key={iso} iso={iso} entry={entries[iso]} isToday={false} theme={theme}
+                    onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
+                    blockRef={(el) => { blockRefs.current[iso] = el; }}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Today's entry — opens as a full liquid-glass popup out of the
+           "today" toggle button in the header above. */}
+        <LifeStoryTodayGlassPopup open={todayPopupOpen} toggleRef={hideToggleRef} onClose={() => setTodayPopupOpen(false)}>
+          <LifeStoryDayBlock
+            iso={today} entry={entries[today]} isToday theme={theme}
+            onChangeHtml={setEntryHtml(today)} onAddImage={addImage(today)} onRemoveImage={removeImage(today)}
+            blockRef={(el) => { blockRefs.current[today] = el; }}
+          />
+        </LifeStoryTodayGlassPopup>
+      </div>
 
       <AnimatePresence>{!story.profile && <LifeStoryProfileSetup onSave={setProfile} />}</AnimatePresence>
     </div>
