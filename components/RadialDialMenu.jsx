@@ -1,0 +1,254 @@
+"use client";
+import { useRef, useState, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  CheckCircle2, ListChecks, Trophy, AlarmClock, ShieldCheck, Timer,
+  CalendarClock, CalendarDays, Camera, BookOpen, Dumbbell, Settings,
+  PartyPopper, BarChart3, Share2,
+} from "lucide-react";
+
+/* ---------------- CONFIG ----------------
+   Exact 15 items + order from the spec. Each carries the `tab` id it
+   should eventually open (Step 7 wiring) — filled in now so wiring
+   later is a one-line lookup, not a second pass through this list.
+   `kind` records what Step 1's audit found: "widget" items are the 7
+   that live on the freeform dashboard grid today and (per your Step 1
+   decision) will each become their own dedicated full-screen panel;
+   "tab" items already have a real full-screen; "modal" items already
+   open as an overlay. */
+export const RADIAL_ITEMS = [
+  { id: "dailyGoals", label: "Daily Goal", icon: CheckCircle2, kind: "widget" },
+  { id: "extryGoals", label: "Entry Goals", icon: ListChecks, kind: "widget" },
+  { id: "bigGoals", label: "Life Big Goals", icon: Trophy, kind: "widget" },
+  { id: "clock", label: "Clock & Alarm", icon: AlarmClock, kind: "widget" },
+  { id: "lifeRules", label: "Life Rules", icon: ShieldCheck, kind: "widget" },
+  { id: "focusTimer", label: "Timer", icon: Timer, kind: "widget" },
+  { id: "timeTable", label: "Time Table", icon: CalendarClock, kind: "widget" },
+  { id: "calendar", label: "Calendar", icon: CalendarDays, kind: "widget" },
+  { id: "memory", label: "Memory", icon: Camera, kind: "modal" },
+  { id: "lifeStory", label: "Life Story", icon: BookOpen, kind: "tab" },
+  { id: "fitness", label: "Fitness", icon: Dumbbell, kind: "tab" },
+  { id: "settings", label: "Settings", icon: Settings, kind: "modal" },
+  { id: "friend", label: "Friend Celebration", icon: PartyPopper, kind: "modal" },
+  { id: "analytics", label: "Analytics", icon: BarChart3, kind: "tab" },
+  { id: "share", label: "Share Journal", icon: Share2, kind: "modal" },
+];
+
+const CIRCLE_COLOR = "#403d39";
+const CIRCLE_SIZE = 76; // px
+const INNER_RADIUS = 108;
+const OUTER_RADIUS = 190;
+const SWEEP_DEG = 210; // total angular spread, centered straight up
+const DEADZONE = 34; // px — releasing inside this radius of the circle cancels
+const CHIP_SIZE = 56; // px, icon-only touch target
+
+function ringPositions(count, radius, sweep, offsetDeg = 0) {
+  const positions = [];
+  for (let i = 0; i < count; i++) {
+    const t = count === 1 ? 0.5 : i / (count - 1);
+    const angleFromUp = -sweep / 2 + t * sweep + offsetDeg;
+    const theta = (angleFromUp * Math.PI) / 180;
+    positions.push({
+      x: radius * Math.sin(theta),
+      y: -radius * Math.cos(theta),
+      angle: angleFromUp,
+    });
+  }
+  return positions;
+}
+
+function buildLayout(items) {
+  const inner = items.slice(0, 7);
+  const outer = items.slice(7);
+  const innerPos = ringPositions(inner.length, INNER_RADIUS, SWEEP_DEG, 0);
+  // outer ring staggered by half a step so chips don't sit on the same
+  // radial line as the inner ring directly behind them
+  const outerPos = ringPositions(outer.length, OUTER_RADIUS, SWEEP_DEG, SWEEP_DEG / (outer.length * 2));
+  return [
+    ...inner.map((item, i) => ({ ...item, ...innerPos[i] })),
+    ...outer.map((item, i) => ({ ...item, ...outerPos[i] })),
+  ];
+}
+
+const LAYOUT = buildLayout(RADIAL_ITEMS);
+
+/**
+ * RadialDialMenu — bottom-center dial. Press and hold the circle,
+ * drag toward an item, release over it to select. Purely presentational:
+ * fires onSelect(item) and does no navigation itself, so it can be
+ * dropped into the isolated test route first and wired into the real
+ * dashboard in Step 7 unchanged.
+ */
+export default function RadialDialMenu({ onSelect }) {
+  const [open, setOpen] = useState(false);
+  const [hoverId, setHoverId] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
+  const circleRef = useRef(null);
+  const originRef = useRef({ x: 0, y: 0 });
+
+  const nearestItem = useCallback((px, py) => {
+    let best = null;
+    let bestDist = Infinity;
+    for (const item of LAYOUT) {
+      const ix = originRef.current.x + item.x;
+      const iy = originRef.current.y + item.y;
+      const d = Math.hypot(px - ix, py - iy);
+      if (d < bestDist) {
+        bestDist = d;
+        best = item;
+      }
+    }
+    return best;
+  }, []);
+
+  const handlePointerDown = (e) => {
+    const rect = circleRef.current.getBoundingClientRect();
+    originRef.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    setOpen(true);
+    setHoverId(null);
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+  };
+
+  const handlePointerMove = (e) => {
+    const dx = e.clientX - originRef.current.x;
+    const dy = e.clientY - originRef.current.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < DEADZONE) {
+      setHoverId(null);
+      return;
+    }
+    const item = nearestItem(e.clientX, e.clientY);
+    setHoverId(item ? item.id : null);
+  };
+
+  const handlePointerUp = (e) => {
+    window.removeEventListener("pointermove", handlePointerMove);
+    const dx = e.clientX - originRef.current.x;
+    const dy = e.clientY - originRef.current.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < DEADZONE) {
+      // released back near the circle — cancel, no selection
+      setOpen(false);
+      setHoverId(null);
+      return;
+    }
+    const item = nearestItem(e.clientX, e.clientY);
+    if (item) {
+      setConfirmId(item.id);
+      setTimeout(() => {
+        onSelect && onSelect(item);
+        setOpen(false);
+        setHoverId(null);
+        setConfirmId(null);
+      }, 180);
+    } else {
+      setOpen(false);
+      setHoverId(null);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
+        bottom: "calc(28px + env(safe-area-inset-bottom, 0px))",
+        display: "flex",
+        justifyContent: "center",
+        zIndex: 60,
+        pointerEvents: "none",
+      }}
+    >
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+          >
+            {LAYOUT.map((item) => {
+              const isHover = hoverId === item.id;
+              const isConfirm = confirmId === item.id;
+              const Icon = item.icon;
+              return (
+                <motion.div
+                  key={item.id}
+                  initial={{ x: 0, y: 0, opacity: 0, scale: 0.3 }}
+                  animate={{
+                    x: item.x,
+                    y: item.y,
+                    opacity: confirmId && !isConfirm ? 0 : 1,
+                    scale: isConfirm ? 1.28 : isHover ? 1.16 : 1,
+                  }}
+                  exit={{ x: 0, y: 0, opacity: 0, scale: 0.3 }}
+                  transition={{ type: "spring", stiffness: 420, damping: 30 }}
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    bottom: CIRCLE_SIZE / 2 + 4,
+                    width: CHIP_SIZE,
+                    height: CHIP_SIZE,
+                    marginLeft: -CHIP_SIZE / 2,
+                    borderRadius: "50%",
+                    background: isHover || isConfirm ? "#fca311" : "#fffcf2",
+                    color: isHover || isConfirm ? "#fff" : CIRCLE_COLOR,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+                  }}
+                >
+                  <Icon size={22} />
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 4px)",
+                      left: "50%",
+                      transform: "translateX(-50%)",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: CIRCLE_COLOR,
+                      background: "#fffcf2",
+                      padding: "2px 6px",
+                      borderRadius: 6,
+                      whiteSpace: "nowrap",
+                      opacity: isHover || isConfirm ? 1 : 0,
+                      transition: "opacity 120ms",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    {item.label}
+                  </span>
+                </motion.div>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <motion.button
+        ref={circleRef}
+        onPointerDown={handlePointerDown}
+        animate={{ scale: open ? 1.08 : 1 }}
+        transition={{ type: "spring", stiffness: 400, damping: 24 }}
+        style={{
+          pointerEvents: "auto",
+          touchAction: "none",
+          width: CIRCLE_SIZE,
+          height: CIRCLE_SIZE,
+          borderRadius: "50%",
+          background: CIRCLE_COLOR,
+          border: "none",
+          boxShadow: open
+            ? "0 0 0 8px rgba(64,61,57,0.15)"
+            : "0 3px 10px rgba(0,0,0,0.25)",
+          zIndex: 61,
+        }}
+        aria-label="Open navigation dial"
+      />
+    </div>
+  );
+}

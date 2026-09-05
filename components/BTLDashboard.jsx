@@ -1016,6 +1016,14 @@ function makeDefaultState() {
     // which is what powers both the widget's own today-breakdown donut and
     // the Focus Time section in Analytics (trend + all-time breakdown).
     focusTimer: { categories: FOCUS_TIMER_DEFAULT_CATEGORIES.map((c) => ({ ...c })), active: null, history: {} },
+    // Fitness guided-workout time log (this update) — every time a guided
+    // workout (Start → select → time → Apply, see FitnessWorkoutPlayer)
+    // finishes or is cancelled, the seconds actually spent exercising get
+    // banked here under today's date and the section it came from
+    // (exercise/yoga/pranayama). Powers the "Fitness Time" analytics
+    // section below, same shape/pattern as focusTimer.history above.
+    // { "2026-09-05": { exercise: 420, yoga: 180 } }
+    fitnessLog: {},
     // Liquid Background settings (this update) — Setting → Background lets
     // the user recolor all 4 hues used by the gradient/blobs/particles,
     // dial the overall animation speed, and now flip the whole thing off.
@@ -1073,6 +1081,7 @@ async function loadState(user) {
     s.clockAlarms = Array.isArray(s.clockAlarms) ? s.clockAlarms : [];
     s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === s.clockRingtone) ? s.clockRingtone : "classic";
     s.focusTimer = normalizeFocusTimer(s.focusTimer);
+    s.fitnessLog = (s.fitnessLog && typeof s.fitnessLog === "object") ? s.fitnessLog : {};
     // liquidBg sanitize — old saved states won't have this field at all,
     // and a stored color could in theory be a bad/empty string, so each of
     // the 4 slots falls back to its own default hex independently.
@@ -2614,6 +2623,47 @@ function computeFocusDailyTotals(focusTimer, days = 14) {
   }
   return out;
 }
+
+/* ---------------- FITNESS TIME analytics helpers (this update) ----------------
+   Same two-function shape as the Focus Timer pair just above, but read
+   state.fitnessLog (banked by FitnessWorkoutPlayer via FitnessTab's
+   logWorkoutTime) and label/color each bucket off FITNESS_SECTIONS
+   (exercise/yoga/pranayama) instead of user-defined categories. */
+function computeFitnessBreakdown(fitnessLog, days = 30) {
+  const totals = {};
+  const now = new Date();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(now); d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    const dayLog = fitnessLog?.[iso] || {};
+    Object.entries(dayLog).forEach(([catId, secs]) => { totals[catId] = (totals[catId] || 0) + secs; });
+  }
+  return Object.entries(totals)
+    .map(([catId, secs]) => {
+      const sec = FITNESS_SECTIONS.find((s) => s.id === catId);
+      return { key: catId, label: sec?.label || catId, color: sec?.color || "#b3ac99", minutes: +(secs / 60).toFixed(1) };
+    })
+    .filter((c) => c.minutes > 0)
+    .sort((a, b) => b.minutes - a.minutes);
+}
+function computeFitnessDailyTotals(fitnessLog, days = 14) {
+  const out = [];
+  const now = new Date();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now); d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    const dayLog = fitnessLog?.[iso] || {};
+    const secs = Object.values(dayLog).reduce((a, b) => a + b, 0);
+    out.push({ date: d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }), minutes: +(secs / 60).toFixed(1) });
+  }
+  return out;
+}
+function fitnessSecondsToday(fitnessLog) {
+  const day = todayISO();
+  const dayLog = fitnessLog?.[day] || {};
+  return Object.values(dayLog).reduce((a, b) => a + b, 0);
+}
+
 
 /* ---- Glass popup for naming + coloring a new timer category ---- */
 function AddFocusCategoryModal({ onAdd, onClose, usedColors }) {
@@ -4870,6 +4920,18 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
     return Math.round(last7.reduce((a, d) => a + d.minutes, 0) / last7.length);
   }, [focusDailyTotals]);
 
+  // Fitness Time analytics (this update) — mirrors the Focus Timer block
+  // just above, reading state.fitnessLog (banked by the guided workout
+  // player in FitnessTab) instead of state.focusTimer.
+  const fitnessDailyTotals = useMemo(() => computeFitnessDailyTotals(state.fitnessLog, 14), [state.fitnessLog]);
+  const fitnessBreakdown30d = useMemo(() => computeFitnessBreakdown(state.fitnessLog, 30), [state.fitnessLog]);
+  const fitnessTodaySeconds = useMemo(() => fitnessSecondsToday(state.fitnessLog), [state.fitnessLog]);
+  const fitness7dAvgMinutes = useMemo(() => {
+    const last7 = fitnessDailyTotals.slice(-7);
+    if (!last7.length) return 0;
+    return Math.round(last7.reduce((a, d) => a + d.minutes, 0) / last7.length);
+  }, [fitnessDailyTotals]);
+
   const smartInsights = useMemo(() => {
     const cards = [];
     const hist = state.completionHistory || {};
@@ -5129,6 +5191,72 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* ---------- Fitness Time analytics (this update) ---------- */}
+        <div style={{ fontSize: 11, fontWeight: 800, color: ac.sectionHeader || C.dark, margin: "18px 0 6px" }}>🏋️ Fitness Time — last 14 days</div>
+        <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 100, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
+            <Dumbbell size={14} color="#e85d4c" />
+            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>{formatFocusDuration(fitnessTodaySeconds)}</div>
+            <div style={{ fontSize: 9, color: "#b3ac99" }}>Worked out today</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 100, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
+            <TrendingUp size={14} color="#4a7c59" />
+            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>{fitness7dAvgMinutes}m</div>
+            <div style={{ fontSize: 9, color: "#b3ac99" }}>7-day avg / day</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 100, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
+            <Award size={14} color={C.blue} />
+            <div style={{ fontSize: 12, fontWeight: 900, color: C.dark }}>{fitnessBreakdown30d[0]?.label || "—"}</div>
+            <div style={{ fontSize: 9, color: "#b3ac99" }}>Top category · 30d</div>
+          </div>
+        </div>
+        {fitnessDailyTotals.some((d) => d.minutes > 0) ? (
+          <>
+            <div style={{ height: 130, marginBottom: 14 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={fitnessDailyTotals} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                  <CartesianGrid stroke={ac.chartAxis || "#f0ece0"} vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 8, fill: ac.chartAxis || "#b3ac99" }} interval={1} />
+                  <YAxis tick={{ fontSize: 9, fill: ac.chartAxis || undefined }} width={28} />
+                  <Tooltip formatter={(v) => [`${v}m`, "Worked out"]} labelStyle={{ fontSize: 10 }} contentStyle={{ fontSize: 10 }} />
+                  <Bar dataKey="minutes" fill="#e85d4c" radius={[4, 4, 0, 0]} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            {fitnessBreakdown30d.length > 0 && (
+              <div style={{ marginBottom: 18, padding: "8px 10px", background: "rgba(0,0,0,0.03)", borderRadius: 8, display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 74, height: 74, flexShrink: 0 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={fitnessBreakdown30d} dataKey="minutes" nameKey="label" innerRadius={20} outerRadius={34} paddingAngle={2} strokeWidth={1} stroke="#fff">
+                        {fitnessBreakdown30d.map((c) => <Cell key={c.key} fill={c.color} />)}
+                      </Pie>
+                      <Tooltip formatter={(v, n, p) => [`${v}m`, p?.payload?.label]} contentStyle={{ fontSize: 9, borderRadius: 8, border: "1px solid #ece7d8" }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+                  {fitnessBreakdown30d.map((c) => {
+                    const totalMin = fitnessBreakdown30d.reduce((a, x) => a + x.minutes, 0);
+                    return (
+                      <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 9.5, flex: 1, color: C.text }}>{c.label}</span>
+                        <span style={{ fontSize: 9.5, fontWeight: 800, color: C.accent }}>{Math.round(c.minutes)}m</span>
+                        <span style={{ fontSize: 8, color: "#a39c86", width: 26, textAlign: "right" }}>{totalMin ? Math.round((c.minutes / totalMin) * 100) : 0}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#a39c86", padding: "10px 0 18px", textAlign: "center" }}>
+            Fitness tab me "Start" se ek guided workout complete karein — yahan uski timing aur category-wise breakdown dikhne lagegi.
           </div>
         )}
 
@@ -12657,6 +12785,7 @@ function FitnessEmptySection({ sectionColor, label }) {
    emergency out. Nothing here is saved to Firestore — it's a session-only
    player, same as before this update, just guided instead of a static grid. */
 const REST_SECONDS = 5;
+const GET_READY_SECONDS = 10;
 const stepBtnStyle = {
   width: 26, height: 26, borderRadius: "50%", border: "1px solid #ddd6c4", background: "#fff",
   fontSize: 15, fontWeight: 900, color: C.dark, cursor: "pointer", display: "flex",
@@ -12762,9 +12891,15 @@ function FitnessTimerRing({ timeLeft, total, color }) {
 
 function FitnessWorkoutPlayer({ queue, perExerciseSeconds, onFinish, onCancel }) {
   const [index, setIndex] = useState(0);
-  const [phase, setPhase] = useState("exercise"); // "exercise" | "rest" | "done"
-  const [timeLeft, setTimeLeft] = useState(perExerciseSeconds);
+  const [phase, setPhase] = useState("ready"); // "ready" | "exercise" | "rest" | "done"
+  const [timeLeft, setTimeLeft] = useState(GET_READY_SECONDS);
   const [paused, setPaused] = useState(false);
+  // Tracks actual exercise-phase seconds elapsed (not rest, not the
+  // get-ready countdown) so Cancel/Close can bank real time spent into
+  // state.fitnessLog for the Analytics "Fitness Time" section — a full
+  // completed workout banks exactly perExerciseSeconds * queue.length; an
+  // early Cancel still credits whatever was actually done.
+  const elapsedRef = useRef(0);
 
   const current = queue[index];
   const next = queue[index + 1];
@@ -12772,7 +12907,9 @@ function FitnessWorkoutPlayer({ queue, perExerciseSeconds, onFinish, onCancel })
   useEffect(() => {
     if (paused || phase === "done") return;
     if (timeLeft <= 0) {
-      if (phase === "exercise") {
+      if (phase === "ready") {
+        setPhase("exercise"); setTimeLeft(perExerciseSeconds);
+      } else if (phase === "exercise") {
         if (index < queue.length - 1) { setPhase("rest"); setTimeLeft(REST_SECONDS); }
         else setPhase("done");
       } else if (phase === "rest") {
@@ -12780,7 +12917,10 @@ function FitnessWorkoutPlayer({ queue, perExerciseSeconds, onFinish, onCancel })
       }
       return;
     }
-    const t = setTimeout(() => setTimeLeft((s) => s - 1), 1000);
+    const t = setTimeout(() => {
+      if (phase === "exercise") elapsedRef.current += 1;
+      setTimeLeft((s) => s - 1);
+    }, 1000);
     return () => clearTimeout(t);
   }, [timeLeft, phase, paused, index, queue.length, perExerciseSeconds]);
 
@@ -12795,7 +12935,7 @@ function FitnessWorkoutPlayer({ queue, perExerciseSeconds, onFinish, onCancel })
     >
       <motion.button
         whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.94 }}
-        onClick={onCancel} title="Emergency stop"
+        onClick={() => onCancel(elapsedRef.current)} title="Emergency stop"
         style={{
           position: "absolute", top: 18, right: 18, display: "flex", alignItems: "center", gap: 6,
           border: "1px solid rgba(255,255,255,0.35)", background: "rgba(255,255,255,0.08)", borderRadius: 999,
@@ -12805,13 +12945,27 @@ function FitnessWorkoutPlayer({ queue, perExerciseSeconds, onFinish, onCancel })
         <Square size={12} /> Cancel
       </motion.button>
 
-      {phase !== "done" && (
+      {phase !== "done" && phase !== "ready" && (
         <div style={{ position: "absolute", top: 20, left: 20, fontSize: 11, fontWeight: 800, color: "rgba(255,255,255,0.65)" }}>
           Exercise {index + 1} / {queue.length}
         </div>
       )}
 
       <AnimatePresence mode="wait">
+        {phase === "ready" && (
+          <motion.div
+            key="ready"
+            initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 260, damping: 24 }}
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, textAlign: "center" }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 800, color: "rgba(255,255,255,0.65)", letterSpacing: 2 }}>GET READY</div>
+            <motion.div key={timeLeft} initial={{ scale: 1.3, opacity: 0.4 }} animate={{ scale: 1, opacity: 1 }} style={{ fontSize: 64, fontWeight: 900, color: "#e85d4c" }}>
+              {timeLeft}
+            </motion.div>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>First up: {queue[0]?.name}</div>
+          </motion.div>
+        )}
         {phase === "exercise" && current && (
           <motion.div
             key={"ex-" + index}
@@ -12857,7 +13011,7 @@ function FitnessWorkoutPlayer({ queue, perExerciseSeconds, onFinish, onCancel })
             <div style={{ fontSize: 17, fontWeight: 900 }}>Workout complete! 🎉</div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", fontWeight: 700 }}>{queue.length} exercise{queue.length > 1 ? "s" : ""} done.</div>
             <motion.button
-              whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }} onClick={onFinish}
+              whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }} onClick={() => onFinish(elapsedRef.current)}
               style={{ marginTop: 8, border: "none", borderRadius: 999, padding: "10px 24px", background: "#4a7c59", color: "#fff", fontSize: 12, fontWeight: 900, cursor: "pointer" }}
             >
               Close
@@ -12892,7 +13046,7 @@ function FitnessWorkoutPlayer({ queue, perExerciseSeconds, onFinish, onCancel })
   );
 }
 
-function FitnessTab({ onClose }) {
+function FitnessTab({ state, update, onClose }) {
   const [section, setSection] = useState("exercise");
   const [infoItem, setInfoItem] = useState(null);
   // Swaps the "Exercise" section between the original list and the alt
@@ -12914,7 +13068,7 @@ function FitnessTab({ onClose }) {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [timeModalOpen, setTimeModalOpen] = useState(false);
-  const [workout, setWorkout] = useState(null); // { queue, perExerciseSeconds } | null
+  const [workout, setWorkout] = useState(null); // { queue, perExerciseSeconds, category } | null
 
   useEffect(() => { setSelectedIds(new Set()); }, [section, showAltExercise]);
 
@@ -12928,9 +13082,25 @@ function FitnessTab({ onClose }) {
   const selectedItems = items.filter((it) => selectedIds.has(it.id));
 
   const applyTime = (perExerciseSeconds) => {
-    setWorkout({ queue: selectedItems.map((it) => ({ id: it.id, name: it.name, gif: it.gif })), perExerciseSeconds });
+    setWorkout({ queue: selectedItems.map((it) => ({ id: it.id, name: it.name, gif: it.gif })), perExerciseSeconds, category: section });
     setTimeModalOpen(false);
     stopSelecting();
+  };
+
+  // Banks actual exercise seconds into state.fitnessLog[today][category] —
+  // this is what powers Analytics → "Fitness Time" (today total, 7-day
+  // avg, per-category breakdown, daily trend). Called on both a natural
+  // finish and an early Cancel, so partial workouts still count.
+  const logWorkoutTime = (category, seconds) => {
+    if (!seconds || seconds <= 0) return;
+    const day = todayISO();
+    update((s) => {
+      const log = { ...(s.fitnessLog || {}) };
+      const dayLog = { ...(log[day] || {}) };
+      dayLog[category] = (dayLog[category] || 0) + seconds;
+      log[day] = dayLog;
+      return { ...s, fitnessLog: log };
+    });
   };
 
   return (
@@ -13068,8 +13238,8 @@ function FitnessTab({ onClose }) {
           <FitnessWorkoutPlayer
             queue={workout.queue}
             perExerciseSeconds={workout.perExerciseSeconds}
-            onFinish={() => setWorkout(null)}
-            onCancel={() => setWorkout(null)}
+            onFinish={(secs) => { logWorkoutTime(workout.category, secs); setWorkout(null); }}
+            onCancel={(secs) => { logWorkoutTime(workout.category, secs); setWorkout(null); }}
           />
         )}
       </AnimatePresence>
@@ -13780,7 +13950,7 @@ function BTLDashboardInner() {
         </div>
       ) : tab === "fitness" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <FitnessTab onClose={() => setTab("dashboard")} />
+          <FitnessTab state={state} update={update} onClose={() => setTab("dashboard")} />
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>

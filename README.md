@@ -1,6 +1,33 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🏋️ Fitness now has a guided, full-screen "Start" workout (this update)
+## 📊 Analytics now has a "Fitness Time" section (this update)
+Guided workouts (Start → select → set time → Apply, see the "Start" update
+below) now actually bank the time you spend into `state.fitnessLog`
+(`FitnessTab`'s new `logWorkoutTime` — same shape/pattern as the existing
+`focusTimer.history`): every finished or cancelled session credits its
+real elapsed exercise seconds — not the rest beats or the get-ready
+countdown — to today's date under whichever section it came from
+(Exercise/Yoga/Pranayama). An early Cancel still banks whatever was
+actually completed, it just doesn't count the rest of the queue.
+
+**Analytics → 🏋️ Fitness Time — last 14 days** (right under Focus Time,
+same visual language) now shows:
+- **Worked out today** / **7-day avg / day** / **Top category · 30d** — three
+  stat cards, same layout as Focus Time's.
+- A 14-day bar chart of total workout minutes per day.
+- A 30-day donut + legend breaking total time down by section (Exercise/
+  Yoga/Pranayama), colored to match each section's own accent color from
+  the Fitness tab.
+- Before you've ever completed a guided workout, this shows a short
+  pointer to the Fitness tab instead of an empty chart.
+
+New helpers `computeFitnessBreakdown` / `computeFitnessDailyTotals` /
+`fitnessSecondsToday` mirror the existing `computeFocusBreakdown` /
+`computeFocusDailyTotals` / `focusSecondsToday` almost line-for-line, just
+reading `fitnessLog` and labelling/coloring off `FITNESS_SECTIONS` instead
+of user-defined Focus Timer categories.
+
+## 🏋️ Fitness now has a guided, full-screen "Start" workout (earlier update)
 Per your marked-up screenshot: added a **Start** button in the Fitness
 header, right next to the "Fitness" title (`FitnessTab` in
 `components/BTLDashboard.jsx`).
@@ -18,6 +45,10 @@ header, right next to the "Fitness" title (`FitnessTab` in
   total workout length (including rest) before you commit. **Apply**
   builds the queue from your selected exercises in the order they appear
   in the grid.
+- **Apply** first drops you into a **10-second "GET READY" countdown**
+  (`GET_READY_SECONDS` in `FitnessWorkoutPlayer`) showing the first
+  exercise's name, so there's a beat to get into position before anything
+  actually starts — then the guided player below begins from exercise 1.
 - That hands off to a full-screen guided player (`FitnessWorkoutPlayer`):
   the current exercise's GIF (gently pulsing) with an animated countdown
   ring, its name, and a peek at what's next — followed automatically by a
