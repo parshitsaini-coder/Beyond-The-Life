@@ -3608,7 +3608,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
           *left* edge of the second line — nowhere near a "close" button's
           expected spot. Absolute-positioning it against this outer card
           keeps it top-right always, no matter how many tab rows wrap. */}
-      <motion.span whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onClose} title="Close" style={{
+      <motion.span className="btl-tap44" whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} onClick={onClose} title="Close" style={{
         position: "absolute", top: 8, right: 8, zIndex: 2,
         borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
         display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0,
@@ -5055,7 +5055,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
           border: "none", borderRadius: 8, padding: "5px 10px", background: C.accent, color: "#fff",
           fontSize: 10, fontWeight: 800, cursor: "pointer", marginRight: 6,
         }}>📤 Share Journey</button>
-        <button onClick={onClose} style={{
+        <button className="btl-tap44" onClick={onClose} style={{
           border: "none", borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
           display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
         }}><X size={13} color={C.dark} /></button>
@@ -5889,7 +5889,7 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
             display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: "#c0392b",
           }}
         ><RotateCcw size={12} /> Reset</motion.button>
-        <button onClick={onClose} style={{
+        <button className="btl-tap44" onClick={onClose} style={{
           border: "none", borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
           display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
         }}><X size={13} color={C.dark} /></button>
@@ -14003,6 +14003,13 @@ function BTLDashboardInner() {
              circle just grows outward from that anchor; icon size inside is
              untouched, it just centers with more room around it. */
           .btl-fitness-tap { width: 44px !important; height: 44px !important; }
+
+          /* ---------------- Step 8 — shared 44px tap-target bump ----------------
+             Several panels (Settings, Analytics, Money Management) reuse the
+             same 24x24 circular close button. Desktop keeps 24px untouched;
+             on mobile this bumps all of them to the spec's 44px minimum in
+             one place instead of a one-off class per panel. */
+          .btl-tap44 { width: 44px !important; height: 44px !important; }
         }
       `}</style>
 
