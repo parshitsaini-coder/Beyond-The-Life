@@ -8384,10 +8384,6 @@ function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, on
   ];
   return (
     <div>
-      <PanelPresetRow activePreset={t.panelPreset} onApply={onApplyPreset} onReset={onResetPreset} />
-      {t.panelPreset === "liquidGlass" && (
-        <LiquidGlassOptionsRow options={t.liquidGlassOptions} onChange={onLiquidGlassOptionsChange} onReset={onLiquidGlassOptionsReset} />
-      )}
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
         {SECTIONS.map((s) => (
           <motion.button
@@ -8405,11 +8401,17 @@ function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, on
       </div>
       <AnimatePresence mode="wait">
         {section === "dashboard" && (
-          <ScopeThemeEditor
-            key="dashboard" title="Dashboard" icon={<LayoutGrid size={12} style={{ color: C.dark }} />}
-            value={t.dashboard} onChange={(p) => onScopeChange("dashboard", p)} onReset={() => onScopeReset("dashboard")}
-            includeTextControls={false}
-          />
+          <div key="dashboard" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <PanelPresetRow activePreset={t.panelPreset} onApply={onApplyPreset} onReset={onResetPreset} />
+            {t.panelPreset === "liquidGlass" && (
+              <LiquidGlassOptionsRow options={t.liquidGlassOptions} onChange={onLiquidGlassOptionsChange} onReset={onLiquidGlassOptionsReset} />
+            )}
+            <ScopeThemeEditor
+              title="Dashboard" icon={<LayoutGrid size={12} style={{ color: C.dark }} />}
+              value={t.dashboard} onChange={(p) => onScopeChange("dashboard", p)} onReset={() => onScopeReset("dashboard")}
+              includeTextControls={false}
+            />
+          </div>
         )}
         {section === "analytics" && (
           <div key="analytics" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
