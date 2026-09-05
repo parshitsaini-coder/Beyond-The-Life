@@ -13990,7 +13990,7 @@ function BTLDashboardInner() {
           --btl-radial-bg: #c0d6df;
           --btl-radial-dark: #403d39;
         }
-        .btl-mobile-topbar, .btl-mobile-statsrow, .btl-mobile-dial-home { display: none; }
+        .btl-mobile-topbar, .btl-mobile-statsrow, .btl-mobile-dial-home, .btl-mobile-analytics-summary { display: none; }
         @media (max-width: 768px) {
           .btl-desktop-header { display: none !important; }
           /* Step 6 — same #c0d6df override as app/layout.jsx's <body>, applied to this
@@ -14005,14 +14005,15 @@ function BTLDashboardInner() {
           .btl-desktop-only-grid { display: none !important; }
           .btl-mobile-dial-home { display: block !important; flex: 1; min-height: 0; }
           .btl-mobile-topbar {
-            display: flex; align-items: center; justify-content: space-between;
+            display: flex; align-items: center; justify-content: flex-end;
             flex-shrink: 0; padding: calc(6px + env(safe-area-inset-top, 0px)) 2px 6px;
           }
-          .btl-mobile-topbar-back {
-            width: 40px; height: 40px; min-width: 44px; min-height: 44px; border: none; border-radius: 50%;
-            background: var(--btl-radial-dark); color: #fffcf2; display: flex; align-items: center;
-            justify-content: center; cursor: pointer;
-          }
+          /* ---------------- Analytics Summary (mobile dial home) — this update ----------------
+             Sits between the stats row and the (otherwise still mostly-empty) dial
+             area, using the app's existing glass-card sizing rather than a fixed
+             height — AnalyticsSummaryWidget's own content (up to 8 metrics now that
+             every id is forced on) decides how tall it needs to be. */
+          .btl-mobile-analytics-summary { display: block !important; flex-shrink: 0; padding: 0 4px 10px; }
           /* Quick-glance stats (streak / save status / progress rings) — kept as their own
              slim row just below the top bar rather than crammed into it, per the "always
              visible" decision. Horizontally scrollable so it never wraps or clips on the
@@ -14091,25 +14092,14 @@ function BTLDashboardInner() {
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          {/* ---------- HEADER (mobile) — Step 5 ----------
-               Spec point 3: top bar is ONLY a Back button (left) + Profile icon (right),
-               nothing else. This is the dial home screen (root of the mobile nav), so
-               there's no "previous panel" to return to here — RadialPanel already renders
-               its own Back button once a panel is open (it's a full-screen overlay above
-               this). Back at the root falls back to browser history so it's still a real,
-               functional control rather than a dead decoration, per the spec's wording.
-               Reuses the existing ProfileButton/ProfilePopup as-is — same account popup,
-               just relocated. Focus Mode is intentionally NOT here per your call to keep
-               it desktop-only. */}
+          {/* ---------- HEADER (mobile) ----------
+               Back button removed per your call — this is the dial home
+               screen (root of the mobile nav) so it had nothing real to go
+               "back" to besides browser history; Profile stays, now the
+               only thing in the bar (right-aligned via the CSS below).
+               RadialPanel still renders its own Back button once a panel
+               is open — that one's untouched. */}
           <div className="btl-mobile-topbar">
-            <button
-              type="button"
-              className="btl-mobile-topbar-back"
-              aria-label="Back"
-              onClick={() => { if (typeof window !== "undefined" && window.history.length > 1) window.history.back(); }}
-            >
-              <ArrowLeft size={19} />
-            </button>
             <div style={{ position: "relative" }}>
               <ProfileButton user={fbUser} open={profileOpen} onToggle={() => setProfileOpen((v) => !v)} />
               <ProfilePopup
@@ -14133,6 +14123,27 @@ function BTLDashboardInner() {
             <RingStat size={44} pct={overallPct} label="Goal" color={theme.analyticsSummaryColors.overall || dashTheme.text || C.dark} textColor={theme.analyticsSummaryColors.text || undefined} />
             <RingStat size={44} pct={timeTablePct} label="Time Table" color={theme.analyticsSummaryColors.timeTable || "#8a6fd6"} textColor={theme.analyticsSummaryColors.text || undefined} />
           </div>
+
+          {/* ---------- ANALYTICS SUMMARY (mobile) — this update ----------
+               Fills the space the back button used to sit above (and the
+               empty stretch below the stats row) with the same
+               AnalyticsSummaryWidget the desktop grid can pin — but forced
+               to show EVERY metric in the catalog (daily/extry/overall/
+               time table rings, day streak, earned/spent/net money),
+               regardless of what's picked in Settings → Theme → Analytics
+               Summary for the desktop widget, since "sabhi" (all) was the
+               ask here specifically. Tapping "Open full" still jumps to
+               the real Analytics tab, same as the desktop widget. */}
+          <div className="btl-mobile-analytics-summary">
+            <AnalyticsSummaryWidget
+              state={state}
+              onOpen={() => setTab("analytics")}
+              cardBg={theme.widgets.analyticsSummary?.bg}
+              metrics={ANALYTICS_SUMMARY_METRICS.map((m) => m.id)}
+              colors={theme.analyticsSummaryColors}
+            />
+          </div>
+
 
           {/* ---------- HEADER (desktop) ----------
                Step 5 hard constraint: this block is untouched — same JSX, same inline

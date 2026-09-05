@@ -2,6 +2,15 @@
 import { useId, useMemo } from "react";
 import { usePrefersReducedMotion, useIsCoarsePointer } from "@/components/LiquidBackground";
 
+// How many px of finger travel it takes to reach "fully stretched" — tuned
+// against RadialDialMenu's DEADZONE (34px) so the tail is already visibly
+// forming right as the menu starts responding, not lagging behind it.
+const PULL_RANGE = 70;
+// Small droplets that fling off on a hard tap/confirm — count kept low
+// (goo-blur cost scales with blob count, and this sits on a button that's
+// already animating two other blob layers every frame).
+const SPLASH_DROPLETS = 6;
+
 /* ============================================================
    LIQUID ORB BUTTON — the radial dial's center circle, restyled
    to match the reference: a glowing blue/teal 3D liquid blob that
@@ -17,47 +26,42 @@ import { usePrefersReducedMotion, useIsCoarsePointer } from "@/components/Liquid
    flat SVG-filter blob technique gets the same "glowing liquid
    sphere" read at a fraction of the cost, and inherits the
    existing reduced-motion / coarse-pointer handling for free.
-   (Looked at StarKnightt/liquid-effect-animation per your link —
-   that's a Three.js canvas-text ripple shader, a different problem
-   shape entirely and would mean shipping a WebGL runtime just for
-   this one circle, so its *technique* isn't reused here — same
-   "no new dependency for one button" call as the rest of this file.)
 
-   Visual states layered on top of the idle animation:
-     - `active`   (press-and-hold in progress) — blobs brighten and
+   Two purely visual states layer on top of the idle animation:
+     - `active`  (press-and-hold in progress) — blobs brighten and
        pull in slightly, glow intensifies. Purely a style change,
        doesn't touch the drag-gesture logic in RadialDialMenu.jsx.
-     - `pulse`    ({ key, variant }) — a one-shot radiating ring.
+     - `pulse`   ({ key, variant }) — a one-shot radiating ring.
        variant "press" fires on pointerdown (soft, single ring);
        variant "confirm" fires the instant an item is selected
-       (brighter double ring + flash).
-     - `dragVector` ({ dx, dy }, px offset of the finger from the
-       orb's own center while held down) — the liquid mass *sloshes*
-       toward the finger in real time as it moves, like fluid tilted
-       inside a round glass: the blob mass shifts + stretches toward
-       the pull direction and a soft glass highlight slides the
-       opposite way, then springs back elastically the instant
-       `dragVector` returns to {0,0} on release. Stays fully inside
-       the circle's own clip — no geometry ever escapes the button's
-       bounds, so the touch target/hit box is untouched.
-     - `splash`   ({ key }) — a fast one-shot liquid "pop": droplets
-       burst outward from center and melt back into the mass through
-       the same goo filter, plus a quick bright flash. Fires on
-       pointerdown alongside `pulse`'s "press" ring for the "clicking
-       it feels instantly liquid" reaction that was asked for. `key`
-       must change every time so the animation restarts on repeat taps.
+       (brighter double ring + flash) — the "reacts when you tap
+       it" behaviour that was asked for. `key` must change every
+       time (e.g. Date.now()) so React remounts the ring and the
+       CSS animation restarts even if the same variant fires twice
+       in a row.
+
+   New in this update — deep liquid drag-follow + splash-on-tap:
+     - `pull`    ({ dx, dy } in raw pixels from the orb's own center,
+       same numbers RadialDialMenu already tracks for hover-matching
+       during the drag) — the blob mass shifts toward the finger and
+       grows a stretchy teardrop "tail" pointing back at the drag
+       origin, so the liquid visibly gets pulled/dragged rather than
+       just sliding as a rigid disc. Fully goo-merged with the idle
+       blobs (same filter), so the tail and the main mass read as one
+       continuous liquid body, not a separate shape. Magnitude ramps
+       over `PULL_RANGE` px and is clamped past that, so a very long
+       drag doesn't stretch the tail off past a sane size.
+     - `pulse.variant === "press"` now ALSO fires a quick multi-droplet
+       splash (goo-merged, so droplets coalesce/separate like a real
+       liquid burst) instead of just the ring — the "fast liquid effect
+       on click" behaviour. "confirm" keeps its brighter double-ring +
+       flash on top of the same splash, since that's the bigger, more
+       final-feeling hit.
    ============================================================ */
 
 const ORB_HUES = ["46,181,204", "34,211,168", "56,142,230"]; // blue/teal RGB triples
-const MAX_PULL = 46; // px — finger offset at which the slosh/stretch fully saturates
 
-export default function LiquidOrbButton({
-  size = 76,
-  active = false,
-  pulse = null,
-  dragVector = null,
-  splash = null,
-}) {
+export default function LiquidOrbButton({ size = 76, active = false, pulse = null, pull = null }) {
   const gooId = useId();
   const reduced = usePrefersReducedMotion();
   const coarse = useIsCoarsePointer();
@@ -66,34 +70,32 @@ export default function LiquidOrbButton({
   // more just costs paint time without being visible under the goo blur.
   const blobDur = useMemo(() => [7, 9, 8], []);
 
-  // ---- drag-driven "slosh": clamp the finger offset, turn it into a
-  // 0..1 pull amount + an angle, then compose a transform that shifts
-  // + elongates the whole liquid mass toward the finger. Recomputed
-  // every render (dx/dy change on every pointermove) — cheap, no need
-  // to memoize a couple of trig calls.
-  const dx = dragVector?.dx || 0;
-  const dy = dragVector?.dy || 0;
-  const dist = Math.min(Math.hypot(dx, dy), MAX_PULL);
-  const pullT = reduced ? 0 : dist / MAX_PULL; // 0 = centered, 1 = fully sloshed
-  const angleDeg = dist > 0.5 ? (Math.atan2(dy, dx) * 180) / Math.PI : 0;
-  const dragging = !!dragVector && (dx !== 0 || dy !== 0);
-  const isCoarseOrFine = coarse ? 0.85 : 1; // slightly gentler pull on touch, same feel
-
-  const sloshTransform =
-    `rotate(${angleDeg}deg) ` +
-    `translateX(${pullT * size * 0.16 * isCoarseOrFine}px) ` +
-    `scaleX(${1 + pullT * 0.32}) scaleY(${1 - pullT * 0.16}) ` +
-    `rotate(${-angleDeg}deg)`;
-  // Follows the finger instantly while dragging (near-zero lag reads as
-  // "liquid"), then eases back with a soft overshoot the moment it's let go.
-  const sloshTransition = dragging
-    ? "transform 90ms linear"
-    : "transform 640ms cubic-bezier(0.22, 1.61, 0.36, 1)";
-
-  // Glass highlight drifts the OPPOSITE way from the slosh — the classic
-  // "light stays put while liquid tilts underneath it" read.
-  const highlightOffsetX = -pullT * size * 0.14;
-  const highlightOffsetY = -pullT * size * 0.1 - size * 0.16;
+  const dx = pull?.dx || 0;
+  const dy = pull?.dy || 0;
+  const pullDist = Math.hypot(dx, dy);
+  // 0 → 1 how "committed" the drag is; eases in so small jitters near the
+  // deadzone don't already show a full tail.
+  const pullT = reduced ? 0 : Math.min(1, pullDist / PULL_RANGE);
+  const pullAngle = pullDist > 0.5 ? (Math.atan2(dy, dx) * 180) / Math.PI : 0;
+  // Mass shift: the blob cluster itself drifts a little toward the finger,
+  // on top of (not instead of) its own idle drifting animation.
+  const massShiftX = dx * 0.28;
+  const massShiftY = dy * 0.28;
+  // Tail: an ellipse anchored at center, stretched along the drag axis and
+  // pushed back toward the origin — reads as liquid being dragged out of
+  // the main body rather than the whole disc sliding.
+  const tailLen = size * (0.42 + pullT * 0.68);
+  const tailWidth = size * (0.5 - pullT * 0.16);
+  const splashDroplets = useMemo(
+    () =>
+      Array.from({ length: SPLASH_DROPLETS }, (_, i) => ({
+        angle: (360 / SPLASH_DROPLETS) * i + (i % 2 ? 14 : -8),
+        dist: 0.9 + (i % 3) * 0.18,
+        size: 0.14 + ((i * 37) % 10) / 100,
+        delay: (i % 3) * 18,
+      })),
+    []
+  );
 
   return (
     <div
@@ -128,19 +130,36 @@ export default function LiquidOrbButton({
         }}
       />
 
-      {/* Goo-merged morphing blobs — wrapped in a slosh layer so the whole
-          liquid mass can shift + stretch toward the drag direction while
-          each blob keeps its own independent morph/drift underneath. */}
+      {/* Goo-merged morphing blobs + drag tail — all inside the same
+          filtered wrapper so everything coalesces into one liquid mass. */}
       <div
         style={{
           position: "absolute",
           inset: "-25%",
           filter: `url(#${gooId})`,
-          transform: sloshTransform,
-          transition: sloshTransition,
-          willChange: dragging ? "transform" : "auto",
+          transform: `translate(${massShiftX}px, ${massShiftY}px)`,
+          transition: pullT === 0 ? "transform 420ms cubic-bezier(0.34, 1.56, 0.64, 1)" : "none",
         }}
       >
+        {pullT > 0.02 && (
+          <div
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              width: tailLen,
+              height: tailWidth,
+              marginTop: -tailWidth / 2,
+              // grown from center outward along the drag axis, back toward
+              // the finger's origin (opposite the mass shift direction)
+              transformOrigin: "0% 50%",
+              transform: `rotate(${pullAngle + 180}deg) scaleX(${0.35 + pullT * 0.65})`,
+              borderRadius: "50% 50% 45% 45% / 60% 60% 40% 40%",
+              background: `radial-gradient(circle at 30% 40%, rgba(${ORB_HUES[0]},${0.9 * pullT}), rgba(${ORB_HUES[2]},${0.3 * pullT}) 75%)`,
+              opacity: 0.55 + pullT * 0.45,
+            }}
+          />
+        )}
         {[0, 1, 2].map((i) => {
           const hue = ORB_HUES[i % ORB_HUES.length];
           const pos = [{ left: "20%", top: "18%" }, { left: "45%", top: "40%" }, { left: "15%", top: "48%" }][i];
@@ -166,7 +185,72 @@ export default function LiquidOrbButton({
             />
           );
         })}
+
+        {/* Splash droplets — goo-merged burst on tap. Remounted every
+            pulse.key so the animation restarts on repeated taps; ends at
+            opacity 0 (`forwards`) so nothing is left frozen on screen. */}
+        {pulse && !reduced && (pulse.variant === "press" || pulse.variant === "confirm") &&
+          splashDroplets.map((d, i) => (
+            <div
+              key={`${pulse.key}-${i}`}
+              style={{
+                position: "absolute",
+                left: "50%",
+                top: "50%",
+                width: size * d.size,
+                height: size * d.size,
+                marginLeft: (-size * d.size) / 2,
+                marginTop: (-size * d.size) / 2,
+                borderRadius: "50%",
+                background: `radial-gradient(circle at 35% 32%, rgba(${ORB_HUES[i % ORB_HUES.length]},0.95), rgba(${ORB_HUES[i % ORB_HUES.length]},0.3) 70%)`,
+                mixBlendMode: "screen",
+                "--splash-x": `${Math.cos((d.angle * Math.PI) / 180) * size * d.dist}px`,
+                "--splash-y": `${Math.sin((d.angle * Math.PI) / 180) * size * d.dist}px`,
+                animation: `btlOrbSplash ${pulse.variant === "confirm" ? 480 : 380}ms cubic-bezier(0.22, 1, 0.36, 1) forwards`,
+                animationDelay: `${d.delay}ms`,
+              }}
+            />
+          ))}
       </div>
+
+      {/* Fast "hit" flash — a quick brightening wash that snaps in on tap
+          and fades right away, giving the click a punchy, immediate feel
+          before the slower ring/splash finish settling. */}
+      {pulse && !reduced && (
+        <div
+          key={`flash-${pulse.key}`}
+          style={{
+            position: "absolute",
+            inset: 0,
+            borderRadius: "50%",
+            background: "radial-gradient(circle at 50% 45%, rgba(210,250,245,0.55), rgba(210,250,245,0) 70%)",
+            mixBlendMode: "screen",
+            animation: `btlOrbFlash ${pulse.variant === "confirm" ? 300 : 220}ms ease-out forwards`,
+          }}
+        />
+      )}
+
+      {/* Specular highlight — a small bright glint biased opposite the
+          drag direction, like light catching the far side of a liquid
+          sphere as it's tugged. Purely additive depth cue; not clipped
+          to the goo filter since it should stay crisp, not gooey. */}
+      <div
+        style={{
+          position: "absolute",
+          width: size * 0.34,
+          height: size * 0.22,
+          left: "50%",
+          top: "50%",
+          marginLeft: -size * 0.17 - dx * 0.12,
+          marginTop: -size * 0.32 - dy * 0.12,
+          borderRadius: "50%",
+          background: "radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.55), rgba(255,255,255,0) 75%)",
+          filter: "blur(1px)",
+          opacity: active ? 0.85 : 0.6,
+          transition: "opacity 200ms ease, margin 260ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+          pointerEvents: "none",
+        }}
+      />
 
       {/* Breathing outer glow halo — escapes the circle clip since it's
           drawn via box-shadow on an element sized slightly past `inset`,
@@ -184,26 +268,6 @@ export default function LiquidOrbButton({
         }}
       />
 
-      {/* Glass highlight — a soft light patch that drifts opposite the
-          slosh direction, staying inside the same clip. Gives the mass
-          underneath a "liquid under glass" depth cue rather than a flat
-          color fill, at the cost of one more (cheap, no-filter) div. */}
-      <div
-        style={{
-          position: "absolute",
-          width: size * 0.66,
-          height: size * 0.4,
-          left: "50%",
-          top: "50%",
-          borderRadius: "50%",
-          background: "radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.5), rgba(255,255,255,0) 72%)",
-          mixBlendMode: "overlay",
-          transform: `translate(calc(-50% + ${highlightOffsetX}px), calc(-50% + ${highlightOffsetY}px))`,
-          transition: sloshTransition,
-          opacity: active ? 0.9 : 0.7,
-        }}
-      />
-
       {/* One-shot tap reaction — remounted on every new pulse.key so the
           CSS animation restarts even for repeated taps. */}
       {pulse && !reduced && (
@@ -217,53 +281,6 @@ export default function LiquidOrbButton({
             animation: pulse.variant === "confirm" ? "btlOrbRippleConfirm 550ms ease-out forwards" : "btlOrbRipplePress 420ms ease-out forwards",
           }}
         />
-      )}
-
-      {/* Fast liquid "splash" — fires alongside pulse's press ring on
-          pointerdown. A quick bright flash plus droplets that fly outward
-          THROUGH the same goo filter as the main mass, so they visually
-          melt back into it as they shrink — reads as a single liquid pop,
-          not separate flying circles. Remounted every splash.key so rapid
-          taps always restart clean. */}
-      {splash && !reduced && (
-        <div key={splash.key} style={{ position: "absolute", inset: 0 }}>
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              borderRadius: "50%",
-              background: "radial-gradient(circle at 50% 45%, rgba(190,245,240,0.85), rgba(190,245,240,0) 70%)",
-              animation: "btlOrbSplashFlash 320ms cubic-bezier(0.16, 1, 0.3, 1) forwards",
-              mixBlendMode: "screen",
-            }}
-          />
-          <div style={{ position: "absolute", inset: "-25%", filter: `url(#${gooId})` }}>
-            {[0, 1, 2, 3, 4, 5].map((i) => {
-              const theta = (i / 6) * Math.PI * 2;
-              return (
-                <div
-                  key={i}
-                  style={{
-                    position: "absolute",
-                    left: "50%",
-                    top: "50%",
-                    width: size * 0.22,
-                    height: size * 0.22,
-                    marginLeft: -size * 0.11,
-                    marginTop: -size * 0.11,
-                    borderRadius: "50%",
-                    background: `radial-gradient(circle, rgba(${ORB_HUES[i % ORB_HUES.length]},0.95), rgba(${ORB_HUES[i % ORB_HUES.length]},0.2) 70%)`,
-                    mixBlendMode: "screen",
-                    "--dropx": `${Math.cos(theta) * size * 0.62}px`,
-                    "--dropy": `${Math.sin(theta) * size * 0.62}px`,
-                    animation: `btlOrbSplashDroplet 420ms cubic-bezier(0.16, 1, 0.3, 1) forwards`,
-                    animationDelay: `${i * 8}ms`,
-                  }}
-                />
-              );
-            })}
-          </div>
-        </div>
       )}
 
       <style>{`
@@ -288,17 +305,17 @@ export default function LiquidOrbButton({
           0%   { transform: scale(0.7); opacity: 1; }
           100% { transform: scale(1.7); opacity: 0; }
         }
-        @keyframes btlOrbSplashFlash {
-          0%   { opacity: 0; }
-          20%  { opacity: 0.9; }
+        @keyframes btlOrbSplash {
+          0%   { transform: translate(0, 0) scale(0.4); opacity: 0.95; }
+          60%  { opacity: 0.85; }
+          100% { transform: translate(var(--splash-x), var(--splash-y)) scale(0.15); opacity: 0; }
+        }
+        @keyframes btlOrbFlash {
+          0%   { opacity: 0.9; }
           100% { opacity: 0; }
         }
-        @keyframes btlOrbSplashDroplet {
-          0%   { transform: translate(0, 0) scale(1); opacity: 0.95; }
-          100% { transform: translate(var(--dropx), var(--dropy)) scale(0.15); opacity: 0; }
-        }
         @media (prefers-reduced-motion: reduce) {
-          * { animation: none !important; transition: none !important; }
+          * { animation: none !important; }
         }
       `}</style>
     </div>
