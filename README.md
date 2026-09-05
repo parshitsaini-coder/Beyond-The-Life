@@ -1,61 +1,117 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🩶 New "Soft UI" (neumorphic) Panel Theme (this update)
-9th one-click preset in **Settings → Theme → Panel Theme**, matching
-the light-gray neumorphic kit screenshot (cards/pills/toggles carved
-out of one flat surface using a light+dark dual shadow instead of
-color contrast or blur):
-- Background + widget background sampled directly from the reference
-  screenshot (`#e3e2df` — the actual pixel-averaged page/card gray, a
-  warm neutral tone, not a bluish gray) and text sampled the same way
-  (`#1c1c1c` — the reference's "Cards"/button label strokes are
-  near-black, not mid-gray). Both feed straight into `theme.dashboard`
-  / every other scope / every widget's `bg`, same as any other preset.
-- Flat `#e3e2df` background *and* widget background — same tone on
-  purpose, so cards read as embossed out of the page rather than
-  sitting on top of it like every glass preset does.
-- `glassCardStyle()` (the one function every widget/panel card already
-  renders through) now branches on a new `neumorphic` flag: instead of
-  its usual blur+translucency, it fills the card flat and swaps the
-  single soft shadow for a raised dual shadow — dark bottom-right +
-  light top-left — the classic soft-UI "embossed" look.
-- Blur/backdrop is fully off under this preset (there's nothing to
-  frost on a flat card), so the **Glass Intensity** sliders below the
-  preset row gray out (still visible, not hidden) with a note
-  explaining why, the same "disabled but present" treatment already
-  used for the Liquid Background on/off switch.
-- Saved as `state.theme.neumorphic` (bool) alongside the existing
-  `glassBlur`/`glassSaturate`; picking any other preset (or Reset)
-  clears it, so switching back to Ocean/Glass/Liquid Glass/etc.
-  immediately returns to normal frosted cards.
+## 🩶 New — "Soft UI" added to Panel Theme (this update)
+Setting → 🎨 Theme → **Panel Theme** now has a 10th preset, **Soft UI**,
+matching the "Vertical 2:3 Inspiration, Front-Faced" reference moodboard —
+a completely different visual family from Liquid Glass, sitting right next
+to it:
+- **Flat, matte, embossed cards** — light warm-gray page (`#e7e8ec`), cards
+  a shade lighter (`#eef0f3`), each one sold entirely by a soft dual shadow
+  (a gentle dark shadow down-right + a soft light highlight up-left) —
+  no transparency, no blur, no colorful blobs behind it. Cards read as
+  *pressed out of* the page, exactly like the reference.
+- **Applies app-wide in one tap**, same as every other Panel Theme preset —
+  Dashboard, Analytics, Money Management, Focus Mode, Friend Celebration,
+  and every widget's card all switch to the embossed look together.
+- **How it's wired in:** every widget card in `components/BTLDashboard.jsx`
+  already renders through one shared style recipe. That recipe is now a
+  small hook, `useGlassCardStyle()` (renamed from the old `glassCardStyle`
+  helper — same call sites, same signature, just hook-ified), which reads
+  a new `CardStyleModeCtx` set once at the top of the dashboard tree. Every
+  other preset leaves that context at `"glass"` (the existing frosted
+  recipe, untouched); Soft UI is the one preset that flips it to
+  `"neumorphic"`, which swaps in the new embossed dual-shadow recipe
+  instead — so no per-widget changes were needed anywhere else.
+- Selecting Soft UI also turns **Setting → Background**'s animated blur
+  blobs off (colorful moving blobs would clash with the flat matte look),
+  without discarding your picked colors/speed — flip it back on any time
+  and they're exactly as you left them.
+- Switching to any other preset (or Reset) instantly reverts every card
+  back to normal frosted glass — nothing about Soft UI is a one-way change.
 
-## 🧊 "Liquid Glass" Panel Theme + adjustable Glass Intensity (earlier update)
-**Settings → Theme → Panel Theme** now has an 8th one-click preset —
-**Liquid Glass** — next to Ocean/Sunset/Forest/Berry/Midnight/Charcoal/
-Black & White/Glass:
-- Instead of a flat tinted background, it washes the whole panel in a
-  soft pearlescent gradient (`#eef0f4 → #f8f9fb → #e3e6ec`) and sets
-  every widget's card color to white — since every card already renders
-  through `glassCardStyle()` as frosted/blurred glass, this turns the
-  whole dashboard into bright, silvery frosted panels floating over a
-  near-monochrome canvas, closer to Apple's iOS Liquid Glass / the
-  soft-UI reference than the existing indigo-backed "Glass" preset.
-- It also bumps the shared blur/saturate up front (28px / 220%, vs. the
-  20px / 200% every other preset uses) for a noticeably heavier frost.
-- **New "Glass Intensity" sliders** sit right under the preset row —
-  **Blur** (0–40px) and **Tint** (100–260% saturate) — and apply to
-  *every* glass card app-wide, no matter which Panel Theme (or none) is
-  active. They're not baked into "Liquid Glass" only: pick any preset,
-  then push blur/tint up or down to taste, same as bg/text/widget
-  colors were already fully custom via the swatch rows below. A Reset
-  button appears once you've moved either slider away from default.
-- Saved to `state.theme.glassBlur` / `.glassSaturate` (numbers), read
-  by `glassCardStyle()` on every render. Old saved states without these
-  fields fall back to the original 20px/200% automatically.
-- Applying/resetting a Panel Theme preset now also sets/clears
-  blur+saturate together with bg/text/widget colors, so switching
-  between presets can't leave a stale heavy blur turned on from a
-  previous "Liquid Glass" pick.
+## 🧊 Liquid Glass — Time Table's rail dots, badges & icons fixed (this update)
+The previous update (below) already made the Time Table's row backgrounds
+translucent glass, but a few smaller pieces inside each row were still
+hardcoded to fixed beige/gray tones tuned for the old cream card, so they
+stood out as flat opaque bits on top of an otherwise glass row — exactly
+what the screenshot with the red circle around the Time Table widget
+showed. All of the following in `components/BTLDashboard.jsx` now derive
+their color from the row's own `cardBg` (via the existing `autoMutedColor`/
+`autoTextColor`/`hexToRgba` helpers) instead of a fixed hex, so they read
+correctly under **any** Panel Theme — especially Liquid Glass's white
+frosted card floating over the colorful blur:
+- **Rail thread + dot** (`TimeTableRail`/`TimeTableRailDot`) — the
+  "not-yet-happened" dashed line and dot border were a flat `#ddd6c4`/
+  `#c9c2ac`; the dot's empty center was a hardcoded solid white. All three
+  now read from `autoMutedColor(cardBg)`, and the dot's center now uses a
+  translucent tint of `cardBg` itself so it blends into the glass instead
+  of punching a solid white circle through it.
+- **Time badge pill** (e.g. "5:00 AM") — its resting background was a flat
+  5% black smudge; now it's a translucent tint of the row's own text color
+  (`autoTextColor`), so it always reads as "a shade darker/lighter than
+  this glass" rather than a disconnected gray box. Its text color now also
+  follows `autoMutedColor(cardBg)` instead of a fixed gray.
+- **Left status bar** for not-yet-due rows, and the **repeat/delete icons**
+  in their resting (inactive) color, switched from fixed beiges/grays to
+  `autoMutedColor(cardBg)` too.
+- **"What to do at this time…" add-row input** now gets a translucent
+  glass fill + border + text color matching the card above it, instead of
+  a plain white input box sitting under a glass panel.
+
+No visual change under the default cream theme (`autoMutedColor`/
+`autoTextColor` resolve to the same tones the old hardcoded values used) —
+this only changes how these pieces adapt once the card itself is glass,
+dark, or a custom color.
+
+## 🧊 Liquid Glass — Time Table rows fixed (this update)
+The **Liquid Glass** Panel Theme preset (below) already turned every
+widget's outer card into true frosted glass, but **Time Table** rows
+(`TimeTableRow` in `components/BTLDashboard.jsx`) were still painting a
+flat opaque `cardBg || "#fff"` fill on top of that already-frosted
+parent — so each row showed up as a solid off-white block sitting
+inside an otherwise see-through panel, exactly the "half-glass,
+half-solid-blocks" look from the screenshot you sent. Rows now use the
+same translucent recipe (`hexToRgba`, 45%/60% depending on light/dark
+`cardBg`) as every other glass surface in the app, so the colorful
+animated Liquid Background shows through each row too, not just the
+gaps between them — the whole Time Table widget now reads as one
+continuous piece of glass instead of glass-with-solid-rows-inside. The
+row divider line was also softened to a translucent tint instead of a
+hardcoded light color, so it no longer looks like a stray white
+hairline cutting across a dark/colorful glass card. Every other Panel
+Theme preset is unaffected — a light `cardBg` just renders a very
+slightly softer white row than before.
+
+## 🌈 New — "Liquid Glass" added to Panel Theme (this update)
+Setting → 🎨 Theme → **Panel Theme** now has a 9th preset, **Liquid Glass**,
+next to Ocean/Sunset/.../Glass:
+- One tap gives the whole dashboard the real, vivid Apple-style Liquid
+  Glass look — every widget/panel card already renders through the app's
+  existing `glassCardStyle()` (frosted, 20px blur + saturate), and this
+  preset pairs that with a near-black backdrop (`#05070d`) so the
+  transparent/blurred cards read as true floating glass, not muted flat
+  color.
+- **Colorful blur blobs, managed:** applying it also recolors the
+  existing animated Liquid Background (the gradient + morphing blobs +
+  particles system, Setting → Background) to a vivid purple/cyan/rose/
+  amber palette (`#7C3AED #06B6D4 #F43F5E #F59E0B`) instead of whatever
+  was picked before, so the blur behind the glass cards is genuinely
+  colorful liquid, matching the reference look. Every other preset leaves
+  Setting → Background completely untouched, same as always.
+- **Still fully managed afterward** — Setting → Background's 4 color
+  pickers and the animation-speed slider keep editing these exact same
+  colors/blur directly (`state.liquidBg`), so you can retint or reset
+  individual hues, slow/speed up the flow, or turn it off entirely,
+  without leaving the preset.
+- Implementation note: rather than pulling in the external
+  `liquid-glass-js` library (which does per-element specular/refraction
+  via its own render pipeline and would've meant restructuring how every
+  widget is drawn), this reuses the app's own already-built frosted-glass
+  recipe (`glassCardStyle()`) + its own animated color-blob background
+  (`LiquidBackground.jsx`) — same visual family, zero new dependencies,
+  and it "just works" across every existing card instantly. Say the word
+  if you'd rather have the actual npm package wired in for a specific
+  spot (e.g. a hero card) instead.
 
 ## ✨ Life Story — Today's Entry is now a liquid-glass popup (this update)
 Redesigned `LifeStoryTab` in `components/BTLDashboard.jsx` per the marked-up
