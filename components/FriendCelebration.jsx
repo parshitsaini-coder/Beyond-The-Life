@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useMemo, createContext, useContext } from 
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, UserPlus, MessageCircle, Send, Check, ArrowLeft, Handshake, Zap,
-  BookOpen, CheckCircle2, Circle, Loader2, Users,
+  BookOpen, CheckCircle2, Circle, Loader2, Users, Settings,
 } from "lucide-react";
 import {
   friendshipId, sendFriendRequestByEmail, sendFriendRequestToUid, listAllUsers,
@@ -163,7 +163,7 @@ const STATUS_MSG = {
   error: "Kuch galat ho gaya, dobara try karein.",
 };
 
-function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, onClose }) {
+function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, onClose, onOpenThemeSettings }) {
   const ft = useFriendTheme();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState(null);
@@ -239,6 +239,13 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
           <div style={{ fontSize: Math.round(11 * ft.scale), color: ft.text, opacity: 0.6, fontWeight: ft.bold ? 800 : 700 }}>🎉 Friend Celebration</div>
         </div>
         <div style={{ flex: 1 }} />
+        {/* Friend Celebration theme shortcut — jumps straight to
+            Setting -> Theme -> Friend Celebration instead of making the
+            user close this popup and click through the tabs themselves. */}
+        <motion.button whileHover={{ scale: 1.1, rotate: 25 }} whileTap={{ scale: 0.9 }} onClick={onOpenThemeSettings} title="Friend Celebration theme"
+          style={{ background: "rgba(255,255,255,0.12)", border: "none", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer" }}>
+          <Settings size={16} />
+        </motion.button>
         <motion.button whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose}
           style={{ background: "rgba(255,255,255,0.12)", border: "none", borderRadius: "50%", width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer" }}>
           <X size={17} />
@@ -465,7 +472,7 @@ function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dail
   );
 }
 
-function FriendVSView({ user, myState, myStats, friend, friendState, onBack, onOpenChat, onOpenMemory }) {
+function FriendVSView({ user, myState, myStats, friend, friendState, onBack, onOpenChat, onOpenMemory, onOpenThemeSettings }) {
   const ft = useFriendTheme();
   const friendStats = useMemo(() => computeStatsFromState(friendState), [friendState]);
 
@@ -479,6 +486,12 @@ function FriendVSView({ user, myState, myStats, friend, friendState, onBack, onO
         <motion.button whileHover={{ x: -3 }} whileTap={{ scale: 0.92 }} onClick={onBack}
           style={{ background: "rgba(255,255,255,0.12)", border: "none", borderRadius: 999, padding: "7px 14px", color: "#fff", display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, fontWeight: 800 }}>
           <ArrowLeft size={14} /> Back
+        </motion.button>
+        {/* Friend Celebration theme shortcut — same jump-to Setting ->
+            Theme -> Friend Celebration as the hub header's gear icon. */}
+        <motion.button whileHover={{ scale: 1.1, rotate: 25 }} whileTap={{ scale: 0.9 }} onClick={onOpenThemeSettings} title="Friend Celebration theme"
+          style={{ background: "rgba(255,255,255,0.12)", border: "none", borderRadius: "50%", width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", cursor: "pointer", flexShrink: 0 }}>
+          <Settings size={14} />
         </motion.button>
         <div style={{ flex: 1, textAlign: "center", fontSize: Math.round(14 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, minWidth: 0 }}>
           <Zap size={14} color={C.accent} />
@@ -611,7 +624,7 @@ function FriendChatModal({ user, friend, fsId, onClose }) {
 
 /* ---------------- root ---------------- */
 
-export default function FriendCelebration({ user, myState, myStats, onClose, theme }) {
+export default function FriendCelebration({ user, myState, myStats, onClose, theme, onOpenThemeSettings }) {
   const [phase, setPhase] = useState("intro"); // intro | hub | vsIntro | vs
   const phaseRef = useRef(phase);
   useEffect(() => { phaseRef.current = phase; }, [phase]);
@@ -688,7 +701,7 @@ export default function FriendCelebration({ user, myState, myStats, onClose, the
           <VSIntro key="intro" leftPhoto={user?.photoURL} leftName={user?.displayName || "You"} rightPhoto="" rightName="Friends" onDone={() => setPhase("hub")} />
         )}
         {phase === "hub" && (
-          <FriendHubView key="hub" user={user} friendships={friendships} incoming={incoming} outgoing={outgoing} onSelectFriend={selectFriend} onClose={onClose} />
+          <FriendHubView key="hub" user={user} friendships={friendships} incoming={incoming} outgoing={outgoing} onSelectFriend={selectFriend} onClose={onClose} onOpenThemeSettings={onOpenThemeSettings} />
         )}
         {phase === "vsIntro" && activeFriend && (
           <VSIntro key="vsintro" leftPhoto={user?.photoURL} leftName={user?.displayName || "You"} rightPhoto={activeFriend.photoURL} rightName={activeFriend.name} onDone={() => setPhase("vs")} />
@@ -697,6 +710,7 @@ export default function FriendCelebration({ user, myState, myStats, onClose, the
           <FriendVSView
             user={user} myState={myState} myStats={myStats} friend={activeFriend} friendState={friendState}
             onBack={backToHub} onOpenChat={() => setChatOpen(true)} onOpenMemory={() => setMemoryOpen(true)}
+            onOpenThemeSettings={onOpenThemeSettings}
           />
         )}
       </AnimatePresence>

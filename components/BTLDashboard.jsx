@@ -1576,7 +1576,7 @@ function QuickNavFab({ tab, setTab, focusMode, setFocusMode, setMemOpen, setSett
     { key: "layout", label: "Layout", icon: LayoutGrid, bg: C.dark, fg: "#fff", onClick: () => { setTab("layout"); setOpen(false); } },
     { key: "analytics", label: "Analytics", icon: BarChart3, bg: C.dark, fg: "#fff", onClick: () => { setTab("analytics"); setOpen(false); } },
     { key: "money", label: "Money Management", icon: Wallet, bg: C.accent, fg: "#fff", onClick: () => { setTab("money"); setOpen(false); } },
-    { key: "setting", label: "Setting", icon: Settings, bg: C.dark, fg: "#fff", onClick: () => { setSettingsOpen(true); setOpen(false); } },
+    { key: "setting", label: "Setting", icon: Settings, bg: C.dark, fg: "#fff", onClick: () => { setSettingsOpen(); setOpen(false); } },
   ];
 
   return (
@@ -3205,7 +3205,10 @@ function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRec
   };
 
   return (
-    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
+    <div style={{
+      flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%",
+      boxSizing: "border-box", padding: 10, borderRadius: 10, ...glassCardStyle(cardBg),
+    }}>
       <ChecklistHeader
         title={<><Clock size={11} style={{ marginRight: 3, verticalAlign: -1 }} />Time Table</>}
         streak={streak} accent={accent} showHeat={showHeat} onToggleHeat={() => setShowHeat((v) => !v)}
@@ -3218,7 +3221,7 @@ function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRec
         {showHeat && <WidgetHeatmapPanel history={history} accent={accent} />}
         {showBreakdown && <TimeBreakdownPanel items={items} accent={accent} />}
       </AnimatePresence>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", borderRadius: 8, ...glassCardStyle(cardBg) }} className="btl-scroll">
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }} className="btl-scroll">
         {sorted.length === 0 && (
           <div style={{ padding: "16px 10px", fontSize: 10, color: "#a39c86", textAlign: "center" }}>
             No time blocks yet — add your first one below.
@@ -3455,8 +3458,8 @@ function LiquidBgPanel({ liquidBg, onColorChange, onColorsReset, onSpeedChange, 
   );
 }
 
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onLiquidGlassOptionsChange, onLiquidGlassOptionsReset, onSetClockRingtone, onLiquidBgColorChange, onLiquidBgColorsReset, onLiquidBgSpeedChange, onLiquidBgSpeedReset, onLiquidBgEnabledChange }) {
-  const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | "alarm" | null
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onLiquidGlassOptionsChange, onLiquidGlassOptionsReset, onSetClockRingtone, onLiquidBgColorChange, onLiquidBgColorsReset, onLiquidBgSpeedChange, onLiquidBgSpeedReset, onLiquidBgEnabledChange, initialMode, initialThemeSection }) {
+  const [mode, setMode] = useState(initialMode || null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | "alarm" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
   const [editVal, setEditVal] = useState("");
@@ -3560,6 +3563,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             onResetPreset={onResetPanelPreset}
             onLiquidGlassOptionsChange={onLiquidGlassOptionsChange}
             onLiquidGlassOptionsReset={onLiquidGlassOptionsReset}
+            initialSection={initialThemeSection}
           />
         ) : mode === "alarm" ? (
           <div>
@@ -8295,8 +8299,8 @@ function LiquidGlassOptionsRow({ options, onChange, onReset }) {
 }
 
 /* Top-level Theme tab shown inside Settings — five sub-sections. */
-function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPreset, onResetPreset, onLiquidGlassOptionsChange, onLiquidGlassOptionsReset }) {
-  const [section, setSection] = useState("dashboard");
+function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPreset, onResetPreset, onLiquidGlassOptionsChange, onLiquidGlassOptionsReset, initialSection }) {
+  const [section, setSection] = useState(initialSection || "dashboard");
   const t = normalizeTheme(theme);
   const SECTIONS = [
     { key: "dashboard", label: "Dashboard", icon: <LayoutGrid size={10} /> },
@@ -12156,6 +12160,12 @@ function BTLDashboardInner() {
   const [milestoneStreak, setMilestoneStreak] = useState(null);
   const [memOpen, setMemOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // What the Setting modal should land on when it opens — normally null/dashboard
+  // (plain "Setting" button), but a gear icon dropped inside Friend Celebration
+  // (hub header + VS header) jumps straight to Theme -> Friend Celebration
+  // instead of making the user click through the tabs themselves.
+  const [settingsInitial, setSettingsInitial] = useState({ mode: null, section: "dashboard" });
+  const openSettings = (opts) => { setSettingsInitial(opts || { mode: null, section: "dashboard" }); setSettingsOpen(true); };
   const [profileOpen, setProfileOpen] = useState(false);
   const [moneyModal, setMoneyModal] = useState(null); // { mode: "earn"|"spend", amount } | null
   const [focusMode, setFocusMode] = useState(false);
@@ -12822,7 +12832,7 @@ function BTLDashboardInner() {
       <QuickNavFab
         tab={tab} setTab={setTab}
         focusMode={focusMode} setFocusMode={setFocusMode}
-        setMemOpen={setMemOpen} setSettingsOpen={setSettingsOpen}
+        setMemOpen={setMemOpen} setSettingsOpen={openSettings}
       />
 
       {tab === "layout" ? (
@@ -12883,7 +12893,7 @@ function BTLDashboardInner() {
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <GlowIconButton icon={Target} label="Focus Mode" active={focusMode} color={C.accent} onClick={() => setFocusMode((v) => !v)} />
               <GlowIconButton icon={Sparkles} label="Share Journey" color="#b083f0" onClick={() => setShowShare(true)} />
-              <GlowIconButton icon={Settings} label="Setting" color={dashTheme.text} onClick={() => setSettingsOpen(true)} />
+              <GlowIconButton icon={Settings} label="Setting" color={dashTheme.text} onClick={() => openSettings()} />
               <div style={{ position: "relative" }}>
                 <GlowIconButton icon={Users} label="Friend Celebration" color="#e63946" onClick={() => setFriendOpen(true)} />
                 {incomingFriendReqCount > 0 && (
@@ -12971,6 +12981,8 @@ function BTLDashboardInner() {
               pointerEvents: "none",
             }}>
             <SettingsTab
+              key={settingsInitial.mode + ":" + settingsInitial.section}
+              initialMode={settingsInitial.mode} initialThemeSection={settingsInitial.section}
               state={state} addItem={settingsAdd} removeItem={settingsRemove} editItem={settingsEdit} onClose={() => setSettingsOpen(false)}
               onThemeScopeChange={setThemeScope} onThemeScopeReset={resetThemeScope}
               onWidgetThemeChange={setWidgetTheme} onWidgetThemeReset={resetWidgetTheme}
@@ -13007,6 +13019,7 @@ function BTLDashboardInner() {
             myStats={{ dailyPct, extryPct, overallPct, streak: state.streak, lifeScore: headerLifeScore }}
             onClose={() => setFriendOpen(false)}
             theme={theme.friendCelebration}
+            onOpenThemeSettings={() => { openSettings({ mode: "theme", section: "friendCelebration" }); setFriendOpen(false); }}
           />
         )}
       </AnimatePresence>

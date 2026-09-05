@@ -1,5 +1,40 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## ⚙️ Friend Celebration now has a direct theme shortcut (this update)
+Per your two marked-up screenshots, added a small gear icon (⚙️) at the spot
+you circled in both:
+- **Friend hub header** (`FriendHubView` in `components/FriendCelebration.jsx`)
+  — next to your name/"🎉 Friend Celebration" title, before the ✕ close button.
+- **"dev VS dev" split-screen header** (`FriendVSView`) — right after the
+  **← Back** button, before the "You VS Friend" title.
+
+Tapping either gear closes the Friend Celebration popup and opens the
+**Setting** modal landed directly on **🎨 Theme → Friend Celebration**
+(exactly the popup from your 3rd screenshot) — no need to close the popup
+yourself and click through **Setting → Theme → Friend Celebration** manually.
+The normal **Setting** button (header icon / Quick-Nav fab) still opens on
+Dashboard as before; only these two new shortcuts jump straight to the
+Friend Celebration theme tab.
+
+## 🫧 Time Table is now a *full* glass card, not just its list (earlier update)
+You circled the Time Table widget and asked for it to be "full liquid
+glass" — turns out it was the one widget still on the old pattern: only
+its inner scrollable list (`components/BTLDashboard.jsx`, `TimeTable`)
+was wrapped in `glassCardStyle()`; the "Time Table" title pill above it
+and the add-slot row below it sat directly on the page background,
+outside the glass. Every other full-card widget (Clock & Alarm, Focus
+Timer, Calendar, Analytics Summary) already wraps its *entire* content —
+title, body, controls — in one glass panel.
+
+Time Table now matches that: the whole card (title + list + category/time/
+text/repeat/add row) is one `glassCardStyle()` panel with 10px padding,
+and the inner list lost its own separate border/background so there's
+just one glass layer, not two stacked ones. This applies regardless of
+which Panel Theme preset is active — it's just the correct amount of
+glass for this widget, the same as its siblings; it's naturally most
+visible once **Liquid Glass** is the active preset, since that's what
+makes cardBg light/translucent enough to show blur clearly.
+
 ## 🎛️ Liquid Glass now has manageable Blur / Frost opacity / Soft shadow (this update)
 Per the neumorphic soft-UI moodboard you shared: **Setting → 🎨 Theme →
 Panel Theme**, once **Liquid Glass** is the active preset, now shows a new
