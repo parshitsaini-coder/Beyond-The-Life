@@ -12,6 +12,7 @@ import {
   Users, Clock, PieChart as PieChartIcon, Bell, BellOff, Square,
   AlarmClock, Volume2, Play, Waves, Gauge,
   Dumbbell, Info, Timer, Flower2, Wind,
+  AlignLeft, AlignCenter, AlignJustify,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -8784,6 +8785,10 @@ const LIFE_STORY_DEFAULT_THEME = {
   bold: false,
   textColor: C.text,
   bgColor: "linear-gradient(180deg, #fbf9f2, #f5f2e8)",
+  lineHeight: 1.6,
+  align: "left",
+  letterSpacing: 0,
+  cardRadius: 18,
 };
 
 /* 10 curated presets — swatch shows page bg + text color together so it's
@@ -9218,30 +9223,49 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
     if (chip) setLightbox(Number(chip.dataset.idx));
   };
 
+  const radius = t.cardRadius ?? 18;
+  const textStyle = {
+    fontSize: t.fontSize, fontWeight: t.bold ? 700 : 400, lineHeight: t.lineHeight ?? 1.6,
+    color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word",
+    textAlign: t.align || "left", letterSpacing: `${t.letterSpacing ?? 0}px`,
+  };
   return (
-    <div ref={blockRef} style={{ marginBottom: 20 }}>
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+    <motion.div
+      ref={blockRef}
+      initial={{ opacity: 0, y: 26, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: "spring", stiffness: 260, damping: 26 }}
+      style={{ marginBottom: 28, width: "100%" }}
+    >
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
         <span style={{
-          display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, fontWeight: 800, color: isToday ? "#fff" : C.dark,
+          display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 800, color: isToday ? "#fff" : C.dark,
           background: isToday ? C.accent : "rgba(255,255,255,0.75)", border: `1px solid ${isToday ? C.accent : "#ece7d8"}`,
-          borderRadius: 999, padding: "5px 14px", boxShadow: isToday ? "0 4px 14px rgba(252,163,17,0.35)" : "none",
+          borderRadius: 999, padding: "6px 16px", boxShadow: isToday ? "0 4px 14px rgba(252,163,17,0.35)" : "none",
+          backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
         }}>
-          <CalendarDays size={11} /> {formatStoryDate(iso)} {isToday && "· Today"}
+          <CalendarDays size={12} /> {formatStoryDate(iso)} {isToday && "· Today"}
         </span>
       </div>
 
       <motion.div
         style={{
-          position: "relative", borderRadius: 18, padding: 2, backgroundSize: "300% 300%",
+          position: "relative", borderRadius: radius + 2, padding: 2, backgroundSize: "300% 300%",
           background: isDark
             ? "linear-gradient(120deg, #fca311, rgba(255,255,255,0.25), #fca311, #98c1d9, #fca311)"
             : "linear-gradient(120deg, #fca311, #ffe3b8, #fca311, #98c1d9, #fca311)",
-          boxShadow: isToday ? "0 6px 22px rgba(252,163,17,0.28)" : "0 2px 10px rgba(37,36,34,0.06)",
+          boxShadow: isToday ? "0 10px 34px rgba(252,163,17,0.28)" : "0 4px 18px rgba(37,36,34,0.08)",
         }}
         animate={{ backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"] }}
         transition={{ duration: isToday ? 5 : 9, repeat: Infinity, ease: "linear" }}
       >
-        <div style={{ position: "relative", background: isDark ? "rgba(20,20,20,0.94)" : "rgba(255,255,255,0.92)", borderRadius: 16, padding: 14 }}>
+        <div style={{
+          position: "relative", borderRadius: radius,
+          background: isDark ? "rgba(20,20,20,0.9)" : "rgba(255,255,255,0.82)",
+          backdropFilter: "blur(18px) saturate(180%)", WebkitBackdropFilter: "blur(18px) saturate(180%)",
+          border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.9)"}`,
+          padding: 22,
+        }}>
           {isToday ? (
             <div
               ref={editableRef}
@@ -9252,12 +9276,12 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
               onPaste={handlePaste}
               onClick={handleChipClick}
               data-placeholder="Write today's story... type @ for emoji & photos"
-              style={{ width: "100%", minHeight: 76, outline: "none", fontSize: t.fontSize, fontWeight: t.bold ? 700 : 400, lineHeight: 1.6, color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+              style={{ width: "100%", minHeight: 110, outline: "none", ...textStyle }}
             />
           ) : entry?.html ? (
             <div
               onClick={handleChipClick}
-              style={{ fontSize: t.fontSize, fontWeight: t.bold ? 700 : 400, lineHeight: 1.6, color: t.textColor, fontFamily: t.fontFamily, whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+              style={textStyle}
               dangerouslySetInnerHTML={{ __html: entry.html }}
             />
           ) : (
@@ -9283,7 +9307,7 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
           <LifeStoryLightbox src={images[lightbox]} onClose={() => setLightbox(null)} onDelete={() => { onRemoveImage(lightbox); setLightbox(null); }} />
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }
 
@@ -9293,107 +9317,167 @@ function LifeStoryDayBlock({ iso, entry, isToday, theme, onChangeHtml, onAddImag
    sit next to swatch presets so any color is reachable, not just the 10
    curated themes. */
 function LifeStoryThemeSettings({ theme, onChange, onClose }) {
+  const [section, setSection] = useState("style"); // "style" | "text"
   const set = (patch) => onChange({ ...theme, presetId: "custom", ...patch });
-  const applyPreset = (p) => onChange({ presetId: p.id, fontFamily: theme.fontFamily, fontSize: theme.fontSize, bold: theme.bold, textColor: p.text, bgColor: p.bg });
+  const applyPreset = (p) => onChange({ ...theme, presetId: p.id, textColor: p.text, bgColor: p.bg });
+  const label = { fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 5, display: "flex", alignItems: "center", gap: 4, letterSpacing: 0.4 };
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.92, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: -6 }}
+      initial={{ opacity: 0, scale: 0.92, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 10 }}
       transition={{ type: "spring", stiffness: 400, damping: 28 }}
       style={{
-        position: "absolute", top: "115%", right: 0, width: 250, maxHeight: 380, overflowY: "auto", zIndex: 50,
-        background: "rgba(255,255,255,0.85)", backdropFilter: "blur(20px) saturate(180%)", WebkitBackdropFilter: "blur(20px) saturate(180%)",
-        border: "1px solid rgba(255,255,255,0.85)", borderRadius: 12, boxShadow: "0 16px 40px rgba(37,36,34,0.25)", padding: 10,
+        position: "absolute", bottom: "125%", right: 0, width: 268, maxHeight: 420, overflowY: "auto", zIndex: 90,
+        background: "rgba(255,255,255,0.88)", backdropFilter: "blur(26px) saturate(190%)", WebkitBackdropFilter: "blur(26px) saturate(190%)",
+        border: "1px solid rgba(255,255,255,0.9)", borderRadius: 18, boxShadow: "0 -6px 10px rgba(37,36,34,0.06), 0 20px 50px rgba(37,36,34,0.28)", padding: 12,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-        <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86" }}>PAGE THEME</div>
-        <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: "#a39c86" }}>
-          <X size={12} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <div style={{ fontSize: 12, fontWeight: 900, color: C.dark, display: "flex", alignItems: "center", gap: 6 }}>
+          <Sparkles size={13} color={C.accent} /> Page Theme
+        </div>
+        <motion.div whileHover={{ scale: 1.15, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: "#a39c86" }}>
+          <X size={13} />
         </motion.div>
       </div>
 
-      {/* Preset swatches */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 10 }}>
-        {LIFE_STORY_THEME_PRESETS.map((p) => (
+      {/* Section tabs */}
+      <div style={{ display: "flex", gap: 4, background: "rgba(0,0,0,0.045)", borderRadius: 999, padding: 3, marginBottom: 12 }}>
+        {[{ id: "style", label: "Style", icon: Palette }, { id: "text", label: "Text", icon: Type }].map((s) => (
           <motion.div
-            key={p.id} whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.94 }} onClick={() => applyPreset(p)}
-            title={p.name}
+            key={s.id} onClick={() => setSection(s.id)} whileTap={{ scale: 0.96 }}
             style={{
-              width: "100%", aspectRatio: "1", borderRadius: 8, cursor: "pointer", background: p.swatchBg,
-              border: theme.presetId === p.id ? `2px solid ${C.accent}` : "1px solid rgba(0,0,0,0.12)",
-              display: "flex", alignItems: "center", justifyContent: "center", boxShadow: theme.presetId === p.id ? "0 0 0 2px rgba(252,163,17,0.25)" : "none",
+              flex: 1, textAlign: "center", padding: "6px 0", borderRadius: 999, cursor: "pointer",
+              fontSize: 10.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+              color: section === s.id ? "#fff" : C.dark,
+              background: section === s.id ? C.dark : "transparent",
             }}
+          ><s.icon size={11} /> {s.label}</motion.div>
+        ))}
+      </div>
+
+      {section === "style" && (
+        <>
+          {/* Preset swatches */}
+          <div style={label}>PRESETS</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6, marginBottom: 12 }}>
+            {LIFE_STORY_THEME_PRESETS.map((p) => (
+              <motion.div
+                key={p.id} whileHover={{ scale: 1.1, y: -2 }} whileTap={{ scale: 0.92 }} onClick={() => applyPreset(p)}
+                title={p.name}
+                style={{
+                  width: "100%", aspectRatio: "1", borderRadius: 9, cursor: "pointer", background: p.swatchBg,
+                  border: theme.presetId === p.id ? `2px solid ${C.accent}` : "1px solid rgba(0,0,0,0.12)",
+                  display: "flex", alignItems: "center", justifyContent: "center", boxShadow: theme.presetId === p.id ? "0 0 0 3px rgba(252,163,17,0.22)" : "none",
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 900, color: p.text }}>Aa</span>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* Text color + Background color */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={label}><Palette size={10} /> TEXT COLOR</div>
+              <input
+                type="color" value={/^#/.test(theme.textColor) ? theme.textColor : "#403d39"}
+                onChange={(e) => set({ textColor: e.target.value })}
+                style={{ width: "100%", height: 30, borderRadius: 9, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={label}><Palette size={10} /> PAGE BG</div>
+              <input
+                type="color" value={/^#[0-9a-fA-F]{6}$/.test(theme.bgColor) ? theme.bgColor : "#fbf9f2"}
+                onChange={(e) => set({ bgColor: e.target.value })}
+                style={{ width: "100%", height: 30, borderRadius: 9, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
+              />
+            </div>
+          </div>
+
+          {/* Card roundness */}
+          <div style={label}>CARD ROUNDNESS — {theme.cardRadius ?? 18}px</div>
+          <input
+            type="range" min={4} max={30} step={1} value={theme.cardRadius ?? 18}
+            onChange={(e) => set({ cardRadius: Number(e.target.value) })}
+            style={{ width: "100%", marginBottom: 4, accentColor: C.accent }}
+          />
+        </>
+      )}
+
+      {section === "text" && (
+        <>
+          {/* Font family */}
+          <div style={label}><Type size={10} /> FONT</div>
+          <select
+            value={theme.fontFamily}
+            onChange={(e) => set({ fontFamily: e.target.value })}
+            style={{ width: "100%", fontSize: 11, fontWeight: 700, color: C.dark, padding: "7px 8px", borderRadius: 9, border: "1px solid #ece7d8", background: "#fff", marginBottom: 12, cursor: "pointer" }}
           >
-            <span style={{ fontSize: 11, fontWeight: 900, color: p.text }}>Aa</span>
-          </motion.div>
-        ))}
-      </div>
+            {LIFE_STORY_FONTS.map((f) => (
+              <option key={f.id} value={f.stack} style={{ fontFamily: f.stack }}>{f.label}</option>
+            ))}
+          </select>
 
-      {/* Font family */}
-      <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
-        <Type size={10} /> FONT
-      </div>
-      <select
-        value={theme.fontFamily}
-        onChange={(e) => set({ fontFamily: e.target.value })}
-        style={{ width: "100%", fontSize: 11, fontWeight: 700, color: C.dark, padding: "6px 8px", borderRadius: 8, border: "1px solid #ece7d8", background: "#fff", marginBottom: 10, cursor: "pointer" }}
-      >
-        {LIFE_STORY_FONTS.map((f) => (
-          <option key={f.id} value={f.stack} style={{ fontFamily: f.stack }}>{f.label}</option>
-        ))}
-      </select>
-
-      {/* Text size */}
-      <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
-        <Baseline size={10} /> TEXT SIZE — {theme.fontSize}px
-      </div>
-      <input
-        type="range" min={11} max={22} step={1} value={theme.fontSize}
-        onChange={(e) => set({ fontSize: Number(e.target.value) })}
-        style={{ width: "100%", marginBottom: 10, accentColor: C.accent }}
-      />
-
-      {/* Bold toggle */}
-      <motion.div
-        whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
-        onClick={() => set({ bold: !theme.bold })}
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 10, cursor: "pointer",
-          fontSize: 11, fontWeight: 800, color: theme.bold ? "#fff" : C.dark,
-          background: theme.bold ? C.accent : "#fff", border: `1px solid ${theme.bold ? C.accent : "#ece7d8"}`,
-          borderRadius: 999, padding: "6px 0",
-        }}
-      ><Bold size={12} /> Bold text {theme.bold ? "On" : "Off"}</motion.div>
-
-      {/* Text color + Background color */}
-      <div style={{ display: "flex", gap: 10 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
-            <Palette size={10} /> TEXT COLOR
-          </div>
+          {/* Text size */}
+          <div style={label}><Baseline size={10} /> TEXT SIZE — {theme.fontSize}px</div>
           <input
-            type="color" value={/^#/.test(theme.textColor) ? theme.textColor : "#403d39"}
-            onChange={(e) => set({ textColor: e.target.value })}
-            style={{ width: "100%", height: 28, borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
+            type="range" min={11} max={22} step={1} value={theme.fontSize}
+            onChange={(e) => set({ fontSize: Number(e.target.value) })}
+            style={{ width: "100%", marginBottom: 12, accentColor: C.accent }}
           />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
-            <Palette size={10} /> PAGE BG
-          </div>
+
+          {/* Line height */}
+          <div style={label}>LINE HEIGHT — {(theme.lineHeight ?? 1.6).toFixed(1)}</div>
           <input
-            type="color" value={/^#[0-9a-fA-F]{6}$/.test(theme.bgColor) ? theme.bgColor : "#fbf9f2"}
-            onChange={(e) => set({ bgColor: e.target.value })}
-            style={{ width: "100%", height: 28, borderRadius: 8, border: "1px solid #ece7d8", cursor: "pointer", padding: 2, background: "#fff" }}
+            type="range" min={1.2} max={2.2} step={0.1} value={theme.lineHeight ?? 1.6}
+            onChange={(e) => set({ lineHeight: Number(e.target.value) })}
+            style={{ width: "100%", marginBottom: 12, accentColor: C.accent }}
           />
-        </div>
-      </div>
+
+          {/* Letter spacing */}
+          <div style={label}>LETTER SPACING — {theme.letterSpacing ?? 0}px</div>
+          <input
+            type="range" min={-1} max={3} step={0.5} value={theme.letterSpacing ?? 0}
+            onChange={(e) => set({ letterSpacing: Number(e.target.value) })}
+            style={{ width: "100%", marginBottom: 12, accentColor: C.accent }}
+          />
+
+          {/* Alignment */}
+          <div style={label}>ALIGNMENT</div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+            {[{ id: "left", icon: AlignLeft }, { id: "center", icon: AlignCenter }, { id: "justify", icon: AlignJustify }].map((a) => (
+              <motion.div
+                key={a.id} whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={() => set({ align: a.id })}
+                style={{
+                  flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "7px 0", borderRadius: 9, cursor: "pointer",
+                  color: (theme.align || "left") === a.id ? "#fff" : C.dark,
+                  background: (theme.align || "left") === a.id ? C.accent : "#fff",
+                  border: `1px solid ${(theme.align || "left") === a.id ? C.accent : "#ece7d8"}`,
+                }}
+              ><a.icon size={13} /></motion.div>
+            ))}
+          </div>
+
+          {/* Bold toggle */}
+          <motion.div
+            whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
+            onClick={() => set({ bold: !theme.bold })}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 4, cursor: "pointer",
+              fontSize: 11, fontWeight: 800, color: theme.bold ? "#fff" : C.dark,
+              background: theme.bold ? C.accent : "#fff", border: `1px solid ${theme.bold ? C.accent : "#ece7d8"}`,
+              borderRadius: 999, padding: "7px 0",
+            }}
+          ><Bold size={12} /> Bold text {theme.bold ? "On" : "Off"}</motion.div>
+        </>
+      )}
 
       <motion.div
         whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
         onClick={() => onChange(LIFE_STORY_DEFAULT_THEME)}
-        style={{ marginTop: 10, textAlign: "center", fontSize: 10, fontWeight: 800, color: C.dark, border: "1px solid #ece7d8", borderRadius: 999, padding: "6px 0", cursor: "pointer", background: "#fff" }}
+        style={{ marginTop: 10, textAlign: "center", fontSize: 10, fontWeight: 800, color: C.dark, border: "1px solid #ece7d8", borderRadius: 999, padding: "7px 0", cursor: "pointer", background: "#fff" }}
       >
         Reset to default
       </motion.div>
@@ -9598,13 +9682,57 @@ function LifeStoryTab({ state, update, onClose }) {
   };
 
   return (
-    <div style={{ border: `1px solid ${C.text}`, borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${C.text}`, borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 6 }}>
-        <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
-          <ArrowLeft size={15} color={C.dark} />
+    <div style={{ borderRadius: 10, background: "#fff", display: "flex", flexDirection: "column", height: "100%", position: "relative", overflow: "hidden" }}>
+      <GenieFilterDefs />
+
+      {/* Full-screen feed — no header on top, only the dates/story cards */}
+      <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: "18px 16px 96px", background: theme.bgColor }}>
+        <div style={{ maxWidth: "min(94%, 860px)", margin: "0 auto" }}>
+          {dates.map((iso) => {
+            const block = (
+              <LifeStoryDayBlock
+                key={iso} iso={iso} entry={entries[iso]} isToday={iso === today} theme={theme}
+                onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
+                blockRef={(el) => { blockRefs.current[iso] = el; }}
+              />
+            );
+            return iso === today ? (
+              <GenieHidable key="today-genie" hidden={todayHidden} onHiddenChange={setTodayHidden} toggleRef={hideToggleRef} placeholderLabel="Today's entry is hidden">
+                {block}
+              </GenieHidable>
+            ) : block;
+          })}
+        </div>
+      </div>
+
+      {/* Floating glass dock — everything that used to live in the top
+          header now sits here, anchored to the bottom, so the feed above
+          it can go edge-to-edge / full-screen. */}
+      <motion.div
+        initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 300, damping: 28, delay: 0.1 }}
+        style={{
+          position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", zIndex: 40,
+          maxWidth: "calc(100% - 20px)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "center",
+          background: "rgba(255,255,255,0.78)", backdropFilter: "blur(22px) saturate(190%)", WebkitBackdropFilter: "blur(22px) saturate(190%)",
+          border: "1px solid rgba(255,255,255,0.9)", borderRadius: 999, boxShadow: "0 14px 38px rgba(37,36,34,0.22)", padding: "7px 8px",
+        }}
+      >
+        <motion.div
+          whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} title="Back to dashboard"
+          style={{ cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, borderRadius: "50%", background: "rgba(0,0,0,0.05)" }}
+        >
+          <ArrowLeft size={14} color={C.dark} />
         </motion.div>
-        <Pencil size={14} color={C.dark} />
-        <span style={{ fontSize: 13, fontWeight: 800, color: C.dark }}>Life Story</span>
+
+        {story.profile && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 6px" }}>
+            <div style={{ width: 26, height: 26, borderRadius: "50%", background: story.profile.image ? `url(${story.profile.image}) center/cover` : C.dark, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
+              {!story.profile.image && story.profile.name?.[0]?.toUpperCase()}
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 800, color: C.dark, whiteSpace: "nowrap" }}>{story.profile.name}</span>
+          </div>
+        )}
 
         <motion.button
           ref={hideToggleRef}
@@ -9612,29 +9740,27 @@ function LifeStoryTab({ state, update, onClose }) {
           onClick={() => hideToggleRef.current?.__genieToggle?.()}
           title={todayHidden ? "Show today's entry" : "Hide today's entry"}
           style={{
-            border: `1px solid ${todayHidden ? C.accent : C.text}`, borderRadius: 999, padding: "4px 9px", background: todayHidden ? "#fff7ea" : "#fff",
+            border: "none", borderRadius: 999, padding: "7px 11px", background: todayHidden ? "#fff2dc" : "rgba(0,0,0,0.05)",
             display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, fontWeight: 800, color: todayHidden ? C.accent : C.dark,
           }}
         >
-          {todayHidden ? <EyeOff size={11} /> : <Eye size={11} />} {todayHidden ? "show" : "hide"}
+          {todayHidden ? <EyeOff size={12} /> : <Eye size={12} />} {todayHidden ? "show" : "hide"}
         </motion.button>
-
-        <div style={{ flex: 1 }} />
 
         <div style={{ position: "relative" }}>
           <motion.button
-            whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }} onClick={() => setJumpOpen((v) => !v)}
-            style={{ border: `1px solid ${C.text}`, borderRadius: 999, padding: "5px 11px", background: "#fff", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: C.dark }}
+            whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }} onClick={() => { setThemeOpen(false); setJumpOpen((v) => !v); }}
+            style={{ border: "none", borderRadius: 999, padding: "7px 11px", background: "rgba(0,0,0,0.05)", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: C.dark }}
           ><Filter size={12} /> filters</motion.button>
           <AnimatePresence>
             {jumpOpen && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.92, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: -6 }}
+                initial={{ opacity: 0, scale: 0.92, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 10 }}
                 transition={{ type: "spring", stiffness: 400, damping: 28 }}
                 style={{
-                  position: "absolute", top: "115%", right: 0, width: 190, maxHeight: 240, overflowY: "auto", zIndex: 50,
-                  background: "rgba(255,255,255,0.85)", backdropFilter: "blur(20px) saturate(180%)", WebkitBackdropFilter: "blur(20px) saturate(180%)",
-                  border: "1px solid rgba(255,255,255,0.85)", borderRadius: 12, boxShadow: "0 16px 40px rgba(37,36,34,0.25)", padding: 6,
+                  position: "absolute", bottom: "125%", right: 0, width: 190, maxHeight: 240, overflowY: "auto", zIndex: 90,
+                  background: "rgba(255,255,255,0.9)", backdropFilter: "blur(22px) saturate(190%)", WebkitBackdropFilter: "blur(22px) saturate(190%)",
+                  border: "1px solid rgba(255,255,255,0.9)", borderRadius: 14, boxShadow: "0 20px 50px rgba(37,36,34,0.28)", padding: 6,
                 }}
               >
                 <div style={{ fontSize: 8.5, fontWeight: 800, color: "#a39c86", padding: "4px 6px" }}>JUMP TO DATE</div>
@@ -9652,8 +9778,8 @@ function LifeStoryTab({ state, update, onClose }) {
 
         <div style={{ position: "relative" }}>
           <motion.button
-            whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }} onClick={() => setThemeOpen((v) => !v)}
-            style={{ border: `1px solid ${C.text}`, borderRadius: 999, padding: "5px 11px", background: "#fff", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: C.dark }}
+            whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }} onClick={() => { setJumpOpen(false); setThemeOpen((v) => !v); }}
+            style={{ border: "none", borderRadius: 999, padding: "7px 11px", background: "rgba(0,0,0,0.05)", display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: C.dark }}
           ><Settings size={12} /> theme</motion.button>
           <AnimatePresence>
             {themeOpen && (
@@ -9661,39 +9787,7 @@ function LifeStoryTab({ state, update, onClose }) {
             )}
           </AnimatePresence>
         </div>
-
-        {story.profile && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div style={{ width: 26, height: 26, borderRadius: "50%", background: story.profile.image ? `url(${story.profile.image}) center/cover` : C.dark, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 800 }}>
-              {!story.profile.image && story.profile.name?.[0]?.toUpperCase()}
-            </div>
-            <span style={{ fontSize: 11, fontWeight: 800, color: C.dark }}>{story.profile.name}</span>
-          </div>
-        )}
-        <motion.div whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", color: C.dark }}>
-          <X size={16} />
-        </motion.div>
-      </div>
-
-      <GenieFilterDefs />
-      <div ref={feedRef} style={{ flex: 1, overflowY: "auto", padding: 16, background: theme.bgColor }}>
-        <div style={{ maxWidth: 620, margin: "0 auto" }}>
-          {dates.map((iso) => {
-            const block = (
-              <LifeStoryDayBlock
-                key={iso} iso={iso} entry={entries[iso]} isToday={iso === today} theme={theme}
-                onChangeHtml={setEntryHtml(iso)} onAddImage={addImage(iso)} onRemoveImage={removeImage(iso)}
-                blockRef={(el) => { blockRefs.current[iso] = el; }}
-              />
-            );
-            return iso === today ? (
-              <GenieHidable key="today-genie" hidden={todayHidden} onHiddenChange={setTodayHidden} toggleRef={hideToggleRef} placeholderLabel="Today's entry is hidden">
-                {block}
-              </GenieHidable>
-            ) : block;
-          })}
-        </div>
-      </div>
+      </motion.div>
 
       <AnimatePresence>{!story.profile && <LifeStoryProfileSetup onSave={setProfile} />}</AnimatePresence>
     </div>
@@ -11442,6 +11536,125 @@ const FITNESS_DATA = {
         "Poori body aur mind ko deep relaxation deta hai.",
         "Stress, anxiety aur fatigue kam karta hai.",
         "Har yoga session ko close karne ke liye ek zaroori, integrating pose hai.",
+      ],
+    },
+    {
+      id: "reclingSingleLegStretchBedtime",
+      name: "Reclining Single-Leg Stretch (Bedtime Pose)",
+      duration: "2–3 sets × 20–30 sec hold (per side)",
+      gif: "/yoga/reclining-single-leg-stretch-bedtime.gif",
+      steps: [
+        "Peeth ke bal lait jayein, ek pair ko ghutne se mode kar foot flat zameen par rakhein.",
+        "Dusre pair ko seedha upar uthayein, ghutna halka bent rakh sakte hain.",
+        "Haath body ke bagal mein relaxed rakhein, shoulders ko zameen par settle hone dein.",
+        "Steady, slow saans lete hue hold karein, phir side badal kar dusre pair se repeat karein.",
+      ],
+      benefits: [
+        "Hamstrings aur lower back ko gently stretch karta hai.",
+        "Nervous system ko calm kar so ne se pehle body ko relax karta hai.",
+        "Bedtime yoga routine ke liye ek soothing, low-effort pose hai.",
+      ],
+    },
+    {
+      id: "pelvicTiltTabletopPose",
+      name: "Pelvic Tilt Tabletop Pose",
+      duration: "2–3 sets × 20–30 sec hold",
+      gif: "/yoga/pelvic-tilt-tabletop-pose.gif",
+      steps: [
+        "Peeth ke bal lait jayein, dono ghutne 90° par mode kar tabletop position mein rakhein (shins zameen ke parallel).",
+        "Haath body ke bagal mein flat rakhein support ke liye.",
+        "Pelvic floor muscles ko gently engage karein, lower back ko zameen se halka pressed rakhein.",
+        "Steady saans lete hue is position ko hold karein, hips ko rock na hone dein.",
+      ],
+      benefits: [
+        "Pelvic floor aur lower abs ko gently activate karta hai.",
+        "Lower back tension aur pelvic discomfort kam karne mein madad karta hai.",
+        "Pelvic health routines ke liye ek low-impact, supportive pose hai.",
+      ],
+    },
+    {
+      id: "vasisthasanaSidePlank",
+      name: "Vasisthasana (Side Plank Pose)",
+      duration: "2–3 sets × 15–20 sec hold (per side)",
+      gif: "/yoga/vasisthasana-side-plank.gif",
+      steps: [
+        "Ek side plank position mein aayein, ek haath zameen par seedha shoulder ke neeche rakhein.",
+        "Dono pairon ko stack karein ya thoda stagger karein, body ko ek seedhi diagonal line mein rakhein.",
+        "Dusre haath ko ceiling ki taraf seedha upar extend karein.",
+        "Core aur obliques ko tight rakhte hue is position ko hold karein, phir side badal kar repeat karein.",
+      ],
+      benefits: [
+        "Obliques, core aur shoulders ko intensely target karta hai — Adonis belt (V-line) define karne ke liye effective.",
+        "Balance aur full-body stability improve karta hai.",
+        "Wrists aur arms ki strength bhi badhata hai.",
+      ],
+    },
+    {
+      id: "supineKneeBendRelaxation",
+      name: "Supine Knee Bend Relaxation Pose",
+      duration: "2–3 sets × 30–60 sec hold",
+      gif: "/yoga/supine-knee-bend-relaxation.gif",
+      steps: [
+        "Peeth ke bal lait jayein, dono ghutne mode kar pair flat zameen par hip-width apart rakhein.",
+        "Dono haathon ko chest ke upar cross kar ke rakhein, ya jo bhi comfortable lage.",
+        "Poori body ko relax hone dein, jaw aur shoulders ko loosen karein.",
+        "Slow, deep saans lete hue is calming position mein rahein.",
+      ],
+      benefits: [
+        "Lower back aur hips ki tension release karta hai.",
+        "Nervous system ko calm karta hai.",
+        "Kisi bhi workout ya yoga session ke beech quick reset ke liye achha hai.",
+      ],
+    },
+    {
+      id: "pavanmuktasanaWindRelieving",
+      name: "Pavanmuktasana (Wind-Relieving Pose)",
+      duration: "2–3 sets × 20–30 sec hold",
+      gif: "/yoga/pavanmuktasana-wind-relieving.gif",
+      steps: [
+        "Peeth ke bal lait jayein, dono ghutne chest ki taraf mode karein.",
+        "Dono haathon se shins ya ankles ko pakdein, ghutno ko gently chest ke kareeb khinchein.",
+        "Sir ko relaxed rakhein ya halka upar uthayein, shoulders ko zameen par rakhein.",
+        "Steady saans lete hue hold karein, poet mein halka pressure mehsoos karein.",
+      ],
+      benefits: [
+        "Digestion improve karta hai aur gas/bloating relief deta hai.",
+        "Lower back aur hips ko gently stretch karta hai.",
+        "Pelvic aur abdominal area mein tension release karta hai.",
+      ],
+    },
+    {
+      id: "tuckedHeadstandPrep",
+      name: "Tucked Headstand Prep (Sirsasana Variation)",
+      duration: "2–3 sets × 10–15 sec hold",
+      gif: "/yoga/tucked-headstand-prep.gif",
+      steps: [
+        "Forearms aur crown of head ko zameen par ek tripod base bana kar rakhein.",
+        "Hips ko upar uthayein, ghutno ko chest ki taraf tucked rakhein (crow-pose jaisi tucked position).",
+        "Core ko engage kar balance banaye rakhein, weight ko forearms aur head ke beech evenly distribute karein.",
+        "Kuch second control ke saath hold karein — beginners wall ke paas practice karein.",
+      ],
+      benefits: [
+        "Core, shoulders aur balance ko strongly train karta hai.",
+        "Full Sirsasana (Headstand) ki taraf ek safe progression step hai.",
+        "Focus aur body awareness improve karta hai.",
+      ],
+    },
+    {
+      id: "sirsasanaHeadstand",
+      name: "Sirsasana (Headstand Pose)",
+      duration: "2–3 sets × 15–30 sec hold",
+      gif: "/yoga/sirsasana-headstand.gif",
+      steps: [
+        "Forearms zameen par tripod base bana kar rakhein, crown of head ko haathon ke beech zameen par rakhein.",
+        "Ghutno ko chest ki taraf tuck karke hips ko upar uthayein, core engage karein.",
+        "Dheere-dheere dono pairon ko seedha ceiling ki taraf extend karein, poori body ek seedhi line mein.",
+        "Steady saans lete hue balance hold karein — beginners wall ka support lein aur experienced guidance ke bina lambe time tak practice na karein.",
+      ],
+      benefits: [
+        "Blood circulation ko brain aur upper body ki taraf boost karta hai.",
+        "Core, shoulders aur poori body ki strength aur balance improve karta hai.",
+        "Focus aur mental clarity badhata hai — inversions ka ek advanced, powerful pose.",
       ],
     },
   ],
