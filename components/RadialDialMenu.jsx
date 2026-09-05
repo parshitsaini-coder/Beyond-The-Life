@@ -6,6 +6,7 @@ import {
   CalendarClock, CalendarDays, Camera, BookOpen, Dumbbell, Settings,
   PartyPopper, BarChart3, Share2, Wallet,
 } from "lucide-react";
+import LiquidOrbButton from "@/components/LiquidOrbButton";
 
 /* ---------------- CONFIG ----------------
    The spec's 15 items + order, PLUS Money Management as a 16th item
@@ -87,6 +88,7 @@ export default function RadialDialMenu({ onSelect }) {
   const [open, setOpen] = useState(false);
   const [hoverId, setHoverId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
+  const [orbPulse, setOrbPulse] = useState(null);
   const circleRef = useRef(null);
   const originRef = useRef({ x: 0, y: 0 });
 
@@ -110,6 +112,7 @@ export default function RadialDialMenu({ onSelect }) {
     originRef.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     setOpen(true);
     setHoverId(null);
+    setOrbPulse({ key: Date.now(), variant: "press" });
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp, { once: true });
   };
@@ -140,6 +143,7 @@ export default function RadialDialMenu({ onSelect }) {
     const item = nearestItem(e.clientX, e.clientY);
     if (item) {
       setConfirmId(item.id);
+      setOrbPulse({ key: Date.now(), variant: "confirm" });
       setTimeout(() => {
         onSelect && onSelect(item);
         setOpen(false);
@@ -241,18 +245,22 @@ export default function RadialDialMenu({ onSelect }) {
         style={{
           pointerEvents: "auto",
           touchAction: "none",
+          position: "relative",
           width: CIRCLE_SIZE,
           height: CIRCLE_SIZE,
           borderRadius: "50%",
-          background: CIRCLE_COLOR,
+          background: CIRCLE_COLOR, // fallback paint while LiquidOrbButton's layers mount
           border: "none",
+          overflow: "hidden",
           boxShadow: open
-            ? "0 0 0 8px rgba(64,61,57,0.15)"
-            : "0 3px 10px rgba(0,0,0,0.25)",
+            ? "0 0 0 8px rgba(30,150,160,0.18)"
+            : "0 3px 14px rgba(6,20,28,0.45)",
           zIndex: 61,
         }}
         aria-label="Open navigation dial"
-      />
+      >
+        <LiquidOrbButton size={CIRCLE_SIZE} active={open} pulse={orbPulse} />
+      </motion.button>
     </div>
   );
 }

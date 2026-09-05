@@ -48,7 +48,7 @@ function hexToRgbTriple(hex) {
   return `${r},${g},${b}`;
 }
 
-function usePrefersReducedMotion() {
+export function usePrefersReducedMotion() {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
     try {
@@ -62,7 +62,7 @@ function usePrefersReducedMotion() {
   return reduced;
 }
 
-function useIsCoarsePointer() {
+export function useIsCoarsePointer() {
   const [coarse, setCoarse] = useState(false);
   useEffect(() => {
     try {
