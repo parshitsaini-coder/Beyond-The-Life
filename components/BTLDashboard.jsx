@@ -206,41 +206,6 @@ function hexToRgba(hex, alpha) {
   const b = parseInt(safe.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
-/* ---- Card style mode context (this update) ----
-   Lets a single Panel Theme preset ("Soft UI" — see PANEL_THEME_PRESETS)
-   swap what every widget/panel card renders as, without threading a new
-   prop through every single widget component. Default "glass" keeps the
-   existing frosted look used by every other preset (Ocean, Glass, Liquid
-   Glass, etc.) exactly as before; "neumorphic" switches to the soft,
-   embossed, opaque "Soft UI" card recipe below instead. Provided once
-   at the top of the dashboard tree (see `<CardStyleModeCtx.Provider>`
-   next to the existing DashboardThemeCtx), read by `useGlassCardStyle`
-   wherever a card is drawn. */
-const CardStyleModeCtx = createContext("glass");
-
-/* ---- Soft UI / neumorphic card recipe (this update) ----
-   Matches the reference "Vertical 2:3 Inspiration" moodboard: solid
-   (non-transparent, no blur) light-gray cards that read as *pressed out
-   of* the page rather than floating glass — sold entirely by a dual
-   shadow (a soft dark shadow down-right, a soft light highlight
-   up-left) instead of any border/transparency trick. Reads from the
-   same `cardBg` every other preset already writes into `theme.widgets`,
-   so switching back to any other Panel Theme preset needs no extra
-   migration. */
-function neumorphicCardStyle(cardBg, borderColor) {
-  const base = cardBg || "#eceef2";
-  const isDark = hexLuminance(base) < 0.5;
-  const highlight = isDark ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.85)";
-  const shadow = isDark ? "rgba(0,0,0,0.6)" : "rgba(163,161,155,0.55)";
-  return {
-    background: base,
-    backdropFilter: "none",
-    WebkitBackdropFilter: "none",
-    border: `1px solid ${borderColor || (isDark ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.5)")}`,
-    boxShadow: `7px 7px 15px ${shadow}, -7px -7px 15px ${highlight}`,
-  };
-}
-
 /* ---- Glass recipe tuned to match the app's own reference (this update) ----
    The "Start your Life Story" popup (LifeStoryProfileSetup, below) already
    nails the exact frosted look we want everywhere else: high blur (24px)
@@ -250,20 +215,56 @@ function neumorphicCardStyle(cardBg, borderColor) {
    as a slightly-see-through flat patch. The old recipe here (16px blur,
    a near-invisible border, a small shadow) read as "muted flat color"
    rather than glass once it sat over a real page background — this
-   brings every widget/panel in line with that reference.
-   (this update) Renamed to a hook (`useGlassCardStyle`) so it can read
-   `CardStyleModeCtx` and hand back the Soft UI recipe above instead,
-   whenever that preset is active — every call site is unchanged apart
-   from the name, since this is called the same way, from the same spot,
-   every render. */
-function useGlassCardStyle(cardBg, borderColor) {
-  const mode = useContext(CardStyleModeCtx);
-  if (mode === "neumorphic") return neumorphicCardStyle(cardBg, borderColor);
+   brings every widget/panel in line with that reference. */
+/* ---- Global glass intensity (this update) ----
+   Blur + saturate used by every glassCardStyle() card across the app.
+   Kept as a tiny module-level pair (not a prop drilled through 10+
+   components) and refreshed once per render from the current theme —
+   see setGlassIntensity() call near the bottom of BTLDashboard's
+   render, right where `theme = normalizeTheme(state.theme)` is
+   computed. This is what makes "Liquid Glass" a real dial (Settings →
+   Theme → Panel Theme → Glass Intensity) instead of a fixed look. */
+const GLASS_BLUR_MIN = 0;
+const GLASS_BLUR_MAX = 40;
+const GLASS_BLUR_DEFAULT = 20;
+const GLASS_SATURATE_MIN = 100;
+const GLASS_SATURATE_MAX = 260;
+const GLASS_SATURATE_DEFAULT = 200;
+let _glassBlurPx = GLASS_BLUR_DEFAULT;
+let _glassSaturatePct = GLASS_SATURATE_DEFAULT;
+let _neumorphicMode = false;
+function setGlassIntensity(blurPx, saturatePct, neumorphic) {
+  _glassBlurPx = Number.isFinite(blurPx) ? Math.min(GLASS_BLUR_MAX, Math.max(GLASS_BLUR_MIN, blurPx)) : GLASS_BLUR_DEFAULT;
+  _glassSaturatePct = Number.isFinite(saturatePct) ? Math.min(GLASS_SATURATE_MAX, Math.max(GLASS_SATURATE_MIN, saturatePct)) : GLASS_SATURATE_DEFAULT;
+  _neumorphicMode = !!neumorphic;
+}
+/* ---- "Soft UI" preset (this update) ----
+   The other reference screenshot (light-gray neumorphic kit — cards,
+   pill buttons, toggles, sliders all carved out of the *same* flat
+   gray surface using a light+dark dual shadow instead of color
+   contrast or blur). Every widget already renders its card through
+   this one function, so branching here is all that's needed to turn
+   any card into a neumorphic "soft UI" tile instead of frosted glass —
+   flat fill (no blur/backdrop), no border, and a raised dual shadow
+   (dark bottom-right + light top-left) that reads as embossed on a
+   matching-color background, same as the reference. */
+function glassCardStyle(cardBg, borderColor) {
   const isDark = hexLuminance(cardBg || "#fffdf7") < 0.5;
+  if (_neumorphicMode) {
+    return {
+      background: /^#[0-9a-fA-F]{6}$/.test(cardBg) ? cardBg : "#e3e2df",
+      backdropFilter: "none",
+      WebkitBackdropFilter: "none",
+      border: "none",
+      boxShadow: isDark
+        ? "8px 8px 16px rgba(0,0,0,0.55), -8px -8px 16px rgba(255,255,255,0.05)"
+        : "7px 7px 15px rgba(163,163,163,0.55), -7px -7px 15px rgba(255,255,255,0.9)",
+    };
+  }
   return {
     background: hexToRgba(cardBg || "#fffdf7", isDark ? 0.56 : 0.66),
-    backdropFilter: "blur(20px) saturate(200%)",
-    WebkitBackdropFilter: "blur(20px) saturate(200%)",
+    backdropFilter: `blur(${_glassBlurPx}px) saturate(${_glassSaturatePct}%)`,
+    WebkitBackdropFilter: `blur(${_glassBlurPx}px) saturate(${_glassSaturatePct}%)`,
     border: `1px solid ${borderColor || (isDark ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.85)")}`,
     boxShadow: isDark
       ? "0 20px 50px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.10)"
@@ -397,41 +398,37 @@ const PANEL_THEME_PRESETS = [
      job of picking readable text for whatever ends up behind it. No card
      anywhere renders as a flat opaque fill under this preset. */
   { id: "glass", label: "Glass", bg: "#2b2f52", text: "#f5f3ff", widgetBg: "#ffffff", swatch: "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.35) 45%, #2b2f52 100%)" },
-  /* "Liquid Glass" (this update) — the real, vivid Apple-style Liquid Glass
-     look: near-black backdrop so the LiquidBackground's animated color
-     blobs read at full saturation, white `widgetBg` (same glassCardStyle()
-     frosted-card mechanism the "Glass" preset above already uses, so every
-     card app-wide instantly becomes a transparent/blurred glass pane), PLUS
-     a signature `liquidColors` field (below) that — only for this preset —
-     also recolors the Liquid Background itself to a vivid purple/cyan/rose/
-     amber rainbow instead of whatever the user last picked in Setting →
-     Background, so the blur blobs behind the glass read as colorful liquid
-     rather than muted brand hues. Fully "managed": once applied, the same
-     Setting → Background colour pickers + speed slider (state.liquidBg)
-     still edit these colours/blur speed directly, exactly like any other
-     preset's fine-tuning below. */
+  /* "Liquid Glass" (this update) — a distinct pearlescent/silver look
+     (soft-UI reference screenshot) instead of "Glass"'s deep-indigo
+     backdrop. `bg` is a soft light-gray/white gradient (glassCardStyle
+     renders it via CSS `background`, which happily takes a gradient
+     string, not just a flat hex), so every widget floats as bright
+     frosted glass over a near-monochrome canvas — closer to iOS-style
+     Liquid Glass / Apple's "front-faced" soft UI than a colorful tint.
+     Also dials the shared blur/saturate up a notch (28px / 220%) for a
+     noticeably heavier frost than the default 20px/200% other presets
+     use — both remain adjustable afterward via the Glass Intensity
+     sliders below, same as bg/text/widget colors already are. */
   {
-    id: "liquidglass", label: "Liquid Glass", bg: "#05070d", text: "#f5f7ff", widgetBg: "#ffffff",
-    swatch: "linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.28) 38%, #7C3AED 55%, #06B6D4 70%, #F43F5E 85%, #F59E0B 100%)",
-    liquidColors: ["#7C3AED", "#06B6D4", "#F43F5E", "#F59E0B"],
+    id: "liquidglass", label: "Liquid Glass",
+    bg: "linear-gradient(160deg, #eef0f4 0%, #f8f9fb 45%, #e3e6ec 100%)",
+    text: "#1c1e26", widgetBg: "#ffffff",
+    blur: 28, saturate: 220,
+    swatch: "linear-gradient(160deg, #f4f5f8 0%, #ffffff 40%, #d7dbe3 100%)",
   },
-  /* "Soft UI" (this update) — matches the reference "Vertical 2:3
-     Inspiration, Front-Faced" moodboard: a light warm-gray page with
-     cards that look pressed out of it via a soft dual shadow (dark
-     down-right + light up-left), no transparency or blur anywhere.
-     Unlike every preset above, this one flips `useGlassCardStyle`
-     (see near the top of the file) into its "neumorphic" branch for
-     every widget/panel app-wide via `CardStyleModeCtx`, driven off
-     `theme.panelPreset === "softui"` — so the same widgetBg here reads
-     as a solid embossed card instead of frosted glass. Turns the
-     animated Liquid Background off (`disableLiquidBg`, applied below)
-     since colorful blur blobs would clash with the flat matte look the
-     reference goes for; Setting → Background can still be switched
-     back on any time, same as toggling it manually. */
+  /* "Soft UI" (this update) — the neumorphic reference kit (light gray
+     cards/pills/toggles carved from one flat surface via light+dark
+     dual shadow, no blur, no color contrast). `widgetBg` matches `bg`
+     almost exactly on purpose — that's what makes cards look "embossed
+     out of" the page instead of sitting on top of it, the way glass
+     cards do. `neumorphic: true` is what applyPanelPreset uses to flip
+     glassCardStyle() into its flat dual-shadow branch instead of the
+     usual blur/frost one. */
   {
-    id: "softui", label: "Soft UI", bg: "#e7e8ec", text: "#33343a", widgetBg: "#eef0f3",
-    swatch: "linear-gradient(135deg, #f5f6f9 0%, #e7e8ec 55%, #d3d5da 100%)",
-    disableLiquidBg: true,
+    id: "softui", label: "Soft UI",
+    bg: "#e3e2df", text: "#1c1c1c", widgetBg: "#e3e2df",
+    neumorphic: true, blur: 0, saturate: 100,
+    swatch: "linear-gradient(135deg, #f2f1ee 0%, #e3e2df 55%, #c6c5c1 100%)",
   },
 ];
 export function normalizeScopeTheme(t) {
@@ -537,6 +534,15 @@ function normalizeTheme(t) {
     analyticsColors: normalizeAnalyticsColors(src.analyticsColors),
     moneyColors: normalizeMoneyColors(src.moneyColors),
     panelPreset: typeof src.panelPreset === "string" ? src.panelPreset : "",
+    /* Liquid Glass preset — global blur/saturate intensity for every
+       frosted card in the app (glassCardStyle below). Manageable from
+       Settings → Theme → Panel Theme regardless of which preset is
+       active, so "Liquid Glass" isn't a one-shot fixed look. */
+    glassBlur: Number.isFinite(src.glassBlur) ? Math.min(GLASS_BLUR_MAX, Math.max(GLASS_BLUR_MIN, src.glassBlur)) : GLASS_BLUR_DEFAULT,
+    glassSaturate: Number.isFinite(src.glassSaturate) ? Math.min(GLASS_SATURATE_MAX, Math.max(GLASS_SATURATE_MIN, src.glassSaturate)) : GLASS_SATURATE_DEFAULT,
+    // "Soft UI" preset flag — flat embossed dual-shadow cards instead of
+    // frosted glass. See glassCardStyle()'s _neumorphicMode branch above.
+    neumorphic: !!src.neumorphic,
   };
 }
 function defaultTheme() { return normalizeTheme({}); }
@@ -1717,7 +1723,7 @@ function TextList({ title, items, textStyle, cardBg }) {
         fontSize: titleFontSize, fontWeight: 900, fontFamily: itemFontFamily,
       }}>{title}</Oval>
       <div style={{
-        border: `1px solid ${C.text}`, borderRadius: 8, flex: 1, overflowY: "auto", ...useGlassCardStyle(cardBg),
+        border: `1px solid ${C.text}`, borderRadius: 8, flex: 1, overflowY: "auto", ...glassCardStyle(cardBg),
       }} className="btl-scroll">
         {items.length === 0 && (
           <div style={{ padding: 10, fontSize: 12, color: autoMutedColor(cardBg), textAlign: "center" }}>
@@ -1904,7 +1910,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
       <AnimatePresence initial={false}>
         {showHeat && <WidgetHeatmapPanel history={history} accent={accent} />}
       </AnimatePresence>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", borderRadius: 8, ...useGlassCardStyle(cardBg) }} className="btl-scroll">
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", borderRadius: 8, ...glassCardStyle(cardBg) }} className="btl-scroll">
         <AnimatePresence initial={false}>
           {items.map((g) => {
             const cat = catInfo(g.category);
@@ -2397,7 +2403,7 @@ function AnalogClockWidget({ alarms = [], ringtoneId, onSetAlarm, onRemoveAlarm,
   const mutedColor = autoMutedColor(cardBg);
 
   return (
-    <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, overflow: "hidden", ...useGlassCardStyle(cardBg) }}>
+    <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, overflow: "hidden", ...glassCardStyle(cardBg) }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: textColor, display: "flex", alignItems: "center", gap: 5 }}>
           <AlarmClock size={13} /> Clock & Alarm
@@ -2708,7 +2714,7 @@ function FocusTimerWidget({ focusTimer, onToggle, onAddCategory, onRemoveCategor
   const breakdown = useMemo(() => computeFocusBreakdown(focusTimer, 1), [focusTimer.active?.categoryId, focusTimer.active?.startTs, focusTimer.history, showBreakdown]);
 
   return (
-    <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", ...useGlassCardStyle(cardBg) }}>
+    <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", ...glassCardStyle(cardBg) }}>
       <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
         <Oval style={{ display: "block", margin: 0, background: C.dark, color: C.bg, borderColor: C.dark }}>Timer</Oval>
         <div style={{ position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", gap: 4 }}>
@@ -2954,19 +2960,8 @@ function TimeCheckBurst() {
    starts the drag, same as the old grip icon did). Pure framer-motion
    + CSS — no new npm installs, matches the rest of this app's motion
    language. */
-function TimeTableRailDot({ status, accent, isCelebrating, cardBg }) {
-  /* ---- Liquid Glass color management (this update) ----
-     The "future" dot/border used to be a fixed beige (#c9c2ac) with a
-     hardcoded white fill — fine on the app's default cream card, but a
-     dead giveaway of a flat opaque box once the card itself became a
-     translucent glass pane (Glass / Liquid Glass presets, or any custom
-     widget color). The future state now derives its border from
-     `autoMutedColor(cardBg)` (same helper every other muted label in the
-     app already uses) and fills with the card's own color instead of a
-     hardcoded white, so it blends into whatever glass tint is behind it
-     rather than punching a solid white hole in it. */
-  const futureColor = autoMutedColor(cardBg);
-  const STATUS_COLOR = { done: "#4a9d5f", now: accent, overdue: "#e07a5f", future: futureColor };
+function TimeTableRailDot({ status, accent, isCelebrating }) {
+  const STATUS_COLOR = { done: "#4a9d5f", now: accent, overdue: "#e07a5f", future: "#c9c2ac" };
   const color = STATUS_COLOR[status] || STATUS_COLOR.future;
   const filled = status === "done" || status === "now" || status === "overdue";
   return (
@@ -2981,7 +2976,7 @@ function TimeTableRailDot({ status, accent, isCelebrating, cardBg }) {
       <motion.span
         style={{
           position: "absolute", inset: 0, borderRadius: "50%",
-          background: filled ? color : hexToRgba(cardBg || "#fffdf7", 0.9),
+          background: filled ? color : "#fff",
           border: `2px solid ${color}`,
           boxShadow: status === "now" ? `0 0 8px ${hexToRgba(accent, 0.65)}` : status === "overdue" ? `0 0 6px ${hexToRgba("#e07a5f", 0.45)}` : "none",
         }}
@@ -3008,18 +3003,10 @@ function TimeTableRailDot({ status, accent, isCelebrating, cardBg }) {
     </div>
   );
 }
-function TimeTableRail({ status, isFirst, isLast, accent, isCelebrating, onPointerDown, cardBg }) {
-  /* ---- Liquid Glass color management (this update) ----
-     Same fix as the dot above: the connecting thread's "not-yet-passed"
-     color was a fixed beige (#ddd6c4) tuned for the cream default card.
-     It now reads from `autoMutedColor(cardBg)`, so on a white frosted
-     Liquid Glass card it stays a soft neutral thread, and if someone
-     ever picks a dark custom widget color the thread automatically
-     switches to the lighter muted tone instead of vanishing. */
+function TimeTableRail({ status, isFirst, isLast, accent, isCelebrating, onPointerDown }) {
   const passed = status === "done" || status === "now" || status === "overdue";
-  const muted = autoMutedColor(cardBg);
-  const solidColor = status === "done" ? "#4a9d5f" : status === "now" ? accent : status === "overdue" ? "#e07a5f" : muted;
-  const dashed = `repeating-linear-gradient(180deg, ${muted} 0 3px, transparent 3px 6px)`;
+  const solidColor = status === "done" ? "#4a9d5f" : status === "now" ? accent : status === "overdue" ? "#e07a5f" : "#ddd6c4";
+  const dashed = "repeating-linear-gradient(180deg, #ddd6c4 0 3px, transparent 3px 6px)";
   const segBase = { width: 2, flex: 1, borderRadius: 2 };
   return (
     <div
@@ -3028,7 +3015,7 @@ function TimeTableRail({ status, isFirst, isLast, accent, isCelebrating, onPoint
       style={{ position: "relative", width: 18, alignSelf: "stretch", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", cursor: "grab", touchAction: "none" }}
     >
       <div style={{ ...segBase, background: isFirst ? "transparent" : passed ? solidColor : dashed, opacity: isFirst ? 0 : passed ? 0.85 : 0.6 }} />
-      <TimeTableRailDot status={status} accent={accent} isCelebrating={isCelebrating} cardBg={cardBg} />
+      <TimeTableRailDot status={status} accent={accent} isCelebrating={isCelebrating} />
       <motion.div
         style={{ ...segBase, background: isLast ? "transparent" : status === "done" ? "#4a9d5f" : status === "now" ? accent : dashed, opacity: isLast ? 0 : (status === "done" || status === "now") ? 0.85 : 0.6 }}
         animate={status === "now" ? { opacity: [0.35, 0.9, 0.35] } : {}}
@@ -3067,21 +3054,9 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
       }}
       whileDrag={{ scale: 1.02, boxShadow: "0 8px 22px rgba(37,36,34,0.16)", cursor: "grabbing", zIndex: 5 }}
       style={{
-        borderBottom: `1px solid ${hexToRgba(cardBg || "#fffdf7", hexLuminance(cardBg || "#fffdf7") < 0.5 ? 0.14 : 0.5)}`,
-        borderLeft: `3px solid ${t.done ? "#c7dfc9" : isUpcoming ? accent : isOverdue ? "#e07a5f" : autoMutedColor(cardBg)}`,
-        position: "relative", overflow: "hidden", listStyle: "none",
-        /* ---- Liquid Glass fix (this update) ---- rows used to paint a flat
-           `cardBg || "#fff"` opaque fill on top of the already-frosted parent
-           card (glassCardStyle), so under the "Liquid Glass" preset each row
-           showed up as a solid off-white block sitting inside a see-through
-           panel — killing the glass look block by block. Rows now use the
-           same translucent recipe as every other glass surface in the app
-           (hexToRgba at 45%/65% depending on light/dark cardBg), so the
-           colorful blurred Liquid Background shows through each row too,
-           not just the gaps between them. Falls back gracefully for every
-           other Panel Theme preset too — a light cardBg just reads as a
-           softer white row than before, nothing breaks. */
-        background: hexToRgba(cardBg || "#fffdf7", hexLuminance(cardBg || "#fffdf7") < 0.5 ? 0.45 : 0.6),
+        borderBottom: "1px solid #f0ece0",
+        borderLeft: `3px solid ${t.done ? "#c7dfc9" : isUpcoming ? accent : isOverdue ? "#e07a5f" : "#ddd6c4"}`,
+        position: "relative", overflow: "hidden", listStyle: "none", background: cardBg || "#fff",
       }}
     >
       <AnimatePresence>{isCelebrating && <TimeCheckBurst />}</AnimatePresence>
@@ -3093,7 +3068,7 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
         }}>
         <TimeTableRail
           status={status} isFirst={isFirst} isLast={isLast} accent={accent} isCelebrating={isCelebrating}
-          onPointerDown={(e) => dragControls.start(e)} cardBg={cardBg}
+          onPointerDown={(e) => dragControls.start(e)}
         />
         <motion.input
           type="checkbox" checked={t.done} onChange={() => onToggle(t.id, t.done)}
@@ -3108,18 +3083,8 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
           transition={{ duration: 1.6, repeat: isUpcoming && !t.done ? Infinity : 0, ease: "easeOut" }}
           style={{
             fontSize: 9, fontWeight: 800, flexShrink: 0, borderRadius: 999, padding: "2px 6px", minWidth: 58, textAlign: "center",
-            color: t.done ? autoMutedColor(cardBg) : isUpcoming ? "#fff" : autoMutedColor(cardBg),
-            /* ---- Liquid Glass color management (this update) ----
-               This pill's resting background was a flat 5% black — barely
-               visible was fine on the old cream card, but under Liquid
-               Glass (a translucent white pane over a colorful blurred
-               backdrop) it read as a dull gray smudge unrelated to the
-               glass around it. Now it tints itself from the row's own
-               text color (dark tint on a light glass card, light tint on
-               a dark one via `autoTextColor`), so the pill always reads
-               as "a touch darker/lighter than this glass", never a
-               disconnected gray box. */
-            background: isUpcoming && !t.done ? accent : hexToRgba(autoTextColor(cardBg), hexLuminance(cardBg || "#fffdf7") < 0.5 ? 0.16 : 0.08),
+            color: t.done ? "#a39c86" : isUpcoming ? "#fff" : "#8a8579",
+            background: isUpcoming && !t.done ? accent : "rgba(0,0,0,0.05)",
           }}
         >{formatTime12(t.time)}</motion.span>
         <motion.span
@@ -3143,7 +3108,7 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
           whileHover={{ scale: 1.2 }}
           whileTap={{ scale: 0.85 }}
           title={t.recurring ? "Repeats daily — click to make one-off" : "One-off — click to repeat daily"}
-          style={{ display: "inline-flex", flexShrink: 0, cursor: "pointer", color: t.recurring ? accent : autoMutedColor(cardBg) }}
+          style={{ display: "inline-flex", flexShrink: 0, cursor: "pointer", color: t.recurring ? accent : "#d8d2bf" }}
           onClick={() => onToggleRecurring(t.id)}
         >
           <Repeat size={11} />
@@ -3153,7 +3118,7 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
           whileTap={{ scale: 0.85 }}
           style={{ display: "inline-flex", flexShrink: 0 }}
         >
-          <Trash2 size={11} style={{ color: autoMutedColor(cardBg), cursor: "pointer" }} onClick={() => onRemove(t.id)} />
+          <Trash2 size={11} style={{ color: "#d8d2bf", cursor: "pointer" }} onClick={() => onRemove(t.id)} />
         </motion.span>
       </motion.div>
     </Reorder.Item>
@@ -3283,7 +3248,7 @@ function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRec
         {showHeat && <WidgetHeatmapPanel history={history} accent={accent} />}
         {showBreakdown && <TimeBreakdownPanel items={items} accent={accent} />}
       </AnimatePresence>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", borderRadius: 8, ...useGlassCardStyle(cardBg) }} className="btl-scroll">
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", borderRadius: 8, ...glassCardStyle(cardBg) }} className="btl-scroll">
         {sorted.length === 0 && (
           <div style={{ padding: "16px 10px", fontSize: 10, color: "#a39c86", textAlign: "center" }}>
             No time blocks yet — add your first one below.
@@ -3316,12 +3281,7 @@ function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRec
           value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
           placeholder="What to do at this time..."
-          style={{
-            flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, outline: "none", minWidth: 0,
-            border: `1px solid ${autoMutedColor(cardBg)}`,
-            background: hexToRgba(cardBg || "#fffdf7", hexLuminance(cardBg || "#fffdf7") < 0.5 ? 0.35 : 0.5),
-            color: autoTextColor(cardBg),
-          }}
+          style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", minWidth: 0 }}
         />
         <motion.button
           onClick={() => setRepeatNew((v) => !v)}
@@ -3525,7 +3485,7 @@ function LiquidBgPanel({ liquidBg, onColorChange, onColorsReset, onSpeedChange, 
   );
 }
 
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onSetClockRingtone, onLiquidBgColorChange, onLiquidBgColorsReset, onLiquidBgSpeedChange, onLiquidBgSpeedReset, onLiquidBgEnabledChange }) {
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onGlassBlurChange, onGlassSaturateChange, onGlassIntensityReset, onSetClockRingtone, onLiquidBgColorChange, onLiquidBgColorsReset, onLiquidBgSpeedChange, onLiquidBgSpeedReset, onLiquidBgEnabledChange }) {
   const [mode, setMode] = useState(null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | "alarm" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
@@ -3628,6 +3588,9 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             onMoneyColorReset={onMoneyColorReset}
             onApplyPreset={onApplyPanelPreset}
             onResetPreset={onResetPanelPreset}
+            onGlassBlurChange={onGlassBlurChange}
+            onGlassSaturateChange={onGlassSaturateChange}
+            onGlassIntensityReset={onGlassIntensityReset}
           />
         ) : mode === "alarm" ? (
           <div>
@@ -4993,7 +4956,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
       display: "flex", flexDirection: "column", height: "100%",
       color: at.text || undefined, fontFamily: atFontFamily, fontWeight: at.bold ? 600 : undefined,
       zoom: at.scale !== 1 ? at.scale : undefined,
-      ...useGlassCardStyle(at.bg, at.border),
+      ...glassCardStyle(at.bg, at.border),
     }}>
       <div style={{
         display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
@@ -5729,7 +5692,7 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
       borderRadius: 10, display: "flex", flexDirection: "column", height: "100%", position: "relative",
       color: mt.text || undefined, fontFamily: mtFontFamily, fontWeight: mt.bold ? 600 : undefined,
       zoom: mt.scale !== 1 ? mt.scale : undefined,
-      ...useGlassCardStyle(mt.bg, mt.border),
+      ...glassCardStyle(mt.bg, mt.border),
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderBottom: `1px solid ${hexLuminance(mt.bg || "#fffdf7") < 0.5 ? "rgba(255,255,255,0.14)" : "rgba(64,61,57,0.12)"}`, background: "transparent", borderRadius: "10px 10px 0 0", flexWrap: "wrap", rowGap: 6 }}>
         <motion.div whileHover={{ x: -2 }} whileTap={{ scale: 0.9 }} onClick={onClose} style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
@@ -6017,7 +5980,7 @@ function EarnMoneyNotesCard({ state, update, onOpenEarn, onOpenSpend, onImageFil
   };
 
   return (
-    <div style={{ borderRadius: 8, padding: 7, width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box", display: "flex", flexDirection: "column", ...useGlassCardStyle(cardBg) }} className="btl-scroll">
+    <div style={{ borderRadius: 8, padding: 7, width: "100%", height: "100%", overflowY: "auto", boxSizing: "border-box", display: "flex", flexDirection: "column", ...glassCardStyle(cardBg) }} className="btl-scroll">
       <div style={{ display: "flex", gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: tsWeight, fontSize: labelFontSize, marginBottom: 4, color: ts.color || "#4a7c59", fontFamily: tsFontFamily }}>Earn Money Today :-</div>
@@ -6958,7 +6921,7 @@ function CalendarWidget({ completionHistory, cardBg, textStyle }) {
   const hist = completionHistory || {};
 
   return (
-    <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, overflow: "hidden", ...useGlassCardStyle(cardBg) }}>
+    <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, overflow: "hidden", ...glassCardStyle(cardBg) }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: titleFontSize, fontWeight: 800, color: textColor || autoTextColor(cardBg), fontFamily, display: "flex", alignItems: "center", gap: 5 }}><CalendarDays size={13} /> Calendar</span>
         <AnimatePresence mode="wait" initial={false}>
@@ -7070,7 +7033,7 @@ function AnalyticsSummaryWidget({ state, onOpen, cardBg, metrics, colors }) {
   const activeIds = metrics && metrics.length ? metrics : ANALYTICS_SUMMARY_DEFAULT_METRICS;
   const activeMetrics = activeIds.map(analyticsSummaryMetricMeta).filter(Boolean);
   return (
-    <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8, ...useGlassCardStyle(cardBg) }}>
+    <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8, ...glassCardStyle(cardBg) }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 11, fontWeight: 800, color: autoTextColor(cardBg), display: "flex", alignItems: "center", gap: 5 }}><BarChart3 size={13} /> Analytics Summary</span>
         <Oval className="btl-oval-btn" onClick={onOpen} style={{ cursor: "pointer", fontSize: 9, padding: "2px 9px" }}>Open full <ChevronRight size={11} style={{ marginLeft: 2 }} /></Oval>
@@ -8242,7 +8205,10 @@ function AnalyticsSummaryThemeEditor({ state, metrics, colors, onChange, onReset
    app (every scope + every widget) in a single tap. Sits above the
    per-section tabs so it reads as the fast option, with the detailed
    editors below still available for fine-tuning afterward. */
-function PanelPresetRow({ activePreset, onApply, onReset }) {
+function PanelPresetRow({ activePreset, onApply, onReset, glassBlur, glassSaturate, neumorphic, onGlassBlurChange, onGlassSaturateChange, onGlassIntensityReset }) {
+  const blur = Number.isFinite(glassBlur) ? glassBlur : GLASS_BLUR_DEFAULT;
+  const saturate = Number.isFinite(glassSaturate) ? glassSaturate : GLASS_SATURATE_DEFAULT;
+  const glassChanged = blur !== GLASS_BLUR_DEFAULT || saturate !== GLASS_SATURATE_DEFAULT;
   return (
     <div style={{
       border: "1px solid #ece7d8", borderRadius: 10, background: "rgba(255,255,255,0.7)",
@@ -8291,12 +8257,59 @@ function PanelPresetRow({ activePreset, onApply, onReset }) {
           );
         })}
       </div>
+
+      {/* Glass Intensity (this update) — blur + saturate behind every
+          frosted card, manageable no matter which preset is active
+          (not just "Liquid Glass"), so the amount of frost/refraction
+          is a real dial rather than a fixed baked-in look. Grayed out
+          (still visible, not hidden) under "Soft UI" since that preset
+          renders flat dual-shadow cards with no blur/backdrop at all —
+          same "disabled but not gone" treatment as the Liquid Background
+          on/off switch elsewhere in Settings. */}
+      <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #ece7d8" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+          <Waves size={11} style={{ color: C.dark }} />
+          <span style={{ fontSize: 10, fontWeight: 800, color: C.dark }}>Glass Intensity</span>
+          <div style={{ flex: 1 }} />
+          {glassChanged && !neumorphic && (
+            <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.94 }} onClick={onGlassIntensityReset} title="Reset glass intensity" style={{
+              border: "1px solid #ddd6c4", background: "#fff", color: "#8a8579", borderRadius: 999,
+              padding: "2px 8px", display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 9, fontWeight: 700,
+            }}><RefreshCw size={10} /> Reset</motion.button>
+          )}
+        </div>
+        <div style={{ opacity: neumorphic ? 0.4 : 1, pointerEvents: neumorphic ? "none" : "auto", transition: "opacity 160ms ease" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", width: 44, flexShrink: 0 }}>Blur</span>
+            <input
+              type="range" min={GLASS_BLUR_MIN} max={GLASS_BLUR_MAX} step={1} value={blur}
+              onChange={(e) => onGlassBlurChange(parseInt(e.target.value, 10))}
+              style={{ flex: 1, accentColor: C.accent, cursor: "pointer" }}
+            />
+            <span style={{ fontSize: 10, fontWeight: 800, color: C.dark, width: 34, textAlign: "right" }}>{blur}px</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: "#8a8579", width: 44, flexShrink: 0 }}>Tint</span>
+            <input
+              type="range" min={GLASS_SATURATE_MIN} max={GLASS_SATURATE_MAX} step={5} value={saturate}
+              onChange={(e) => onGlassSaturateChange(parseInt(e.target.value, 10))}
+              style={{ flex: 1, accentColor: C.accent, cursor: "pointer" }}
+            />
+            <span style={{ fontSize: 10, fontWeight: 800, color: C.dark, width: 34, textAlign: "right" }}>{saturate}%</span>
+          </div>
+        </div>
+        <div style={{ fontSize: 8.5, color: "#8a8579", marginTop: 6, lineHeight: 1.4 }}>
+          {neumorphic
+            ? "Soft UI renders flat embossed cards (dual shadow, no blur) — Blur/Tint don't apply here. Pick another preset to use them again."
+            : "Blur controls how frosted every card looks; Tint controls how much color from behind bleeds through the glass. Liquid Glass preset starts at 28px / 220%."}
+        </div>
+      </div>
     </div>
   );
 }
 
 /* Top-level Theme tab shown inside Settings — five sub-sections. */
-function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPreset, onResetPreset }) {
+function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, onWidgetChange, onWidgetReset, onWidgetSize, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPreset, onResetPreset, onGlassBlurChange, onGlassSaturateChange, onGlassIntensityReset }) {
   const [section, setSection] = useState("dashboard");
   const t = normalizeTheme(theme);
   const SECTIONS = [
@@ -8310,7 +8323,11 @@ function ThemePanel({ state, theme, layoutSizes, onScopeChange, onScopeReset, on
   ];
   return (
     <div>
-      <PanelPresetRow activePreset={t.panelPreset} onApply={onApplyPreset} onReset={onResetPreset} />
+      <PanelPresetRow
+        activePreset={t.panelPreset} onApply={onApplyPreset} onReset={onResetPreset}
+        glassBlur={t.glassBlur} glassSaturate={t.glassSaturate} neumorphic={t.neumorphic}
+        onGlassBlurChange={onGlassBlurChange} onGlassSaturateChange={onGlassSaturateChange} onGlassIntensityReset={onGlassIntensityReset}
+      />
       <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
         {SECTIONS.map((s) => (
           <motion.button
@@ -12007,7 +12024,7 @@ function FitnessCard({ item, index, sectionColor, onInfo }) {
       whileHover={{ y: -4, boxShadow: "0 18px 36px rgba(37,36,34,0.18)" }}
       style={{
         borderRadius: 16, overflow: "hidden", position: "relative", cursor: "default",
-        ...useGlassCardStyle("#ffffff", hexToRgba(sectionColor, 0.35)),
+        ...glassCardStyle("#ffffff", hexToRgba(sectionColor, 0.35)),
       }}
     >
       <div style={{ position: "relative", background: hexToRgba(sectionColor, 0.08) }}>
@@ -12663,26 +12680,13 @@ function BTLDashboardInner() {
     WIDGETS.forEach((w) => { widgets[w.id] = { bg: preset.widgetBg }; });
     theme.widgets = normalizeWidgetThemes(widgets);
     theme.panelPreset = preset.id;
+    // Presets like "Liquid Glass" ship their own blur/saturate; presets
+    // without one (Ocean, Sunset, etc.) fall back to the shared default
+    // so switching between presets doesn't leave a stale heavy blur on.
+    theme.glassBlur = Number.isFinite(preset.blur) ? preset.blur : GLASS_BLUR_DEFAULT;
+    theme.glassSaturate = Number.isFinite(preset.saturate) ? preset.saturate : GLASS_SATURATE_DEFAULT;
+    theme.neumorphic = !!preset.neumorphic;
     s.theme = theme;
-    // "Liquid Glass" also drives the animated LiquidBackground's own palette
-    // (state.liquidBg) so its blur blobs show the signature vivid rainbow
-    // behind the new frosted-white glass cards, instead of whatever colors
-    // were previously picked in Setting → Background. Every other preset
-    // leaves state.liquidBg completely untouched, same as before.
-    if (Array.isArray(preset.liquidColors)) {
-      s.liquidBg = {
-        colors: [...preset.liquidColors],
-        speed: Number.isFinite(s.liquidBg?.speed) && s.liquidBg.speed > 0 ? s.liquidBg.speed : 1,
-        enabled: true,
-      };
-    }
-    // "Soft UI" turns the animated blur-blob background off — flat matte
-    // cards read as neumorphic, colorful moving blobs behind them wouldn't.
-    // Colors/speed already picked in Setting → Background are kept as-is
-    // (just `enabled: false`), so switching back on later restores them.
-    if (preset.disableLiquidBg) {
-      s.liquidBg = { ...(s.liquidBg || {}), enabled: false };
-    }
     return s;
   });
   const resetPanelPreset = () => update((s) => {
@@ -12692,18 +12696,43 @@ function BTLDashboardInner() {
     });
     theme.widgets = normalizeWidgetThemes({});
     theme.panelPreset = "";
+    theme.glassBlur = GLASS_BLUR_DEFAULT;
+    theme.glassSaturate = GLASS_SATURATE_DEFAULT;
+    theme.neumorphic = false;
+    s.theme = theme;
+    return s;
+  });
+  /* Glass Intensity sliders (this update) — manageable independent of
+     which preset (if any) is active, so a user can push any theme
+     further toward/away from "liquid glass" without needing to re-pick
+     a preset. */
+  const setGlassBlur = (px) => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.glassBlur = Math.min(GLASS_BLUR_MAX, Math.max(GLASS_BLUR_MIN, Number(px) || 0));
+    s.theme = theme;
+    return s;
+  });
+  const setGlassSaturate = (pct) => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.glassSaturate = Math.min(GLASS_SATURATE_MAX, Math.max(GLASS_SATURATE_MIN, Number(pct) || GLASS_SATURATE_DEFAULT));
+    s.theme = theme;
+    return s;
+  });
+  const resetGlassIntensity = () => update((s) => {
+    const theme = normalizeTheme(s.theme);
+    theme.glassBlur = GLASS_BLUR_DEFAULT;
+    theme.glassSaturate = GLASS_SATURATE_DEFAULT;
     s.theme = theme;
     return s;
   });
 
   const theme = normalizeTheme(state.theme);
+  // Refresh the shared glass blur/saturate before any card in this render
+  // computes its glassCardStyle() — see setGlassIntensity() definition above.
+  setGlassIntensity(theme.glassBlur, theme.glassSaturate, theme.neumorphic);
   const dashTheme = { bg: theme.dashboard.bg || C.bg, text: theme.dashboard.text || C.text };
   const fm = theme.focusMode;
   const fmFontFamily = fm.font ? fontStackFor(fm.font) : undefined;
-  // Hook must be called unconditionally every render (Rules of Hooks) —
-  // computed here regardless of whether fm.bg is set, then only spread
-  // into the Focus Mode card's style below when fm.bg is actually set.
-  const fmGlassStyle = useGlassCardStyle(fm.bg || "", fm.border);
 
   /* Shared widget content map — used by both the plain dashboard grid
      and the live resizable preview inside the Layout tab, so dragging
@@ -12723,7 +12752,6 @@ function BTLDashboardInner() {
   };
 
   return (
-    <CardStyleModeCtx.Provider value={theme.panelPreset === "softui" ? "neumorphic" : "glass"}>
     <DashboardThemeCtx.Provider value={dashTheme}>
     <div ref={dashboardRootRef} style={{
       fontFamily: "Inter, system-ui, sans-serif", background: dashTheme.bg, color: dashTheme.text,
@@ -12928,7 +12956,7 @@ function BTLDashboardInner() {
               fontFamily: fmFontFamily, fontWeight: fm.bold ? 600 : undefined,
               zoom: fm.scale !== 1 ? fm.scale : undefined,
               borderRadius: fm.bg ? 10 : 0, padding: fm.bg ? 10 : 0, boxSizing: "border-box",
-              ...(fm.bg ? fmGlassStyle : null),
+              ...(fm.bg ? glassCardStyle(fm.bg, fm.border) : null),
             }}>
               {/* ---------- FOCUS MODE ---------- */}
               <Oval style={{ display: "block", width: "fit-content", margin: "0 auto 8px", background: C.accent, color: "#fff", borderColor: C.accent, fontSize: 12, flexShrink: 0 }}>
@@ -12981,6 +13009,7 @@ function BTLDashboardInner() {
               onAnalyticsColorChange={setAnalyticsColor} onAnalyticsColorReset={resetAnalyticsColors}
               onMoneyColorChange={setMoneyColor} onMoneyColorReset={resetMoneyColors}
               onApplyPanelPreset={applyPanelPreset} onResetPanelPreset={resetPanelPreset}
+              onGlassBlurChange={setGlassBlur} onGlassSaturateChange={setGlassSaturate} onGlassIntensityReset={resetGlassIntensity}
               onSetClockRingtone={setClockRingtone}
               onLiquidBgColorChange={setLiquidBgColor}
               onLiquidBgColorsReset={resetLiquidBgColors}
@@ -13043,7 +13072,6 @@ function BTLDashboardInner() {
       </AnimatePresence>
     </div>
     </DashboardThemeCtx.Provider>
-    </CardStyleModeCtx.Provider>
   );
 }
 
