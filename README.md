@@ -1,5 +1,58 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## 🧊 Liquid Glass — Time Table's rail dots, badges & icons fixed (this update)
+The previous update (below) already made the Time Table's row backgrounds
+translucent glass, but a few smaller pieces inside each row were still
+hardcoded to fixed beige/gray tones tuned for the old cream card, so they
+stood out as flat opaque bits on top of an otherwise glass row — exactly
+what the screenshot with the red circle around the Time Table widget
+showed. All of the following in `components/BTLDashboard.jsx` now derive
+their color from the row's own `cardBg` (via the existing `autoMutedColor`/
+`autoTextColor`/`hexToRgba` helpers) instead of a fixed hex, so they read
+correctly under **any** Panel Theme — especially Liquid Glass's white
+frosted card floating over the colorful blur:
+- **Rail thread + dot** (`TimeTableRail`/`TimeTableRailDot`) — the
+  "not-yet-happened" dashed line and dot border were a flat `#ddd6c4`/
+  `#c9c2ac`; the dot's empty center was a hardcoded solid white. All three
+  now read from `autoMutedColor(cardBg)`, and the dot's center now uses a
+  translucent tint of `cardBg` itself so it blends into the glass instead
+  of punching a solid white circle through it.
+- **Time badge pill** (e.g. "5:00 AM") — its resting background was a flat
+  5% black smudge; now it's a translucent tint of the row's own text color
+  (`autoTextColor`), so it always reads as "a shade darker/lighter than
+  this glass" rather than a disconnected gray box. Its text color now also
+  follows `autoMutedColor(cardBg)` instead of a fixed gray.
+- **Left status bar** for not-yet-due rows, and the **repeat/delete icons**
+  in their resting (inactive) color, switched from fixed beiges/grays to
+  `autoMutedColor(cardBg)` too.
+- **"What to do at this time…" add-row input** now gets a translucent
+  glass fill + border + text color matching the card above it, instead of
+  a plain white input box sitting under a glass panel.
+
+No visual change under the default cream theme (`autoMutedColor`/
+`autoTextColor` resolve to the same tones the old hardcoded values used) —
+this only changes how these pieces adapt once the card itself is glass,
+dark, or a custom color.
+
+## 🧊 Liquid Glass — Time Table rows fixed (this update)
+The **Liquid Glass** Panel Theme preset (below) already turned every
+widget's outer card into true frosted glass, but **Time Table** rows
+(`TimeTableRow` in `components/BTLDashboard.jsx`) were still painting a
+flat opaque `cardBg || "#fff"` fill on top of that already-frosted
+parent — so each row showed up as a solid off-white block sitting
+inside an otherwise see-through panel, exactly the "half-glass,
+half-solid-blocks" look from the screenshot you sent. Rows now use the
+same translucent recipe (`hexToRgba`, 45%/60% depending on light/dark
+`cardBg`) as every other glass surface in the app, so the colorful
+animated Liquid Background shows through each row too, not just the
+gaps between them — the whole Time Table widget now reads as one
+continuous piece of glass instead of glass-with-solid-rows-inside. The
+row divider line was also softened to a translucent tint instead of a
+hardcoded light color, so it no longer looks like a stray white
+hairline cutting across a dark/colorful glass card. Every other Panel
+Theme preset is unaffected — a light `cardBg` just renders a very
+slightly softer white row than before.
+
 ## 🌈 New — "Liquid Glass" added to Panel Theme (this update)
 Setting → 🎨 Theme → **Panel Theme** now has a 9th preset, **Liquid Glass**,
 next to Ocean/Sunset/.../Glass:

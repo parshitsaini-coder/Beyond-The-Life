@@ -2894,8 +2894,19 @@ function TimeCheckBurst() {
    starts the drag, same as the old grip icon did). Pure framer-motion
    + CSS — no new npm installs, matches the rest of this app's motion
    language. */
-function TimeTableRailDot({ status, accent, isCelebrating }) {
-  const STATUS_COLOR = { done: "#4a9d5f", now: accent, overdue: "#e07a5f", future: "#c9c2ac" };
+function TimeTableRailDot({ status, accent, isCelebrating, cardBg }) {
+  /* ---- Liquid Glass color management (this update) ----
+     The "future" dot/border used to be a fixed beige (#c9c2ac) with a
+     hardcoded white fill — fine on the app's default cream card, but a
+     dead giveaway of a flat opaque box once the card itself became a
+     translucent glass pane (Glass / Liquid Glass presets, or any custom
+     widget color). The future state now derives its border from
+     `autoMutedColor(cardBg)` (same helper every other muted label in the
+     app already uses) and fills with the card's own color instead of a
+     hardcoded white, so it blends into whatever glass tint is behind it
+     rather than punching a solid white hole in it. */
+  const futureColor = autoMutedColor(cardBg);
+  const STATUS_COLOR = { done: "#4a9d5f", now: accent, overdue: "#e07a5f", future: futureColor };
   const color = STATUS_COLOR[status] || STATUS_COLOR.future;
   const filled = status === "done" || status === "now" || status === "overdue";
   return (
@@ -2910,7 +2921,7 @@ function TimeTableRailDot({ status, accent, isCelebrating }) {
       <motion.span
         style={{
           position: "absolute", inset: 0, borderRadius: "50%",
-          background: filled ? color : "#fff",
+          background: filled ? color : hexToRgba(cardBg || "#fffdf7", 0.9),
           border: `2px solid ${color}`,
           boxShadow: status === "now" ? `0 0 8px ${hexToRgba(accent, 0.65)}` : status === "overdue" ? `0 0 6px ${hexToRgba("#e07a5f", 0.45)}` : "none",
         }}
@@ -2937,10 +2948,18 @@ function TimeTableRailDot({ status, accent, isCelebrating }) {
     </div>
   );
 }
-function TimeTableRail({ status, isFirst, isLast, accent, isCelebrating, onPointerDown }) {
+function TimeTableRail({ status, isFirst, isLast, accent, isCelebrating, onPointerDown, cardBg }) {
+  /* ---- Liquid Glass color management (this update) ----
+     Same fix as the dot above: the connecting thread's "not-yet-passed"
+     color was a fixed beige (#ddd6c4) tuned for the cream default card.
+     It now reads from `autoMutedColor(cardBg)`, so on a white frosted
+     Liquid Glass card it stays a soft neutral thread, and if someone
+     ever picks a dark custom widget color the thread automatically
+     switches to the lighter muted tone instead of vanishing. */
   const passed = status === "done" || status === "now" || status === "overdue";
-  const solidColor = status === "done" ? "#4a9d5f" : status === "now" ? accent : status === "overdue" ? "#e07a5f" : "#ddd6c4";
-  const dashed = "repeating-linear-gradient(180deg, #ddd6c4 0 3px, transparent 3px 6px)";
+  const muted = autoMutedColor(cardBg);
+  const solidColor = status === "done" ? "#4a9d5f" : status === "now" ? accent : status === "overdue" ? "#e07a5f" : muted;
+  const dashed = `repeating-linear-gradient(180deg, ${muted} 0 3px, transparent 3px 6px)`;
   const segBase = { width: 2, flex: 1, borderRadius: 2 };
   return (
     <div
@@ -2949,7 +2968,7 @@ function TimeTableRail({ status, isFirst, isLast, accent, isCelebrating, onPoint
       style={{ position: "relative", width: 18, alignSelf: "stretch", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", cursor: "grab", touchAction: "none" }}
     >
       <div style={{ ...segBase, background: isFirst ? "transparent" : passed ? solidColor : dashed, opacity: isFirst ? 0 : passed ? 0.85 : 0.6 }} />
-      <TimeTableRailDot status={status} accent={accent} isCelebrating={isCelebrating} />
+      <TimeTableRailDot status={status} accent={accent} isCelebrating={isCelebrating} cardBg={cardBg} />
       <motion.div
         style={{ ...segBase, background: isLast ? "transparent" : status === "done" ? "#4a9d5f" : status === "now" ? accent : dashed, opacity: isLast ? 0 : (status === "done" || status === "now") ? 0.85 : 0.6 }}
         animate={status === "now" ? { opacity: [0.35, 0.9, 0.35] } : {}}
@@ -2988,9 +3007,21 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
       }}
       whileDrag={{ scale: 1.02, boxShadow: "0 8px 22px rgba(37,36,34,0.16)", cursor: "grabbing", zIndex: 5 }}
       style={{
-        borderBottom: "1px solid #f0ece0",
-        borderLeft: `3px solid ${t.done ? "#c7dfc9" : isUpcoming ? accent : isOverdue ? "#e07a5f" : "#ddd6c4"}`,
-        position: "relative", overflow: "hidden", listStyle: "none", background: cardBg || "#fff",
+        borderBottom: `1px solid ${hexToRgba(cardBg || "#fffdf7", hexLuminance(cardBg || "#fffdf7") < 0.5 ? 0.14 : 0.5)}`,
+        borderLeft: `3px solid ${t.done ? "#c7dfc9" : isUpcoming ? accent : isOverdue ? "#e07a5f" : autoMutedColor(cardBg)}`,
+        position: "relative", overflow: "hidden", listStyle: "none",
+        /* ---- Liquid Glass fix (this update) ---- rows used to paint a flat
+           `cardBg || "#fff"` opaque fill on top of the already-frosted parent
+           card (glassCardStyle), so under the "Liquid Glass" preset each row
+           showed up as a solid off-white block sitting inside a see-through
+           panel — killing the glass look block by block. Rows now use the
+           same translucent recipe as every other glass surface in the app
+           (hexToRgba at 45%/65% depending on light/dark cardBg), so the
+           colorful blurred Liquid Background shows through each row too,
+           not just the gaps between them. Falls back gracefully for every
+           other Panel Theme preset too — a light cardBg just reads as a
+           softer white row than before, nothing breaks. */
+        background: hexToRgba(cardBg || "#fffdf7", hexLuminance(cardBg || "#fffdf7") < 0.5 ? 0.45 : 0.6),
       }}
     >
       <AnimatePresence>{isCelebrating && <TimeCheckBurst />}</AnimatePresence>
@@ -3002,7 +3033,7 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
         }}>
         <TimeTableRail
           status={status} isFirst={isFirst} isLast={isLast} accent={accent} isCelebrating={isCelebrating}
-          onPointerDown={(e) => dragControls.start(e)}
+          onPointerDown={(e) => dragControls.start(e)} cardBg={cardBg}
         />
         <motion.input
           type="checkbox" checked={t.done} onChange={() => onToggle(t.id, t.done)}
@@ -3017,8 +3048,18 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
           transition={{ duration: 1.6, repeat: isUpcoming && !t.done ? Infinity : 0, ease: "easeOut" }}
           style={{
             fontSize: 9, fontWeight: 800, flexShrink: 0, borderRadius: 999, padding: "2px 6px", minWidth: 58, textAlign: "center",
-            color: t.done ? "#a39c86" : isUpcoming ? "#fff" : "#8a8579",
-            background: isUpcoming && !t.done ? accent : "rgba(0,0,0,0.05)",
+            color: t.done ? autoMutedColor(cardBg) : isUpcoming ? "#fff" : autoMutedColor(cardBg),
+            /* ---- Liquid Glass color management (this update) ----
+               This pill's resting background was a flat 5% black — barely
+               visible was fine on the old cream card, but under Liquid
+               Glass (a translucent white pane over a colorful blurred
+               backdrop) it read as a dull gray smudge unrelated to the
+               glass around it. Now it tints itself from the row's own
+               text color (dark tint on a light glass card, light tint on
+               a dark one via `autoTextColor`), so the pill always reads
+               as "a touch darker/lighter than this glass", never a
+               disconnected gray box. */
+            background: isUpcoming && !t.done ? accent : hexToRgba(autoTextColor(cardBg), hexLuminance(cardBg || "#fffdf7") < 0.5 ? 0.16 : 0.08),
           }}
         >{formatTime12(t.time)}</motion.span>
         <motion.span
@@ -3042,7 +3083,7 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
           whileHover={{ scale: 1.2 }}
           whileTap={{ scale: 0.85 }}
           title={t.recurring ? "Repeats daily — click to make one-off" : "One-off — click to repeat daily"}
-          style={{ display: "inline-flex", flexShrink: 0, cursor: "pointer", color: t.recurring ? accent : "#d8d2bf" }}
+          style={{ display: "inline-flex", flexShrink: 0, cursor: "pointer", color: t.recurring ? accent : autoMutedColor(cardBg) }}
           onClick={() => onToggleRecurring(t.id)}
         >
           <Repeat size={11} />
@@ -3052,7 +3093,7 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
           whileTap={{ scale: 0.85 }}
           style={{ display: "inline-flex", flexShrink: 0 }}
         >
-          <Trash2 size={11} style={{ color: "#d8d2bf", cursor: "pointer" }} onClick={() => onRemove(t.id)} />
+          <Trash2 size={11} style={{ color: autoMutedColor(cardBg), cursor: "pointer" }} onClick={() => onRemove(t.id)} />
         </motion.span>
       </motion.div>
     </Reorder.Item>
@@ -3215,7 +3256,12 @@ function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRec
           value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
           placeholder="What to do at this time..."
-          style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", minWidth: 0 }}
+          style={{
+            flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, outline: "none", minWidth: 0,
+            border: `1px solid ${autoMutedColor(cardBg)}`,
+            background: hexToRgba(cardBg || "#fffdf7", hexLuminance(cardBg || "#fffdf7") < 0.5 ? 0.35 : 0.5),
+            color: autoTextColor(cardBg),
+          }}
         />
         <motion.button
           onClick={() => setRepeatNew((v) => !v)}
