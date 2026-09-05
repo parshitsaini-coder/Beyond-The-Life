@@ -89,6 +89,13 @@ export default function RadialDialMenu({ onSelect }) {
   const [hoverId, setHoverId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [orbPulse, setOrbPulse] = useState(null);
+  const [orbSplash, setOrbSplash] = useState(null);
+  // Raw finger offset from the orb's own center, updated every pointermove
+  // while held down — this is what LiquidOrbButton reads to slosh the
+  // liquid mass toward the finger. Kept separate from the DEADZONE-gated
+  // hoverId logic above: the liquid should react to the very first bit of
+  // movement, well before the drag is far enough to count as "over an item".
+  const [dragVector, setDragVector] = useState({ dx: 0, dy: 0 });
   const circleRef = useRef(null);
   const originRef = useRef({ x: 0, y: 0 });
 
@@ -112,7 +119,10 @@ export default function RadialDialMenu({ onSelect }) {
     originRef.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     setOpen(true);
     setHoverId(null);
-    setOrbPulse({ key: Date.now(), variant: "press" });
+    setDragVector({ dx: 0, dy: 0 });
+    const now = Date.now();
+    setOrbPulse({ key: now, variant: "press" });
+    setOrbSplash({ key: now }); // fast liquid pop the instant it's pressed
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp, { once: true });
   };
@@ -121,6 +131,7 @@ export default function RadialDialMenu({ onSelect }) {
     const dx = e.clientX - originRef.current.x;
     const dy = e.clientY - originRef.current.y;
     const dist = Math.hypot(dx, dy);
+    setDragVector({ dx, dy }); // liquid mass tracks the finger every frame
     if (dist < DEADZONE) {
       setHoverId(null);
       return;
@@ -134,6 +145,7 @@ export default function RadialDialMenu({ onSelect }) {
     const dx = e.clientX - originRef.current.x;
     const dy = e.clientY - originRef.current.y;
     const dist = Math.hypot(dx, dy);
+    setDragVector({ dx: 0, dy: 0 }); // release — liquid springs back to center
     if (dist < DEADZONE) {
       // released back near the circle — cancel, no selection
       setOpen(false);
@@ -259,7 +271,13 @@ export default function RadialDialMenu({ onSelect }) {
         }}
         aria-label="Open navigation dial"
       >
-        <LiquidOrbButton size={CIRCLE_SIZE} active={open} pulse={orbPulse} />
+        <LiquidOrbButton
+          size={CIRCLE_SIZE}
+          active={open}
+          pulse={orbPulse}
+          splash={orbSplash}
+          dragVector={dragVector}
+        />
       </motion.button>
     </div>
   );
