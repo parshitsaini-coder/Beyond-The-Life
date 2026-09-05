@@ -1720,3 +1720,70 @@ part of the same platform:
   exist natively for both, so most of this backend carries over directly
 
 Say the word and I'll scaffold whichever of these you want next.
+
+## Step 10 — Building the Android APK (Capacitor)
+
+The app now has a native Android wrapper (`android/` folder) via Capacitor,
+alongside the existing Vercel website — the two are independent build
+targets from the same codebase and don't affect each other.
+
+**App ID / name used:** `com.btl.app` / "Beyond The Life" — this was a
+placeholder pick (matches the master spec's example) since it wasn't
+confirmed. It's just two lines in `capacitor.config.ts` — say the word and
+I'll change it before you do a real signed build (Play Store package IDs
+can't be changed after your first upload, so lock this in first).
+
+### How it fits together
+- `next.config.js` now has an `output: "export"` mode, but it's **off by
+  default** — a plain `npm run build` / Vercel build sees no change at all.
+  It only turns on via the `CAPACITOR_BUILD=true` env var, which the new
+  `npm run build:capacitor` script sets automatically.
+- That static export lands in `out/`, which `npx cap sync android` then
+  copies into `android/app/src/main/assets/public` — this is the "offline
+  shell" (same pattern as TJRA): the HTML/JS/CSS bundle is baked into the
+  APK and loads instantly with no network call, while Firebase Auth and
+  Firestore calls still go out live over the internet from inside the
+  WebView.
+- Audited clean for static export: no `app/api` routes, no server actions,
+  no `next/image`, no dynamic route segments — this app was already 100%
+  client components, so nothing in `BTLDashboard.jsx` or elsewhere needed
+  to change for this to work.
+
+### Building it yourself (needs Android Studio + JDK — not available in this sandbox)
+```bash
+npm install                  # picks up @capacitor/core, @capacitor/android
+npm run cap:sync             # builds the static export + copies it into android/
+npm run cap:open             # opens the project in Android Studio
+```
+From Android Studio: **Build → Build Bundle(s)/APK(s) → Build APK(s)** for a
+debug APK, or **Build → Generate Signed Bundle/APK** for a Play-Store-ready
+release build (you'll need to create a keystore the first time — Android
+Studio walks you through this, and `.gitignore` already excludes `*.keystore`
+/ `*.jks` so you never accidentally commit it).
+
+Whenever you change any app code, re-run `npm run cap:sync` before rebuilding
+in Android Studio — that's the step that refreshes the bundled web assets.
+
+### ⚠️ Open decision — Google Sign-In inside the APK's WebView
+This is the one piece of Step 10 that's a real architecture choice, not just
+config, so it's flagged rather than guessed at:
+
+Firebase's web `signInWithPopup` (what `lib/AuthContext.jsx` uses today)
+routinely fails inside Capacitor's Android WebView — Google blocks
+sign-in popups from embedded WebViews for security reasons. Two ways
+forward:
+- **Option A — `@capacitor-firebase/authentication` plugin** (recommended):
+  swaps in Capacitor's native Google Sign-In on Android specifically, while
+  the website keeps using the existing Firebase web popup unchanged — same
+  branch-by-platform pattern as the rest of this redesign. Slightly more
+  setup (SHA-1 fingerprint registered in Firebase console, `google-services.json`
+  added to `android/app/`).
+  Docs: https://github.com/capawesome-team/capacitor-firebase
+- **Option B — ship it as-is and test first**: some newer WebView/Play
+  Services combos do let the popup flow work; it's worth trying a debug
+  APK before adding a new dependency. If sign-in fails on-device, fall back
+  to Option A.
+
+Tell me which you'd like and I'll wire it up next — Option A needs a
+`google-services.json` file from your Firebase console (Project Settings →
+your Android app → download it) before I can finish the plugin setup.

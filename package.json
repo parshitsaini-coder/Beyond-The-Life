@@ -6,9 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "build:capacitor": "cross-env CAPACITOR_BUILD=true next build",
+    "cap:sync": "npm run build:capacitor && npx cap sync android",
+    "cap:open": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "cross-env": "^7.0.3",
     "firebase": "^10.13.1",
     "framer-motion": "^11.3.19",
     "lucide-react": "^0.383.0",

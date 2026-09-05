@@ -1600,7 +1600,7 @@ function ProfilePopup({ user, open, onClose, onSignOut, onSignIn }) {
    row. Tap any avatar to jump straight there (closes itself after);
    tap the arrow again (it flips 180°) to fold them back away. Persists
    across every tab, not just the main dashboard. */
-function QuickNavFab({ tab, setTab, focusMode, setFocusMode, setMemOpen, setSettingsOpen }) {
+function QuickNavFab({ tab, setTab, focusMode, setFocusMode, setMemOpen, setSettingsOpen, openMoney }) {
   const [open, setOpen] = useState(false);
 
   const items = [
@@ -1610,7 +1610,14 @@ function QuickNavFab({ tab, setTab, focusMode, setFocusMode, setMemOpen, setSett
     { key: "focus", label: "Focus Mode", icon: Target, bg: focusMode ? C.accent : "#fff", fg: focusMode ? "#fff" : C.dark, ring: !focusMode, onClick: () => { setFocusMode((v) => !v); setOpen(false); } },
     { key: "layout", label: "Layout", icon: LayoutGrid, bg: C.dark, fg: "#fff", onClick: () => { setTab("layout"); setOpen(false); } },
     { key: "analytics", label: "Analytics", icon: BarChart3, bg: C.dark, fg: "#fff", onClick: () => { setTab("analytics"); setOpen(false); } },
-    { key: "money", label: "Money Management", icon: Wallet, bg: C.accent, fg: "#fff", onClick: () => { setTab("money"); setOpen(false); } },
+    // ---------------- Step 11 QA fix ----------------
+    // This shortcut jumps straight to Money Management, same as the radial
+    // dial's direct entry — so Back from here needs to land on "dashboard"
+    // too, not the "analytics" target that's only correct when Money was
+    // opened via Analytics' own "Open Money Management" button. `openMoney`
+    // sets the shared moneyReturnTabRef before switching tabs (same fix as
+    // the radial dial's handleRadialSelect).
+    { key: "money", label: "Money Management", icon: Wallet, bg: C.accent, fg: "#fff", onClick: () => { openMoney(); setOpen(false); } },
     { key: "setting", label: "Setting", icon: Settings, bg: C.dark, fg: "#fff", onClick: () => { setSettingsOpen(); setOpen(false); } },
   ];
 
@@ -13255,6 +13262,17 @@ function BTLDashboardInner() {
   const { user: fbUser } = useAuth();
   const [state, setState] = useState(null);
   const [tab, setTab] = useState("dashboard");
+  // ---------------- Step 11 QA fix ----------------
+  // Money Management's onClose used to be hardcoded to setTab("analytics"),
+  // which is correct for its ORIGINAL entry point (the "Open Money
+  // Management" button inside AnalyticsTab, desktop and mobile both) but
+  // wrong for the radial dial's direct "Money Management" item added in
+  // Step 5 — pressing Back there landed you on the Analytics full-screen
+  // instead of back at the dial home, an extra confusing hop with no way
+  // that screen was reachable from what the user just did. This ref
+  // records which screen actually opened Money Management so Back always
+  // returns to the right place for both entry points.
+  const moneyReturnTabRef = useRef("dashboard");
   const [shine, setShine] = useState(false);
   const [confetti, setConfetti] = useState(false);
   const [milestoneStreak, setMilestoneStreak] = useState(null);
@@ -13847,7 +13865,17 @@ function BTLDashboardInner() {
   // components. Only "widget" kind needs a new presentation (see activeRadialWidget).
   const handleRadialSelect = (item) => {
     if (item.kind === "widget") { setActiveRadialWidget(item); return; }
-    if (item.kind === "tab") { setTab(item.id); return; }
+    if (item.kind === "tab") {
+      // Every "tab" item opened straight from the dial should return to the
+      // dial home on Back, not wherever a *different* entry point into that
+      // same tab happens to return to — Money Management is the one tab
+      // reachable two ways (dial directly, or Analytics' own button), so
+      // it's the only one that needs this; the others already close to
+      // "dashboard" unconditionally.
+      if (item.id === "money") moneyReturnTabRef.current = "dashboard";
+      setTab(item.id);
+      return;
+    }
     // kind === "modal"
     if (item.id === "memory") setMemOpen(true);
     else if (item.id === "settings") openSettings();
@@ -14037,6 +14065,7 @@ function BTLDashboardInner() {
           tab={tab} setTab={setTab}
           focusMode={focusMode} setFocusMode={setFocusMode}
           setMemOpen={setMemOpen} setSettingsOpen={openSettings}
+          openMoney={() => { moneyReturnTabRef.current = "dashboard"; setTab("money"); }}
         />
       </div>
 
@@ -14046,11 +14075,11 @@ function BTLDashboardInner() {
         </div>
       ) : tab === "analytics" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <AnalyticsTab state={state} user={fbUser} onClose={() => setTab("dashboard")} onOpenMoneyManagement={() => setTab("money")} />
+          <AnalyticsTab state={state} user={fbUser} onClose={() => setTab("dashboard")} onOpenMoneyManagement={() => { moneyReturnTabRef.current = "analytics"; setTab("money"); }} />
         </div>
       ) : tab === "money" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <MoneyManagementTab state={state} onClose={() => setTab("analytics")} onResetData={resetMoneyData} />
+          <MoneyManagementTab state={state} onClose={() => setTab(moneyReturnTabRef.current)} onResetData={resetMoneyData} />
         </div>
       ) : tab === "lifeStory" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
