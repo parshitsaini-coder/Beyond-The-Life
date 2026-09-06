@@ -231,29 +231,16 @@ function hexToRgba(hex, alpha) {
    this file. Every other preset leaves it null and gets the exact old
    behavior, byte-for-byte. */
 let ACTIVE_GLASS_OPTS = null;
-/* Perf (this update): backdrop-filter blur+saturate is one of the single
-   most expensive things a mobile GPU can paint, and this card style is
-   used by nearly every widget/modal in the app — with a dozen-plus of them
-   on-screen together in the dashboard grid, that's a big chunk of the
-   "atak-atak"/hangy feel on real phones. Desktop is untouched (still the
-   full blur(20px) saturate(200%) look); on mobile this halves the blur
-   radius and drops the separate saturate() pass — one GPU filter pass
-   instead of two, at a size cheap enough to composite at 60fps+ even on
-   mid-range Android hardware — while keeping the same frosted-glass look.
-   Any explicit blur the user picks in Settings → Theme still wins either
-   way, since that's read first below. */
 function glassCardStyle(cardBg, borderColor) {
   const isDark = hexLuminance(cardBg || "#fffdf7") < 0.5;
   const opts = ACTIVE_GLASS_OPTS;
-  const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
-  const blurPx = opts && Number.isFinite(opts.blur) ? opts.blur : (isMobile ? 9 : 20);
+  const blurPx = opts && Number.isFinite(opts.blur) ? opts.blur : 20;
   const alpha = opts && Number.isFinite(opts.opacity) ? opts.opacity : (isDark ? 0.56 : 0.66);
   const soft = !!(opts && opts.soft);
-  const filterVal = isMobile ? `blur(${blurPx}px)` : `blur(${blurPx}px) saturate(200%)`;
   const style = {
     background: hexToRgba(cardBg || "#fffdf7", alpha),
-    backdropFilter: filterVal,
-    WebkitBackdropFilter: filterVal,
+    backdropFilter: `blur(${blurPx}px) saturate(200%)`,
+    WebkitBackdropFilter: `blur(${blurPx}px) saturate(200%)`,
     border: `1px solid ${borderColor || (isDark ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.85)")}`,
   };
   /* Soft mode layers the reference moodboard's dual light/dark
@@ -1864,64 +1851,6 @@ function quakeAnimate(isCelebrating) {
   };
 }
 
-/* ---------------- keyboard-aware input bar (this update) ----------------
-   Shared by every "Add item" / "Add slot" bar (GoalChecklist, TimeTable) and
-   the Friend Celebration chat box: reads how many px the on-screen mobile
-   keyboard currently covers via `window.visualViewport` and returns that
-   number so the caller can shift its input row up by the same amount
-   (WhatsApp-style) instead of letting the keyboard hide it. Always 0 on
-   desktop — there's no on-screen keyboard resizing the viewport there. */
-function useKeyboardOffset() {
-  const [offset, setOffset] = useState(0);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.visualViewport) return;
-    const vv = window.visualViewport;
-    const handleResize = () => {
-      setOffset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
-    };
-    vv.addEventListener("resize", handleResize);
-    vv.addEventListener("scroll", handleResize);
-    handleResize();
-    return () => {
-      vv.removeEventListener("resize", handleResize);
-      vv.removeEventListener("scroll", handleResize);
-    };
-  }, []);
-  return offset;
-}
-
-/* ---------------- mobile vs desktop render gate (this update) ----------------
-   Perf fix: the dashboard used to mount BOTH the desktop header + full
-   WidgetGrid AND the mobile topbar/stats/dial UI at the same time, only
-   ever hiding whichever one didn't apply via CSS `display:none`. A
-   `display:none` subtree still fully mounts in React, still runs every
-   framer-motion animation's rAF loop (the header logo pulse, 4 glow-icon
-   buttons, the whole WidgetGrid incl. any per-second interval widgets like
-   the analog clock) — on a real phone that's a second, invisible copy of
-   the entire dashboard chewing through the main thread every frame, which
-   is exactly the kind of thing that shows up as "atak-atak"/hangy scrolling
-   and animations. This hook reads the same 768px breakpoint the CSS above
-   already uses via `matchMedia` so only ONE of the two trees ever mounts —
-   the unused one is skipped by React entirely instead of just hidden. */
-function useIsMobileView(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth <= breakpoint : false
-  );
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
-    const handler = (e) => setIsMobile(e.matches);
-    setIsMobile(mq.matches);
-    if (mq.addEventListener) mq.addEventListener("change", handler);
-    else mq.addListener(handler); // Safari <14 fallback
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", handler);
-      else mq.removeListener(handler);
-    };
-  }, [breakpoint]);
-  return isMobile;
-}
-
 function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent, textStyle, cardBg, streak = 0, history = {}, hideAddForm = false }) {
   const ts = normalizeTextStyle(textStyle);
   const itemFontSize = Math.round(11 * ts.scale);
@@ -1940,7 +1869,6 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
   const [picker, setPicker] = useState(null); // { id: "new" | goal id, rect: DOMRect } | null
   const [celebrateId, setCelebrateId] = useState(null); // goal id currently flashing "done" celebration
   const [showHeat, setShowHeat] = useState(false);
-  const kbOffset = useKeyboardOffset(); // this update: keep "Add item" bar above the mobile keyboard
 
   // ---- Progress nudge at 50% subtasks (this update) ----
   // Tracks each goal's last-seen subtask completion ratio; the moment a
@@ -2194,7 +2122,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
       </div>
 
       {!hideAddForm && (
-        <div style={{ marginTop: 6, flexShrink: 0, transform: kbOffset ? `translateY(-${kbOffset}px)` : undefined }}>
+        <div style={{ marginTop: 6, flexShrink: 0 }}>
           <div style={{ display: "flex", gap: 4 }}>
             <span style={{ position: "relative", flexShrink: 0 }}>
               <button onClick={(e) => setPicker(picker?.id === "new" ? null : { id: "new", rect: e.currentTarget.getBoundingClientRect() })} title="Pick an icon"
@@ -3276,7 +3204,6 @@ function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRec
   // survives reloads without needing a sync round-trip.
   const [notifyOn, setNotifyOn] = useState(false);
   const notifiedRef = useRef(new Set());
-  const kbOffset = useKeyboardOffset(); // this update: keep "add slot" bar above the mobile keyboard
   const [nowStr, setNowStr] = useState(() => {
     const d = new Date();
     return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
@@ -3412,7 +3339,7 @@ function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRec
       </div>
 
       {!hideAddForm && (
-        <div style={{ marginTop: 6, flexShrink: 0, display: "flex", gap: 4, flexWrap: "wrap", transform: kbOffset ? `translateY(-${kbOffset}px)` : undefined }}>
+        <div style={{ marginTop: 6, flexShrink: 0, display: "flex", gap: 4, flexWrap: "wrap" }}>
           <CategoryDropdown value={category} onChange={setCategory} categories={TIME_CATEGORIES} accent={accent} />
           <TimePicker value={time} onChange={setTime} accent={accent} />
           <input
@@ -13376,7 +13303,6 @@ function BTLDashboardInner() {
   // both widgets side by side, one full-width card shows at a time and this toggle
   // switches which one — tap the swap button once for Daily Goals, again for Time Table.
   const [mobileQuickView, setMobileQuickView] = useState("dailyGoals"); // "dailyGoals" | "timeTable"
-  const isMobileView = useIsMobileView(); // this update: gates which of desktop/mobile trees actually mounts (perf)
   // Step 7 — mobile radial nav. Only "widget" kind items (Daily Goal, Entry Goals,
   // Life Big Goals, Clock & Alarm, Life Rules, Timer, Time Table, Calendar) need this:
   // they don't have a full-screen or modal presentation today, so selecting one opens
@@ -14011,36 +13937,6 @@ function BTLDashboardInner() {
         />
       )}
       <style>{`
-        /* ---- Perf pass (this update) — mobile smoothness ----
-           1) "contain" on each widget card scopes its layout/paint/style
-              recalculation to itself instead of the whole dashboard tree,
-              so ticking a goal or a per-second clock widget doesn't force
-              the browser to re-check every other card on screen.
-           2) "-webkit-overflow-scrolling: touch" + "overscroll-behavior"
-              give scrollable panels (goal lists, time table, memories,
-              analytics) native momentum scrolling instead of the janky
-              default some Android WebViews fall back to.
-           3) "touch-action: manipulation" on tappable controls removes the
-              ~300ms tap-delay some mobile browsers add while they wait to
-              see if a tap is actually the start of a double-tap-to-zoom.
-           4) prefers-reduced-motion trims the purely decorative infinite
-              loops (shine sweep, glow pulses) for anyone whose OS/battery
-              saver has asked apps to cut back on animation. */
-        .btl-widget-card { contain: content; }
-        .btl-scroll, .btl-mobile-statsrow {
-          -webkit-overflow-scrolling: touch;
-          overscroll-behavior: contain;
-        }
-        button, .btl-oval-btn, .btl-mobile-quicknav-btn, .btl-tap44, .btl-mobile-quicknav-btn {
-          touch-action: manipulation;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          *, *::before, *::after {
-            animation-duration: 0.001ms !important;
-            animation-iteration-count: 1 !important;
-            transition-duration: 0.001ms !important;
-          }
-        }
         .btl-scroll::-webkit-scrollbar { width: 6px; }
         .btl-scroll::-webkit-scrollbar-thumb { background: #ddd6c4; border-radius: 4px; }
         .btl-check { transition: transform 120ms ease; }
@@ -14186,7 +14082,6 @@ function BTLDashboardInner() {
           mobile-only, inside the "dashboard" tab branch) takes over its job on mobile.
           Wrapping rather than editing QuickNavFab itself keeps it byte-for-byte identical
           for desktop. */}
-      {!isMobileView && (
       <div className="btl-desktop-only-fab">
         <QuickNavFab
           tab={tab} setTab={setTab}
@@ -14195,7 +14090,6 @@ function BTLDashboardInner() {
           openMoney={() => { moneyReturnTabRef.current = "dashboard"; setTab("money"); }}
         />
       </div>
-      )}
 
       {tab === "layout" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
@@ -14219,8 +14113,6 @@ function BTLDashboardInner() {
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          {isMobileView && (
-            <>
           {/* ---------- HEADER (mobile) — this update ----------
                Back button stays removed. In its place: a row of 4 quick-
                nav icon buttons — Time Table, Analytics, Friend
@@ -14335,15 +14227,12 @@ function BTLDashboardInner() {
               )}
             </div>
           </div>
-          </>
-          )}
 
 
           {/* ---------- HEADER (desktop) ----------
                Step 5 hard constraint: this block is untouched — same JSX, same inline
                styles, same everything — only a className was added so mobile (<=768px)
                can hide it via CSS. It still renders pixel-identical on desktop. */}
-          {!isMobileView && (
           <div className="btl-desktop-header" style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 8, flexShrink: 0 }}>
             <motion.div
               animate={{ scale: [1, 1.025, 1] }}
@@ -14416,7 +14305,6 @@ function BTLDashboardInner() {
               </div>
             </div>
           </div>
-          )}
 
           {focusMode ? (
             <div style={{
@@ -14455,16 +14343,12 @@ function BTLDashboardInner() {
                    Step 7: desktop-only now. Same className-only pattern as the header —
                    the JSX and WidgetGrid call are untouched, just newly wrapped so mobile
                    can hide it via CSS. */}
-              {!isMobileView && (
               <div className="btl-desktop-only-grid" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
                 <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }} className="btl-scroll">
                   <WidgetGrid layout={state.layout} widgets={widgetsMap} />
                 </div>
               </div>
-              )}
 
-              {isMobileView && (
-                <>
               {/* ---------- RADIAL DIAL HOME (mobile) — Step 7 ----------
                    This is the dial home screen itself: mostly empty by design (the
                    #c0d6df background from Step 6 IS the screen), with RadialDialMenu
@@ -14500,8 +14384,6 @@ function BTLDashboardInner() {
                   </RadialPanel>
                 )}
               </AnimatePresence>
-                </>
-              )}
             </>
           )}
         </div>
