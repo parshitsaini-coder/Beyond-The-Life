@@ -759,6 +759,38 @@ const timeCatInfo = (key) => TIME_CATEGORIES.find((c) => c.key === key) || TIME_
    motion. Same portal + viewport-aware-flip + outside-click/scroll/resize
    pattern as EmojiPickerPortal above, so it behaves identically (never
    gets clipped by a widget's overflow:hidden, never gets stranded). */
+/* ----------------------------------------------------------------
+   POPOVER ERROR BOUNDARY (this update).
+   The three portal popovers below (Category / Time / Emoji picker)
+   each do their own position math off anchorRect + viewport size. If
+   that math ever throws (e.g. the PANEL_W crash reported from the
+   Time Table add-row), it used to bubble all the way up to the single
+   top-level BTLErrorBoundary and blank out the ENTIRE dashboard behind
+   a "Something went wrong / Reload dashboard" screen — for a bug in a
+   150px popover. This boundary is scoped to just the popover: on error
+   it renders nothing and calls onClose() to reset the anchor, so the
+   rest of the dashboard (and the row you were on) stays fully usable.
+   Since each popover already only mounts while `anchor` is truthy, a
+   fresh instance mounts clean the next time it's opened — no extra
+   reset wiring needed. */
+class PopoverErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error, info) {
+    console.error("BTL popover crashed (closed safely, dashboard unaffected):", error, info);
+    this.props.onClose?.();
+  }
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
+
 function CategoryPickerPanel({ anchorRect, categories, value, onPick, onClose }) {
   const ref = useRef(null);
 
@@ -860,10 +892,12 @@ function CategoryDropdown({ value, onChange, categories, accent }) {
       </motion.button>
       <AnimatePresence>
         {anchor && (
-          <CategoryPickerPanel
-            anchorRect={anchor} categories={categories} value={value}
-            onPick={onChange} onClose={() => setAnchor(null)}
-          />
+          <PopoverErrorBoundary onClose={() => setAnchor(null)}>
+            <CategoryPickerPanel
+              anchorRect={anchor} categories={categories} value={value}
+              onPick={onChange} onClose={() => setAnchor(null)}
+            />
+          </PopoverErrorBoundary>
         )}
       </AnimatePresence>
     </>
@@ -1009,7 +1043,9 @@ function TimePicker({ value, onChange, accent }) {
       </motion.button>
       <AnimatePresence>
         {anchor && (
-          <TimePickerPanel anchorRect={anchor} value={value} onPick={onChange} onClose={() => setAnchor(null)} accent={accent} />
+          <PopoverErrorBoundary onClose={() => setAnchor(null)}>
+            <TimePickerPanel anchorRect={anchor} value={value} onPick={onChange} onClose={() => setAnchor(null)} accent={accent} />
+          </PopoverErrorBoundary>
         )}
       </AnimatePresence>
     </>
@@ -2178,7 +2214,9 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                     >{g.icon || "＋"}</motion.span>
                     <AnimatePresence>
                       {picker?.id === g.id && (
-                        <EmojiPickerPortal anchorRect={picker.rect} onPick={(e) => onSetIcon(g.id, e)} onClose={() => setPicker(null)} />
+                        <PopoverErrorBoundary onClose={() => setPicker(null)}>
+                          <EmojiPickerPortal anchorRect={picker.rect} onPick={(e) => onSetIcon(g.id, e)} onClose={() => setPicker(null)} />
+                        </PopoverErrorBoundary>
                       )}
                     </AnimatePresence>
                   </span>
@@ -2315,7 +2353,9 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
               </button>
               <AnimatePresence>
                 {picker?.id === "new" && (
-                  <EmojiPickerPortal anchorRect={picker.rect} onPick={(e) => setIcon(e)} onClose={() => setPicker(null)} />
+                  <PopoverErrorBoundary onClose={() => setPicker(null)}>
+                    <EmojiPickerPortal anchorRect={picker.rect} onPick={(e) => setIcon(e)} onClose={() => setPicker(null)} />
+                  </PopoverErrorBoundary>
                 )}
               </AnimatePresence>
             </span>

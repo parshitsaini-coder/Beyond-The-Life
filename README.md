@@ -1,6 +1,36 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🐛 Fix: Time picker "not opening" + Category/emoji popup closing itself on scroll (this update)
+## 🛡️ Popover-scoped error boundary for Category/Time/Emoji pickers (this update)
+Reported crash: tapping the Time Table add-row's ⏰ button threw
+`ReferenceError: PANEL_W is not defined`, which crashed the **entire**
+dashboard behind the "Something went wrong — Reload dashboard" screen —
+because the whole app only has one top-level `BTLErrorBoundary`, so any
+error anywhere in the tree takes the whole thing down.
+
+Checked `PANEL_W` in both `CategoryPickerPanel` and `TimePickerPanel` in
+`components/BTLDashboard.jsx` — each already declares its own
+`const PANEL_W` before use, and a full `npm run build` compiles clean
+with no such reference error, so that specific bug isn't present in this
+codebase (likely an old cached deployment/bundle). Added a safety net
+regardless, since a popover is the wrong place for any future bug to be
+able to blank out the whole app:
+
+- New `PopoverErrorBoundary` — a small class component (same
+  `getDerivedStateFromError`/`componentDidCatch` shape as the existing
+  `BTLErrorBoundary`), placed right above `CategoryPickerPanel`.
+- Wraps all four render sites of the three portal popovers —
+  `CategoryPickerPanel` (in `CategoryDropdown`), `TimePickerPanel` (in
+  `TimePicker`), and both `EmojiPickerPortal` call sites (goal icon
+  picker, add-form icon picker).
+- On error it renders nothing and calls the popover's own `onClose()`
+  — so a bug in a 150px popover just closes that popover instead of
+  taking down the whole dashboard. Since each popover only mounts while
+  its `anchor`/`picker` state is truthy, a fresh instance mounts clean
+  next time it's opened — no extra reset wiring needed.
+- Nothing about `BTLErrorBoundary` itself changed — it's still the
+  final fallback for anything outside these four spots.
+
+## 🐛 Fix: Time picker "not opening" + Category/emoji popup closing itself on scroll (earlier update)
 Both bugs you flagged (from your screenshots — the mobile Time Table
 add-row's ⏰ and 🏷 buttons) turned out to share one root cause in
 `components/BTLDashboard.jsx`.
