@@ -1,6 +1,43 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## ⚡ Mobile performance pass — fixing "atak-atak"/hangy animations (this update)
+## 📄 Past Data export is now a real, professionally designed PDF (this update)
+Per your request: the "Past Data" report (Analytics tab → **Past Data** →
+Apply) no longer downloads an HTML file you had to open and "Print → Save as
+PDF" yourself — it now generates and downloads an actual multi-page **PDF**
+directly, built with [pdfmake](https://github.com/bpampuch/pdfmake) (added to
+`package.json`, loaded on demand via dynamic `import()` so it never adds
+weight to the normal app bundle).
+
+- **Background color**: every page — cover and data pages alike — uses the
+  requested `#f7f3e3` cream background (`PDF_BG` in `components/BTLDashboard.jsx`),
+  drawn full-bleed via pdfmake's `background` callback.
+- **Max 15 days per page**: the selected date range is split into chunks of
+  at most 15 days (`chunkDates`/`PDF_DAYS_PER_PAGE`), each chunk getting its
+  own page — a range never crowds more than 15 days onto one page, however
+  long it is.
+- **Chart + full details on every data page**: each page opens with a
+  canvas-drawn analysis chart (`drawChunkAnalysisChart`) — completion %
+  bars with Focus Timer / Fitness minute trend lines overlaid, whichever of
+  those you selected — followed by complete per-day detail tables for every
+  selected widget (Mood, Daily Goals, Extra Goals, Time Table, Focus Timer,
+  Fitness) and a full Money ledger, all scoped to just that page's 15 days.
+- **Cover page**: your photo (fetched and rendered into a circular avatar;
+  falls back to an initials avatar if the photo can't be read) and name, plus
+  your **current** Daily Goals, Extra Goals, and Time Table lists exactly as
+  they stand today — so the report opens with who it's for and what they're
+  working on, before diving into the history.
+- Professional layout throughout: consistent typography scale, accent-colored
+  section headers, clean card blocks (no more relying on `window.print()`'s
+  inconsistent per-browser pagination/margins) — same look on every device
+  and browser since pdfmake renders the PDF bytes directly rather than
+  depending on the browser's print engine.
+
+All of this lives in `components/BTLDashboard.jsx`: the chart/avatar helpers
+and `buildPastDataReportDocDefinition` (replacing the old `buildPastDataReportHTML`)
+sit just above `PastDataModal`, whose `Apply & Download PDF` button now
+`await`s the doc definition and calls `pdfMake.createPdf(docDefinition).download(...)`.
+
+## ⚡ Mobile performance pass — fixing "atak-atak"/hangy animations (earlier update)
 Root cause found: the dashboard was mounting **both** the desktop header +
 full `WidgetGrid` **and** the mobile topbar/stats/dial UI at the same time on
 every device — whichever one didn't apply to the current screen size was

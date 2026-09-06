@@ -2758,11 +2758,205 @@ function fitnessSecondsToday(fitnessLog) {
   return Object.values(dayLog).reduce((a, b) => a + b, 0);
 }
 
+/* ---------------- PDF REPORT — canvas chart + avatar helpers (this update) ----------------
+   The report is now a real, generated PDF (pdfmake) instead of an HTML file
+   you had to open + "Print → Save as PDF" yourself. pdfmake is loaded with a
+   dynamic import() right when a report is actually requested (see
+   PastDataModal below) so it never adds weight to the normal app bundle. */
+const PDF_BG = "#f7f3e3";           // requested page background
+const PDF_INK = "#3a3630";
+const PDF_DARK = "#252422";
+const PDF_MUTED = "#8a8371";
+const PDF_ACCENT = "#fca311";
+const PDF_BLUE = "#3a86c8";
+const PDF_GREEN = "#4a7c59";
+const PDF_RED = "#e07a5f";
+const PDF_DAYS_PER_PAGE = 15; // hard cap the whole design is built around
+
+/* Splits an ascending array of ISO dates into chunks of at most `size`,
+   preserving order — this is what keeps every report page to <=15 days. */
+function chunkDates(dates, size = PDF_DAYS_PER_PAGE) {
+  const out = [];
+  for (let i = 0; i < dates.length; i += size) out.push(dates.slice(i, i + size));
+  return out;
+}
+
+/* Loads a (likely cross-origin, e.g. Google profile photo) image URL and
+   returns a circular, transparent-cornered PNG data URL sized `size`x`size`
+   — ready to drop straight into a pdfmake `image` node. Resolves to null
+   (never rejects) so the caller can always fall back to an initials avatar
+   instead of failing the whole report over a photo that a browser's CORS
+   policy refuses to let us read pixel data from. */
+function loadImageAsCircularDataURL(url, size = 240) {
+  return new Promise((resolve) => {
+    if (!url) { resolve(null); return; }
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    const done = (val) => resolve(val);
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        // cover-fit the source image into the circle
+        const ratio = Math.max(size / img.width, size / img.height);
+        const w = img.width * ratio, h = img.height * ratio;
+        ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+        ctx.restore();
+        done(canvas.toDataURL("image/png"));
+      } catch (e) { done(null); } // tainted canvas (CORS) etc.
+    };
+    img.onerror = () => done(null);
+    img.src = url;
+  });
+}
+
+/* Circular initials avatar (accent-colored) — the guaranteed-to-work
+   fallback for the cover page whenever there's no photo, or the photo
+   couldn't be read (see above). */
+function initialsAvatarDataURL(letter, size = 240, bg = PDF_ACCENT, fg = "#fffcf2") {
+  const canvas = document.createElement("canvas");
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.fillStyle = bg;
+  ctx.fill();
+  ctx.fillStyle = fg;
+  ctx.font = `700 ${Math.round(size * 0.46)}px Inter, system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText((letter || "?").toUpperCase(), size / 2, size / 2 + size * 0.03);
+  return canvas.toDataURL("image/png");
+}
+
+/* Draws the "chart analysis" widget that sits at the top of every dated
+   report page: grouped bars for daily completion % (when selected) with a
+   focus-minutes + fitness-minutes trend line overlaid (when those features
+   are selected too), so one glance at the page shows how the whole 15-day
+   block went. Returns a PNG data URL sized for a clean fit on an A4 page. */
+function drawChunkAnalysisChart(chunkDatesArr, state, selectedIds) {
+  const W = 1000, H = 380, PAD_L = 46, PAD_R = 30, PAD_T = 34, PAD_B = 54;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, W, H);
+
+  const has = (id) => selectedIds.includes(id);
+  const n = chunkDatesArr.length;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+  const colW = plotW / n;
+
+  const completion = has("completion") ? chunkDatesArr.map((iso) => state.completionHistory?.[iso]) : chunkDatesArr.map(() => undefined);
+  const focusTimer = has("focusTimer") ? normalizeFocusTimer(state.focusTimer) : null;
+  const focusMins = focusTimer ? chunkDatesArr.map((iso) => {
+    const dayHist = focusTimer.history?.[iso] || {};
+    return Object.values(dayHist).reduce((a, b) => a + b, 0) / 60;
+  }) : null;
+  const fitnessMins = has("fitness") ? chunkDatesArr.map((iso) => {
+    const dayLog = state.fitnessLog?.[iso] || {};
+    return Object.values(dayLog).reduce((a, b) => a + b, 0) / 60;
+  }) : null;
+
+  // gridlines (0/25/50/75/100%)
+  ctx.strokeStyle = "#ece7d8";
+  ctx.lineWidth = 1;
+  ctx.fillStyle = PDF_MUTED;
+  ctx.font = "20px Inter, system-ui, sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD_T + plotH - (plotH * i) / 4;
+    ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(W - PAD_R, y); ctx.stroke();
+    ctx.fillText(`${i * 25}%`, PAD_L - 10, y);
+  }
+
+  // completion bars
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  chunkDatesArr.forEach((iso, i) => {
+    const pct = completion[i];
+    const cx = PAD_L + colW * i + colW / 2;
+    if (pct !== undefined) {
+      const barW = colW * 0.46;
+      const barH = (Math.max(0, Math.min(100, pct)) / 100) * plotH;
+      const grad = ctx.createLinearGradient(0, PAD_T + plotH - barH, 0, PAD_T + plotH);
+      grad.addColorStop(0, PDF_ACCENT);
+      grad.addColorStop(1, "#ffd699");
+      ctx.fillStyle = grad;
+      const bx = cx - barW / 2, by = PAD_T + plotH - barH;
+      const r = Math.min(6, barW / 2);
+      ctx.beginPath();
+      ctx.moveTo(bx, by + r);
+      ctx.arc(bx + r, by + r, r, Math.PI, 1.5 * Math.PI);
+      ctx.arc(bx + barW - r, by + r, r, 1.5 * Math.PI, 0);
+      ctx.lineTo(bx + barW, PAD_T + plotH);
+      ctx.lineTo(bx, PAD_T + plotH);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // x-axis label
+    ctx.fillStyle = PDF_MUTED;
+    ctx.font = "18px Inter, system-ui, sans-serif";
+    const d = new Date(iso + "T00:00:00");
+    ctx.fillText(d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }), cx, PAD_T + plotH + 12);
+  });
+
+  // trend line helper (normalized against its own max so it's always readable next to the % bars)
+  const drawTrend = (series, color) => {
+    const max = Math.max(1, ...series.filter((v) => v !== undefined && v !== null));
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.lineJoin = "round";
+    let started = false;
+    series.forEach((v, i) => {
+      if (v === undefined || v === null) return;
+      const cx = PAD_L + colW * i + colW / 2;
+      const cy = PAD_T + plotH - (v / max) * plotH;
+      if (!started) { ctx.moveTo(cx, cy); started = true; } else { ctx.lineTo(cx, cy); }
+    });
+    if (started) ctx.stroke();
+    series.forEach((v, i) => {
+      if (v === undefined || v === null) return;
+      const cx = PAD_L + colW * i + colW / 2;
+      const cy = PAD_T + plotH - (v / max) * plotH;
+      ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
+      ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; ctx.stroke();
+    });
+  };
+  if (focusMins) drawTrend(focusMins, PDF_BLUE);
+  if (fitnessMins) drawTrend(fitnessMins, "#e85d4c");
+
+  // legend
+  let lx = PAD_L;
+  const legendItem = (label, color, swatchIsBar) => {
+    if (swatchIsBar) { ctx.fillStyle = color; ctx.fillRect(lx, 8, 22, 12); }
+    else { ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(lx, 14); ctx.lineTo(lx + 22, 14); ctx.stroke(); }
+    ctx.fillStyle = PDF_INK; ctx.font = "20px Inter, system-ui, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText(label, lx + 30, 14);
+    lx += ctx.measureText(label).width + 62;
+  };
+  if (has("completion")) legendItem("Completion %", PDF_ACCENT, true);
+  if (focusMins) legendItem("Focus (min)", PDF_BLUE, false);
+  if (fitnessMins) legendItem("Fitness (min)", "#e85d4c", false);
+
+  return canvas.toDataURL("image/png");
+}
+
 /* ---------------- PAST DATA EXPORT (this update) ----------------
    Powers the "Past Data" button in AnalyticsTab: a date-range + feature
    picker (PastDataModal, defined near AnalyticsTab below) that builds a
-   fully self-contained, styled HTML report from whichever widgets the
-   person selects, then downloads it as a file — see buildPastDataReportHTML. */
+   real, multi-page PDF (pdfmake) from whichever widgets the person
+   selects, then downloads it — see buildPastDataReportDocDefinition. */
 const PAST_DATA_FEATURES = [
   { id: "completion", label: "Overall Completion & Streak", emoji: "🔥" },
   { id: "mood", label: "Mood", emoji: "😊" },
@@ -2789,204 +2983,217 @@ function prettyDate(iso) {
   return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
 }
 
-/* Builds one full, standalone HTML document (own <style>, no external
-   requests) covering just the selected features over the selected date
-   range — glass/gradient design matching the app's own look, so it
-   reads like a real report rather than a data dump. Returned as a
-   string; the modal turns this into a Blob and triggers a download.
-   Opening the downloaded file in any browser and using Print → Save as
-   PDF turns it into a PDF with the same design intact. */
-function buildPastDataReportHTML(state, { fromISO, toISO, selectedIds, userLabel }) {
+/* A borderless "card" — a single-cell table with a white fill and rounded
+   look (pdfmake has no border-radius, so the flat white-on-cream card + a
+   thin accent rule reads as the same "professional glass card" language
+   as the rest of the app without needing raster corners). */
+function pdfCard(contentStack, { fill = "#ffffff", margin = [0, 0, 0, 12] } = {}) {
+  return {
+    margin,
+    table: { widths: ["*"], body: [[{ stack: contentStack, fillColor: fill, margin: [16, 14, 16, 14], border: [false, false, false, false] }]] },
+    layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingLeft: () => 0, paddingRight: () => 0, paddingTop: () => 0, paddingBottom: () => 0 },
+  };
+}
+
+/* A slim table for a per-day metric column (date | value), used for every
+   history-style section (completion, mood, goals, time table, focus,
+   fitness) once its data has been sliced down to a single <=15-day chunk. */
+function pdfDayTable(rows) {
+  return {
+    table: {
+      widths: ["*", "auto"],
+      body: [
+        [{ text: "Date", style: "thCell" }, { text: "Value", style: "thCell", alignment: "right" }],
+        ...rows.map((r) => [{ text: r.date, style: "tdCell" }, { text: r.value, style: "tdCell", alignment: "right" }]),
+      ],
+    },
+    layout: {
+      hLineWidth: (i) => (i === 1 ? 1 : 0.5),
+      vLineWidth: () => 0,
+      hLineColor: () => "#e5e0cf",
+      paddingLeft: () => 6, paddingRight: () => 6, paddingTop: () => 5, paddingBottom: () => 5,
+    },
+    margin: [0, 0, 0, 14],
+  };
+}
+
+/* Builds the full pdfmake docDefinition: a cover page (photo, name, and
+   the CURRENT Daily Goals / Extra Goals / Time Table lists exactly as
+   they stand today) followed by one page per <=15-day chunk of the
+   selected range, each carrying its own analysis chart plus full detail
+   tables for every selected widget, scoped to just that chunk's dates.
+   Async because the cover photo has to be fetched + rasterized first. */
+async function buildPastDataReportDocDefinition(state, { fromISO, toISO, selectedIds, user }) {
   const dates = isoDateRange(fromISO, toISO);
   const has = (id) => selectedIds.includes(id);
-  const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-
-  const sections = [];
-  const overviewStats = [];
-
-  // ---- Overall Completion & Streak ----
-  if (has("completion")) {
-    const hist = state.completionHistory || {};
-    const rows = dates.map((iso) => ({ iso, pct: hist[iso] }));
-    const withData = rows.filter((r) => r.pct !== undefined);
-    const avg = withData.length ? Math.round(withData.reduce((a, r) => a + r.pct, 0) / withData.length) : null;
-    overviewStats.push({ label: "Avg. daily completion", value: avg === null ? "—" : `${avg}%`, color: C.accent });
-    overviewStats.push({ label: "Current streak", value: `${state.streak || 0} 🔥`, color: "#e85d4c" });
-    sections.push({
-      title: "🔥 Overall Completion & Streak", color: C.accent,
-      body: `
-        <table class="rpt-table"><thead><tr><th>Date</th><th>Completion</th></tr></thead><tbody>
-          ${rows.map((r) => `<tr><td>${esc(prettyDate(r.iso))}</td><td>${r.pct === undefined ? "—" : `<div class="bar-wrap"><div class="bar" style="width:${Math.round(r.pct)}%;background:${C.accent}"></div><span>${Math.round(r.pct)}%</span></div>`}</td></tr>`).join("")}
-        </tbody></table>`,
-    });
-  }
-
-  // ---- Mood ----
-  if (has("mood")) {
-    const mood = state.moodLog || {};
-    const EMOJI = { happy: "😊 Happy", neutral: "😐 Neutral", sad: "😔 Low" };
-    const rows = dates.map((iso) => ({ iso, m: mood[iso] }));
-    sections.push({
-      title: "😊 Mood", color: C.blue,
-      body: `
-        <table class="rpt-table"><thead><tr><th>Date</th><th>Mood</th></tr></thead><tbody>
-          ${rows.map((r) => `<tr><td>${esc(prettyDate(r.iso))}</td><td>${r.m ? esc(EMOJI[r.m] || r.m) : "—"}</td></tr>`).join("")}
-        </tbody></table>`,
-    });
-  }
-
-  // ---- Daily Goals / Extra Goals (per-day % from widgetHistory + current list) ----
-  const goalSection = (key, label, emoji, color, items) => {
-    const hist = state.widgetHistory?.[key] || {};
-    const rows = dates.map((iso) => ({ iso, pct: hist[iso] })).filter((r) => r.pct !== undefined);
-    const currentList = (items || []).map((g) => `<li>${g.done ? "✅" : "⬜️"} ${esc(g.title || g.text || g.name || "")}</li>`).join("");
-    sections.push({
-      title: `${emoji} ${label}`, color,
-      body: `
-        ${rows.length ? `<table class="rpt-table"><thead><tr><th>Date</th><th>Completion</th></tr></thead><tbody>
-          ${rows.map((r) => `<tr><td>${esc(prettyDate(r.iso))}</td><td><div class="bar-wrap"><div class="bar" style="width:${Math.round(r.pct)}%;background:${color}"></div><span>${Math.round(r.pct)}%</span></div></td></tr>`).join("")}
-        </tbody></table>` : `<p class="rpt-empty">No recorded completion in this range.</p>`}
-        ${currentList ? `<div class="rpt-sub">Current list</div><ul class="rpt-list">${currentList}</ul>` : ""}`,
-    });
-  };
-  if (has("dailyGoals")) goalSection("dailyGoals", "Daily Goals", "✅", C.accent, state.dailyGoals);
-  if (has("extryGoals")) goalSection("extryGoals", "Extra Goals", "🎯", C.blue, state.extryGoals);
-
-  // ---- Time Table ----
-  if (has("timeTable")) {
-    const hist = state.widgetHistory?.timeTable || {};
-    const rows = dates.map((iso) => ({ iso, pct: hist[iso] })).filter((r) => r.pct !== undefined);
-    const currentList = (state.timeTable || []).map((t) => `<li>${t.done ? "✅" : "⬜️"} ${esc(t.time || "")} — ${esc(t.title || t.text || "")}</li>`).join("");
-    sections.push({
-      title: "🕒 Time Table", color: "#3a86c8",
-      body: `
-        ${rows.length ? `<table class="rpt-table"><thead><tr><th>Date</th><th>Completion</th></tr></thead><tbody>
-          ${rows.map((r) => `<tr><td>${esc(prettyDate(r.iso))}</td><td><div class="bar-wrap"><div class="bar" style="width:${Math.round(r.pct)}%;background:#3a86c8"></div><span>${Math.round(r.pct)}%</span></div></td></tr>`).join("")}
-        </tbody></table>` : `<p class="rpt-empty">No recorded completion in this range.</p>`}
-        ${currentList ? `<div class="rpt-sub">Current schedule</div><ul class="rpt-list">${currentList}</ul>` : ""}`,
-    });
-  }
-
-  // ---- Focus Timer ----
-  if (has("focusTimer")) {
-    const focusTimer = normalizeFocusTimer(state.focusTimer);
-    const rows = dates.map((iso) => {
-      const dayHist = focusTimer.history?.[iso] || {};
-      const secs = Object.values(dayHist).reduce((a, b) => a + b, 0);
-      return { iso, secs };
-    });
-    const totalSecs = rows.reduce((a, r) => a + r.secs, 0);
-    overviewStats.push({ label: "Focus time (range)", value: formatFocusDuration(totalSecs), color: C.accent });
-    sections.push({
-      title: "⏱️ Focus Timer", color: C.accent,
-      body: `
-        <table class="rpt-table"><thead><tr><th>Date</th><th>Focused</th></tr></thead><tbody>
-          ${rows.map((r) => `<tr><td>${esc(prettyDate(r.iso))}</td><td>${r.secs > 0 ? formatFocusDuration(r.secs) : "—"}</td></tr>`).join("")}
-        </tbody></table>`,
-    });
-  }
-
-  // ---- Fitness ----
-  if (has("fitness")) {
-    const rows = dates.map((iso) => {
-      const dayLog = state.fitnessLog?.[iso] || {};
-      const secs = Object.values(dayLog).reduce((a, b) => a + b, 0);
-      return { iso, secs };
-    });
-    const totalSecs = rows.reduce((a, r) => a + r.secs, 0);
-    overviewStats.push({ label: "Workout time (range)", value: formatFocusDuration(totalSecs), color: "#e85d4c" });
-    sections.push({
-      title: "🏋️ Fitness", color: "#e85d4c",
-      body: `
-        <table class="rpt-table"><thead><tr><th>Date</th><th>Worked out</th></tr></thead><tbody>
-          ${rows.map((r) => `<tr><td>${esc(prettyDate(r.iso))}</td><td>${r.secs > 0 ? formatFocusDuration(r.secs) : "—"}</td></tr>`).join("")}
-        </tbody></table>`,
-    });
-  }
-
-  // ---- Money ----
-  if (has("money")) {
-    const all = state.moneyEntries || [];
-    const inRange = all.filter((e) => e.date >= fromISO && e.date <= toISO);
-    const earn = inRange.filter((e) => e.type === "earn").reduce((a, e) => a + (e.amount || 0), 0);
-    const spend = inRange.filter((e) => e.type === "spend").reduce((a, e) => a + (e.amount || 0), 0);
-    overviewStats.push({ label: "Net money (range)", value: `₹${Math.round(earn - spend)}`, color: earn - spend >= 0 ? "#4a7c59" : "#e07a5f" });
-    const sortedEntries = [...inRange].sort((a, b) => (a.date < b.date ? 1 : -1));
-    sections.push({
-      title: "💰 Money (Earn / Spend)", color: "#4a7c59",
-      body: `
-        <div class="rpt-stat-row">
-          <div class="rpt-mini-stat"><div class="v" style="color:#4a7c59">₹${Math.round(earn)}</div><div class="l">Earned</div></div>
-          <div class="rpt-mini-stat"><div class="v" style="color:#e07a5f">₹${Math.round(spend)}</div><div class="l">Spent</div></div>
-          <div class="rpt-mini-stat"><div class="v" style="color:${earn - spend >= 0 ? "#4a7c59" : "#e07a5f"}">₹${Math.round(earn - spend)}</div><div class="l">Net</div></div>
-        </div>
-        ${sortedEntries.length ? `<table class="rpt-table"><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Amount</th><th>Note</th></tr></thead><tbody>
-          ${sortedEntries.map((e) => `<tr><td>${esc(prettyDate(e.date))}</td><td>${e.type === "earn" ? "🟢 Earn" : "🔴 Spend"}</td><td>${esc(e.category || "—")}</td><td>₹${Math.round(e.amount || 0)}</td><td>${esc(e.note || "—")}</td></tr>`).join("")}
-        </tbody></table>` : `<p class="rpt-empty">No entries in this range.</p>`}`,
-    });
-  }
-
-  const rangeLabel = `${prettyDate(fromISO)} → ${prettyDate(toISO)}`;
+  const chunks = chunkDates(dates);
+  const userName = (user?.displayName || user?.email || "Explorer").trim();
   const genLabel = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const rangeLabel = dates.length ? `${prettyDate(fromISO)}  →  ${prettyDate(toISO)}` : "No dates selected";
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8" />
-<title>Beyond The Life — Past Data Report</title>
-<style>
-  * { box-sizing: border-box; }
-  body { margin: 0; padding: 32px 18px; background: linear-gradient(160deg,#fffcf2,#f0ece0); font-family: Inter, system-ui, -apple-system, sans-serif; color: #403d39; }
-  .rpt-shell { max-width: 820px; margin: 0 auto; }
-  .rpt-hero { border-radius: 20px; padding: 28px 30px; margin-bottom: 22px; color: #fffcf2;
-    background: linear-gradient(135deg, #252422, #403d39 55%, #fca311); box-shadow: 0 20px 50px rgba(37,36,34,0.25); }
-  .rpt-hero h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: 0.2px; }
-  .rpt-hero .sub { opacity: 0.85; font-size: 13px; }
-  .rpt-overview { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 26px; }
-  .rpt-overview .card { flex: 1; min-width: 140px; border-radius: 14px; padding: 14px 16px;
-    background: rgba(255,255,255,0.65); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.6);
-    box-shadow: 0 8px 20px rgba(37,36,34,0.08); }
-  .rpt-overview .card .v { font-size: 19px; font-weight: 900; }
-  .rpt-overview .card .l { font-size: 11px; color: #8a8371; margin-top: 2px; }
-  .rpt-section { border-radius: 16px; padding: 18px 20px; margin-bottom: 18px;
-    background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.6);
-    box-shadow: 0 10px 26px rgba(37,36,34,0.07); }
-  .rpt-section h2 { margin: 0 0 12px; font-size: 15px; }
-  .rpt-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-  .rpt-table th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px;
-    color: #8a8371; padding: 6px 8px; border-bottom: 1px solid rgba(64,61,57,0.14); }
-  .rpt-table td { padding: 6px 8px; border-bottom: 1px solid rgba(64,61,57,0.06); vertical-align: middle; }
-  .rpt-table tr:last-child td { border-bottom: none; }
-  .bar-wrap { display: flex; align-items: center; gap: 8px; min-width: 140px; }
-  .bar-wrap > div.bar { height: 8px; border-radius: 4px; min-width: 2px; }
-  .bar-wrap span { font-size: 11px; font-weight: 700; color: #403d39; width: 34px; }
-  .rpt-sub { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: #8a8371; margin: 14px 0 6px; }
-  .rpt-list { margin: 0; padding-left: 4px; list-style: none; font-size: 12.5px; }
-  .rpt-list li { padding: 3px 0; }
-  .rpt-empty { font-size: 12px; color: #a39c86; font-style: italic; margin: 4px 0; }
-  .rpt-stat-row { display: flex; gap: 10px; margin-bottom: 14px; }
-  .rpt-mini-stat { flex: 1; text-align: center; padding: 10px; border-radius: 10px; background: rgba(0,0,0,0.03); }
-  .rpt-mini-stat .v { font-size: 16px; font-weight: 900; }
-  .rpt-mini-stat .l { font-size: 10px; color: #8a8371; }
-  .rpt-footer { text-align: center; font-size: 10.5px; color: #a39c86; padding: 18px 0 6px; }
-  .rpt-print-btn { display: inline-block; margin: 0 0 20px; border: none; border-radius: 10px; padding: 9px 16px;
-    background: #403d39; color: #fffcf2; font-size: 12px; font-weight: 700; cursor: pointer; }
-  @media print { .rpt-print-btn { display: none; } body { background: #fff; } }
-</style>
-</head>
-<body>
-  <div class="rpt-shell">
-    <button class="rpt-print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
-    <div class="rpt-hero">
-      <h1>🌟 Beyond The Life — Past Data Report</h1>
-      <div class="sub">${esc(rangeLabel)}${userLabel ? ` · Prepared for ${esc(userLabel)}` : ""} · Generated ${esc(genLabel)}</div>
-    </div>
-    ${overviewStats.length ? `<div class="rpt-overview">${overviewStats.map((s) => `<div class="card"><div class="v" style="color:${s.color}">${esc(s.value)}</div><div class="l">${esc(s.label)}</div></div>`).join("")}</div>` : ""}
-    ${sections.map((s) => `<div class="rpt-section"><h2 style="color:${s.color}">${s.title}</h2>${s.body}</div>`).join("")}
-    <div class="rpt-footer">Beyond The Life · Personal life-goals dashboard</div>
-  </div>
-</body>
-</html>`;
+  let avatar = user?.photoURL ? await loadImageAsCircularDataURL(user.photoURL, 240) : null;
+  if (!avatar) avatar = initialsAvatarDataURL(userName.charAt(0), 240);
+
+  const listRows = (items, mapFn) => (items || []).map(mapFn);
+  const dailyGoalsList = listRows(state.dailyGoals, (g) => `${g.done ? "✔" : "○"}   ${g.title || g.text || g.name || "Untitled"}`);
+  const extraGoalsList = listRows(state.extryGoals, (g) => `${g.done ? "✔" : "○"}   ${g.title || g.text || g.name || "Untitled"}`);
+  const timeTableList = listRows(state.timeTable, (t) => `${t.done ? "✔" : "○"}   ${t.time ? t.time + "  —  " : ""}${t.title || t.text || "Untitled"}`);
+
+  const coverListCard = (title, emoji, items, color) => pdfCard([
+    { text: `${emoji}  ${title}`, style: "cardTitle", color },
+    { canvas: [{ type: "line", x1: 0, y1: 6, x2: 60, y2: 6, lineWidth: 2, lineColor: color }] },
+    items.length
+      ? { ul: items, style: "cardList", margin: [0, 8, 0, 0] }
+      : { text: "Nothing added yet.", style: "cardEmpty", margin: [0, 8, 0, 0] },
+  ]);
+
+  const coverPage = {
+    stack: [
+      {
+        columns: [
+          { image: avatar, width: 76, height: 76 },
+          {
+            width: "*",
+            margin: [18, 6, 0, 0],
+            stack: [
+              { text: "BEYOND THE LIFE", style: "brandKicker" },
+              { text: userName, style: "coverName" },
+              { text: `Personal Life Report`, style: "coverSub" },
+              { text: rangeLabel, style: "coverRange" },
+              { text: `Generated ${genLabel}`, style: "coverGenerated" },
+            ],
+          },
+        ],
+        margin: [0, 0, 0, 28],
+      },
+      coverListCard("Daily Goals", "✅", dailyGoalsList, PDF_ACCENT),
+      coverListCard("Extra Goals", "🎯", extraGoalsList, PDF_BLUE),
+      coverListCard("Time Table", "🕒", timeTableList, PDF_BLUE),
+    ],
+  };
+
+  // ---- per-chunk data pages ----
+  const MOOD_EMOJI = { happy: "😊 Happy", neutral: "😐 Neutral", sad: "😔 Low" };
+  const chunkPages = chunks.map((chunk, idx) => {
+    const blocks = [
+      { text: `📅  ${prettyDate(chunk[0])}  –  ${prettyDate(chunk[chunk.length - 1])}`, style: "chunkTitle" },
+      { text: `Page ${idx + 1} of ${chunks.length}  ·  ${chunk.length} day${chunk.length === 1 ? "" : "s"}`, style: "chunkSub" },
+      { image: drawChunkAnalysisChart(chunk, state, selectedIds), width: 495, margin: [0, 12, 0, 18] },
+    ];
+
+    const twoUp = []; // pairs of (title, table) sections rendered side-by-side where it fits
+
+    if (has("completion")) {
+      const rows = chunk.map((iso) => ({ date: prettyDate(iso).slice(0, 10), value: state.completionHistory?.[iso] !== undefined ? `${Math.round(state.completionHistory[iso])}%` : "—" }));
+      twoUp.push(pdfCard([{ text: "🔥 Completion & Streak", style: "sectionTitle", color: PDF_ACCENT }, { text: `Current streak: ${state.streak || 0} 🔥`, style: "cardEmpty", margin: [0, 2, 0, 8] }, pdfDayTable(rows)]));
+    }
+    if (has("mood")) {
+      const rows = chunk.map((iso) => ({ date: prettyDate(iso).slice(0, 10), value: state.moodLog?.[iso] ? (MOOD_EMOJI[state.moodLog[iso]] || state.moodLog[iso]) : "—" }));
+      twoUp.push(pdfCard([{ text: "😊 Mood", style: "sectionTitle", color: PDF_BLUE }, pdfDayTable(rows)]));
+    }
+    if (has("dailyGoals")) {
+      const hist = state.widgetHistory?.dailyGoals || {};
+      const rows = chunk.map((iso) => ({ date: prettyDate(iso).slice(0, 10), value: hist[iso] !== undefined ? `${Math.round(hist[iso])}%` : "—" }));
+      twoUp.push(pdfCard([{ text: "✅ Daily Goals — completion", style: "sectionTitle", color: PDF_ACCENT }, pdfDayTable(rows)]));
+    }
+    if (has("extryGoals")) {
+      const hist = state.widgetHistory?.extryGoals || {};
+      const rows = chunk.map((iso) => ({ date: prettyDate(iso).slice(0, 10), value: hist[iso] !== undefined ? `${Math.round(hist[iso])}%` : "—" }));
+      twoUp.push(pdfCard([{ text: "🎯 Extra Goals — completion", style: "sectionTitle", color: PDF_BLUE }, pdfDayTable(rows)]));
+    }
+    if (has("timeTable")) {
+      const hist = state.widgetHistory?.timeTable || {};
+      const rows = chunk.map((iso) => ({ date: prettyDate(iso).slice(0, 10), value: hist[iso] !== undefined ? `${Math.round(hist[iso])}%` : "—" }));
+      twoUp.push(pdfCard([{ text: "🕒 Time Table — completion", style: "sectionTitle", color: PDF_BLUE }, pdfDayTable(rows)]));
+    }
+    if (has("focusTimer")) {
+      const focusTimer = normalizeFocusTimer(state.focusTimer);
+      const rows = chunk.map((iso) => {
+        const secs = Object.values(focusTimer.history?.[iso] || {}).reduce((a, b) => a + b, 0);
+        return { date: prettyDate(iso).slice(0, 10), value: secs > 0 ? formatFocusDuration(secs) : "—" };
+      });
+      twoUp.push(pdfCard([{ text: "⏱️ Focus Timer", style: "sectionTitle", color: PDF_ACCENT }, pdfDayTable(rows)]));
+    }
+    if (has("fitness")) {
+      const rows = chunk.map((iso) => {
+        const secs = Object.values(state.fitnessLog?.[iso] || {}).reduce((a, b) => a + b, 0);
+        return { date: prettyDate(iso).slice(0, 10), value: secs > 0 ? formatFocusDuration(secs) : "—" };
+      });
+      twoUp.push(pdfCard([{ text: "🏋️ Fitness", style: "sectionTitle", color: "#e85d4c" }, pdfDayTable(rows)]));
+    }
+
+    // two cards per row (fits an A4 page cleanly), any odd one left full-width
+    for (let i = 0; i < twoUp.length; i += 2) {
+      if (twoUp[i + 1]) blocks.push({ columns: [{ width: "48%", stack: [twoUp[i]] }, { width: "4%", text: "" }, { width: "48%", stack: [twoUp[i + 1]] }] });
+      else blocks.push(twoUp[i]);
+    }
+
+    if (has("money")) {
+      const all = state.moneyEntries || [];
+      const inChunk = all.filter((e) => chunk.includes(e.date)).sort((a, b) => (a.date < b.date ? 1 : -1));
+      const earn = inChunk.filter((e) => e.type === "earn").reduce((a, e) => a + (e.amount || 0), 0);
+      const spend = inChunk.filter((e) => e.type === "spend").reduce((a, e) => a + (e.amount || 0), 0);
+      blocks.push(pdfCard([
+        { text: "💰 Money (Earn / Spend)", style: "sectionTitle", color: PDF_GREEN },
+        { columns: [
+          { text: `Earned\n₹${Math.round(earn)}`, style: "moneyStat", color: PDF_GREEN },
+          { text: `Spent\n₹${Math.round(spend)}`, style: "moneyStat", color: PDF_RED },
+          { text: `Net\n₹${Math.round(earn - spend)}`, style: "moneyStat", color: earn - spend >= 0 ? PDF_GREEN : PDF_RED },
+        ], margin: [0, 4, 0, 10] },
+        inChunk.length
+          ? {
+              table: {
+                widths: ["auto", "auto", "*", "auto"],
+                body: [
+                  [{ text: "Date", style: "thCell" }, { text: "Type", style: "thCell" }, { text: "Category / Note", style: "thCell" }, { text: "Amount", style: "thCell", alignment: "right" }],
+                  ...inChunk.map((e) => [
+                    { text: prettyDate(e.date).slice(0, 10), style: "tdCell" },
+                    { text: e.type === "earn" ? "Earn" : "Spend", style: "tdCell" },
+                    { text: `${e.category || "—"}${e.note ? " · " + e.note : ""}`, style: "tdCell" },
+                    { text: `₹${Math.round(e.amount || 0)}`, style: "tdCell", alignment: "right" },
+                  ]),
+                ],
+              },
+              layout: { hLineWidth: (i) => (i === 1 ? 1 : 0.5), vLineWidth: () => 0, hLineColor: () => "#e5e0cf", paddingLeft: () => 6, paddingRight: () => 6, paddingTop: () => 5, paddingBottom: () => 5 },
+            }
+          : { text: "No entries in this window.", style: "cardEmpty" },
+      ]));
+    }
+
+    return { pageBreak: "before", stack: blocks };
+  });
+
+  return {
+    pageSize: "A4",
+    pageMargins: [36, 48, 36, 44],
+    background: (currentPage, pageSize) => ({ canvas: [{ type: "rect", x: 0, y: 0, w: pageSize.width, h: pageSize.height, color: PDF_BG }] }),
+    footer: (currentPage, pageCount) => ({
+      margin: [36, 8, 36, 0],
+      columns: [
+        { text: "Beyond The Life · Personal life-goals dashboard", style: "footerText" },
+        { text: `${currentPage} / ${pageCount}`, style: "footerText", alignment: "right" },
+      ],
+    }),
+    content: [coverPage, ...chunkPages],
+    defaultStyle: { font: "Roboto", fontSize: 11, color: PDF_INK, lineHeight: 1.15 },
+    styles: {
+      brandKicker: { fontSize: 10, bold: true, color: PDF_ACCENT, characterSpacing: 1.5, margin: [0, 0, 0, 4] },
+      coverName: { fontSize: 24, bold: true, color: PDF_DARK, margin: [0, 0, 0, 2] },
+      coverSub: { fontSize: 12, color: PDF_INK, margin: [0, 0, 0, 2] },
+      coverRange: { fontSize: 11, color: PDF_MUTED, margin: [0, 0, 0, 2] },
+      coverGenerated: { fontSize: 9, color: PDF_MUTED },
+      cardTitle: { fontSize: 13, bold: true, margin: [0, 0, 0, 6] },
+      cardList: { fontSize: 11, color: PDF_INK },
+      cardEmpty: { fontSize: 10.5, italics: true, color: PDF_MUTED },
+      chunkTitle: { fontSize: 16, bold: true, color: PDF_DARK },
+      chunkSub: { fontSize: 9.5, color: PDF_MUTED, margin: [0, 2, 0, 0] },
+      sectionTitle: { fontSize: 12.5, bold: true, margin: [0, 0, 0, 8] },
+      thCell: { fontSize: 8.5, bold: true, color: PDF_MUTED },
+      tdCell: { fontSize: 9.5, color: PDF_INK },
+      moneyStat: { fontSize: 13, bold: true, alignment: "center" },
+      footerText: { fontSize: 8, color: PDF_MUTED },
+    },
+  };
 }
 
 
@@ -5205,8 +5412,10 @@ function DeepAnalyticsGrid({ state, ac }) {
 /* ---------------- PAST DATA EXPORT MODAL (this update) ----------------
    Glass popup opened from the "Past Data" button in AnalyticsTab: pick a
    date range + which widgets/features to include, then Apply builds
-   (buildPastDataReportHTML above) and downloads a fully-designed,
-   standalone HTML report for just that slice of data. Same blurred-
+   (buildPastDataReportDocDefinition above) and downloads a real,
+   multi-page PDF — cream (#f7f3e3) background throughout, a cover page
+   with your photo/name/current goals & time table, then one page per
+   <=15-day chunk with a chart + full detail tables. Same blurred-
    backdrop + scale-in animation language as WidgetExpandModal, so it
    feels consistent with the rest of the app. */
 const PAST_DATA_OPEN = { duration: 0.34, ease: [0.16, 1, 0.3, 1] };
@@ -5218,35 +5427,34 @@ function PastDataModal({ state, user, onClose }) {
   });
   const [toDate, setToDate] = useState(() => todayISO());
   const [selected, setSelected] = useState(() => PAST_DATA_FEATURES.map((f) => f.id));
-  const [status, setStatus] = useState("idle"); // idle | building | done
+  const [status, setStatus] = useState("idle"); // idle | building | done | error
 
   const toggleFeature = (id) => setSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
   const allSelected = selected.length === PAST_DATA_FEATURES.length;
   const toggleAll = () => setSelected(allSelected ? [] : PAST_DATA_FEATURES.map((f) => f.id));
 
-  const handleApply = () => {
+  const handleApply = async () => {
     if (!fromDate || !toDate || fromDate > toDate || selected.length === 0) return;
     setStatus("building");
-    // Tiny timeout so the "Building..." state actually paints before the
-    // (synchronous) report build + download kicks off — otherwise on a
-    // big date range the button just looks like it did nothing for a beat.
-    setTimeout(() => {
-      const html = buildPastDataReportHTML(state, {
-        fromISO: fromDate, toISO: toDate, selectedIds: selected,
-        userLabel: user?.displayName || user?.email || "",
+    try {
+      const docDefinition = await buildPastDataReportDocDefinition(state, {
+        fromISO: fromDate, toISO: toDate, selectedIds: selected, user,
       });
-      const blob = new Blob([html], { type: "text/html" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `BTL-Past-Data_${fromDate}_to_${toDate}.html`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      // Loaded on demand so pdfmake (and its bundled font data) never adds
+      // weight to the app's normal bundle — only pulled in when a report
+      // is actually requested.
+      const pdfMakeMod = await import("pdfmake/build/pdfmake");
+      const pdfFontsMod = await import("pdfmake/build/vfs_fonts");
+      const pdfMake = pdfMakeMod.default || pdfMakeMod;
+      pdfMake.vfs = (pdfFontsMod.default || pdfFontsMod).pdfMake?.vfs || pdfFontsMod.pdfMake?.vfs || pdfFontsMod.vfs;
+      pdfMake.createPdf(docDefinition).download(`BTL-Past-Data_${fromDate}_to_${toDate}.pdf`);
       setStatus("done");
       setTimeout(() => setStatus("idle"), 1800);
-    }, 250);
+    } catch (err) {
+      console.error("Past Data PDF build failed:", err);
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 2200);
+    }
   };
 
   return (
@@ -5335,7 +5543,7 @@ function PastDataModal({ state, user, onClose }) {
                 cursor: selected.length === 0 || fromDate > toDate ? "not-allowed" : "pointer",
               }}
             >
-              {status === "building" ? "Building report…" : status === "done" ? "Downloaded ✓" : "Apply & Download Report"}
+              {status === "building" ? "Building PDF…" : status === "done" ? "Downloaded ✓" : status === "error" ? "Couldn't build PDF — retry" : "Apply & Download PDF"}
             </motion.button>
           </div>
         </div>
