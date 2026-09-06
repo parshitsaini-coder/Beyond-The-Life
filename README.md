@@ -4,7 +4,78 @@
 
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🔥 New "Active Streaks" header badge (this update)
+## 🎀 Mini ribbon-burst on every single checkbox tick (this update)
+Per your screenshot markup on the Daily Goals ("4:00 Wake Up") and Time
+Table ("Wake up & morning routine") checkboxes — ticking one goal/item off
+only had a plain background flash (Daily/Extry Goals) or a small green
+dot-burst (Time Table); neither felt like the "ribbon" celebration you
+wanted right at the checkbox itself.
+
+- New `MiniRibbonBurst` component (`components/BTLDashboard.jsx`) — a small,
+  localized burst of ~7 tiny colored ribbon strips that fling outward,
+  spin, and fade over ~0.6s, centered exactly on the checkbox that was just
+  ticked. Distinct from (and much smaller/faster than) the full-screen
+  `RibbonStreamers` used for the all-goals-complete celebration above —
+  this one is scoped to a ~28px box around a single checkbox.
+- Wired into both **Daily/Extry Goals** (`GoalChecklist`'s checkbox, which
+  previously had no burst at all, only the background flash) and **Time
+  Table** (`TimeTableRow`'s checkbox, alongside the existing green
+  checkmark-draw `TimeCheckBurst` — both now play together) — same
+  `isCelebrating` flag each row already tracked, so no new state was
+  needed, just a new visual reacting to it.
+- Checkbox is now wrapped in its own small `position: relative` span so the
+  burst centers precisely on it regardless of the row's layout — no other
+  spacing/layout in either row changed.
+
+## 🎉 Full celebration animation on every "all goals complete" day (earlier update)
+Per your screenshot markup — the confetti + banner celebration used to fire
+**only** on milestone streak days (3/7/14/21/30/50/75/100 days). Any other
+day you finished every Daily + Extry goal, nothing extra happened beyond the
+existing shine sweep — no confetti, no banner.
+
+- `checkFullCompletion()` in `components/BTLDashboard.jsx` now fires the full
+  celebration (confetti + banner) **every time** Daily Goals and Extry Goals
+  both hit 100% for the day (the very first completion of that day), not
+  just on milestone streak counts. The shine sweep still fires the same way
+  it always did.
+- New `RibbonStreamers` component layered in alongside the existing
+  `Confetti` piece — long, colored ribbon strips that fall with a
+  side-to-side sway and a lazy 360° spin (distinct motion from confetti's
+  small squares/dots), so a full-completion moment reads as a genuinely
+  "full" celebration rather than the same small burst as before. Both
+  layers are absolutely positioned across the whole dashboard panel (same
+  as before), so it fills the entire screen, not just a corner.
+- `MilestoneBanner` now shows two messages depending on the day: the
+  original "N Day Streak! Keep going 🎉" text on an actual milestone day, or
+  a new "All Goals Complete Today! 🎉 (NNN day streak)" message on any other
+  day the celebration fires — so the banner never claims a milestone that
+  didn't happen.
+- Celebration window bumped from 2.6s → 3.2s so the extra ribbon layer has
+  room to fall and fade before everything clears.
+- Pure `framer-motion` + CSS keyframes, same as every other animation in
+  this file — no new dependencies.
+
+## 🏷️ Named streak badge above each goal (earlier update)
+Per your screenshot markup — the existing per-goal streak indicator (the
+small flame + number that sits inline next to the goal's text) was too
+small/faded to quickly tell which goal a streak belonged to when more
+than one goal on the same list had "Start Streak" switched on.
+
+- Any goal with `streakEnabled` on now also gets its own small labeled
+  badge rendered **above** its row in `GoalChecklist`
+  (`components/BTLDashboard.jsx`) — flame icon + the goal's own name +
+  its current day count, e.g. "🔥 Wakup · 3d streak".
+- Uses the exact same `goalStreakCounts` walk-back count the inline
+  flame already reads from `dailyLogs[date].completedGoals` — no new
+  state or storage, just a second, clearer place to show the same
+  number.
+- Flame pulses (breathing scale animation) while the streak is ≥1 day,
+  and sits desaturated/static at 0 — same convention as the header's
+  "Active Streaks" badge and the inline per-goal flame.
+- The original inline flame + count next to the goal text is untouched,
+  so nothing about the closed/collapsed row's existing layout shifted.
+
+## 🔥 New "Active Streaks" header badge (earlier update)
 Added a brand-new indicator to the header stat cluster (mobile stats row
 + desktop header, right where the existing Day Streak / Daily Goal /
 Extry Goal / Goal / Time Table badges live) — separate from the

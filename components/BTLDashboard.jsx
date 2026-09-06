@@ -1669,8 +1669,14 @@ function Confetti({ active }) {
   );
 }
 
-function MilestoneBanner({ streak, visible }) {
+function MilestoneBanner({ streak, visible, isMilestoneDay }) {
   if (!visible) return null;
+  // On a milestone streak day (3/7/14/21/30/...) keeps the original streak-count
+  // message; every other day this same banner now also appears (since the full
+  // celebration fires daily, this update) with a generic "all done" message so
+  // it doesn't misleadingly claim a milestone that hasn't actually happened.
+  // Still the same CSS-keyframe pop animation as before (`btlMilestonePop`,
+  // duration bumped to match the new 3.2s celebration window below).
   return (
     <div className="btl-milestone-banner" style={{
       position: "absolute", top: 60, left: "50%", transform: "translateX(-50%)",
@@ -1678,8 +1684,60 @@ function MilestoneBanner({ streak, visible }) {
       fontSize: 14, fontWeight: 900, zIndex: 71, boxShadow: "0 8px 20px rgba(37,36,34,0.3)",
       display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap",
     }}>
-      <Flame size={16} color={C.accent} /> {String(streak).padStart(3, "0")} Day Streak! Keep going 🎉
+      <Flame size={16} color={C.accent} />
+      {isMilestoneDay
+        ? `${String(streak).padStart(3, "0")} Day Streak! Keep going 🎉`
+        : `All Goals Complete Today! 🎉 (${String(streak).padStart(3, "0")} day streak)`}
     </div>
+  );
+}
+
+/* ---------------- RIBBON STREAMERS — full-completion celebration (this update) ----------------
+   Per your screenshot: the daily/extry 100% celebration needed to feel like a
+   FULL celebration, not just the small milestone-only confetti burst that
+   existed before. This adds long falling ribbon streamers (thin curved strips
+   that spin and drift, distinct from the small square/round Confetti pieces)
+   layered behind Confetti so a full-completion moment gets both effects at
+   once, covering the whole dashboard (this component, like Confetti, is an
+   absolutely-positioned inset:0 layer inside the app-root, which is already
+   the full panel the user sees). Pure CSS keyframe animation (declared in the
+   <style> block further down, `btlRibbonFall`) + framer-motion for the
+   mount/unmount fade — no new dependencies. */
+function RibbonStreamers({ active }) {
+  if (!active) return null;
+  const ribbons = Array.from({ length: 22 }, (_, i) => {
+    const left = Math.random() * 100;
+    const delay = Math.random() * 0.5;
+    const duration = 2.4 + Math.random() * 1.6;
+    const width = 8 + Math.random() * 6;
+    const height = 26 + Math.random() * 20;
+    const color = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+    const sway = 40 + Math.random() * 60;
+    return { id: i, left, delay, duration, width, height, color, sway };
+  });
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 69 }}
+    >
+      {ribbons.map((r) => (
+        <span
+          key={r.id}
+          className="btl-ribbon-piece"
+          style={{
+            left: `${r.left}%`,
+            width: r.width, height: r.height,
+            background: r.color,
+            borderRadius: 3,
+            animationDelay: `${r.delay}s`,
+            animationDuration: `${r.duration}s`,
+            "--btl-ribbon-sway": `${r.sway}px`,
+          }}
+        />
+      ))}
+    </motion.div>
   );
 }
 
@@ -2260,6 +2318,36 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                 className="btl-goal-row"
                 style={{ borderBottom: "1px solid #f0ece0", borderLeft: `3px solid ${cat.color}`, position: "relative", overflow: "hidden" }}
               >
+                {/* Per-goal "Start Streak" name badge (this update) — sits ABOVE the
+                    goal row (not just the small inline flame+count next to the text)
+                    so when several goals have streaks running, each one's badge is
+                    labeled with that goal's own name and is easy to tell apart at a
+                    glance. Only rendered for goals with streakEnabled on; uses the
+                    same goalStreakCounts walk-back count as the inline flame. */}
+                {g.streakEnabled && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 4,
+                      padding: "4px 8px 0 24px", fontSize: 8.5, fontWeight: 900,
+                      color: (goalStreakCounts[g.id] || 0) > 0 ? "#e07a5f" : "#a39c86",
+                      letterSpacing: 0.2,
+                    }}
+                  >
+                    <motion.span
+                      animate={(goalStreakCounts[g.id] || 0) > 0 ? { scale: [1, 1.2, 1] } : { scale: 1 }}
+                      transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+                      style={{ display: "inline-flex" }}
+                    >
+                      <Flame size={10} style={{ color: (goalStreakCounts[g.id] || 0) > 0 ? "#e07a5f" : "#d8d2bf" }} />
+                    </motion.span>
+                    <span style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {g.text}
+                    </span>
+                    <span style={{ opacity: 0.75 }}>· {goalStreakCounts[g.id] || 0}d streak</span>
+                  </motion.div>
+                )}
                 <AnimatePresence>
                   {isCelebrating && (
                     <motion.div
@@ -2320,13 +2408,16 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                     color: g.done ? autoMutedColor(cardBg) : autoTextColor(cardBg),
                     touchAction: isTouch ? "pan-y" : undefined,
                   }}>
-                  <motion.input
-                    type="checkbox" checked={g.done} onChange={() => handleToggle(g.id, g.done)}
-                    className="btl-check" style={{ accentColor: accent, width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
-                    whileTap={{ scale: 0.8 }}
-                    animate={isCelebrating ? { scale: [1, 1.35, 1] } : { scale: 1 }}
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                  />
+                  <span style={{ position: "relative", flexShrink: 0, display: "inline-flex" }}>
+                    <motion.input
+                      type="checkbox" checked={g.done} onChange={() => handleToggle(g.id, g.done)}
+                      className="btl-check" style={{ accentColor: accent, width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
+                      whileTap={{ scale: 0.8 }}
+                      animate={isCelebrating ? { scale: [1, 1.35, 1] } : { scale: 1 }}
+                      transition={{ duration: 0.35, ease: "easeOut" }}
+                    />
+                    <AnimatePresence>{isCelebrating && <MiniRibbonBurst size={28} />}</AnimatePresence>
+                  </span>
                   <span style={{ position: "relative", flexShrink: 0 }}>
                     <motion.span
                       whileHover={{ scale: 1.2, rotate: 8 }}
@@ -3962,6 +4053,59 @@ function TimeCheckBurst() {
   );
 }
 
+/* ---------------- MINI RIBBON BURST — per-checkbox tick celebration (this update) ----------------
+   Per your screenshot markup: ticking a single goal/time-table checkbox
+   (Daily Goals, Extry Goals, Time Table) now gets a small ribbon-burst right
+   at that checkbox — a handful of tiny colored ribbon strips that fling
+   outward, spin, and fade — instead of only the plain background flash
+   (GoalChecklist) or dot-burst (Time Table) that existed before. Scoped
+   tiny and local (not the full-screen RibbonStreamers used for the
+   all-goals-complete celebration), absolutely positioned centered on
+   whatever anchor wraps it, so it drops into any row's existing
+   `position: relative` checkbox wrapper with no layout changes. Pure
+   framer-motion, no new dependencies. `size` lets Time Table's rail-aligned
+   burst and the plain goal-row burst use the same component at slightly
+   different footprints. */
+function MiniRibbonBurst({ size = 30 }) {
+  const pieces = Array.from({ length: 7 }, (_, i) => ({
+    id: i,
+    angle: (i / 7) * Math.PI * 2 + Math.random() * 0.4,
+    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+    dist: size * 0.55 + Math.random() * size * 0.35,
+    w: 3 + Math.random() * 2,
+    h: 7 + Math.random() * 4,
+  }));
+  const half = size / 2;
+  return (
+    <motion.div
+      initial={{ opacity: 1 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{
+        position: "absolute", left: "50%", top: "50%", width: size, height: size,
+        marginLeft: -half, marginTop: -half, pointerEvents: "none", zIndex: 3,
+      }}
+    >
+      {pieces.map((p) => (
+        <motion.span
+          key={p.id}
+          initial={{ opacity: 1, x: half, y: half, rotate: 0, scale: 1 }}
+          animate={{
+            opacity: 0,
+            x: half + Math.cos(p.angle) * p.dist,
+            y: half + Math.sin(p.angle) * p.dist,
+            rotate: 220 + Math.random() * 200,
+            scale: 0.4,
+          }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+          style={{
+            position: "absolute", width: p.w, height: p.h, borderRadius: 1.5,
+            background: p.color, transformOrigin: "center",
+          }}
+        />
+      ))}
+    </motion.div>
+  );
+}
+
 /* ---------------- TIME TABLE: animated vertical status rail (this update) ----------------
    Upgrades the old plain drag-grip icon + flat category dot into a real
    connected timeline down the left edge of the list: a vertical line
@@ -4094,13 +4238,16 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
           status={status} isFirst={isFirst} isLast={isLast} accent={accent} isCelebrating={isCelebrating}
           onPointerDown={(e) => dragControls.start(e)}
         />
-        <motion.input
-          type="checkbox" checked={t.done} onChange={() => onToggle(t.id, t.done)}
-          className="btl-check" style={{ accentColor: accent, width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
-          whileTap={{ scale: 0.8 }}
-          animate={isCelebrating ? { scale: [1, 1.35, 1] } : { scale: 1 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-        />
+        <span style={{ position: "relative", flexShrink: 0, display: "inline-flex" }}>
+          <motion.input
+            type="checkbox" checked={t.done} onChange={() => onToggle(t.id, t.done)}
+            className="btl-check" style={{ accentColor: accent, width: 14, height: 14, flexShrink: 0, cursor: "pointer" }}
+            whileTap={{ scale: 0.8 }}
+            animate={isCelebrating ? { scale: [1, 1.35, 1] } : { scale: 1 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+          />
+          <AnimatePresence>{isCelebrating && <MiniRibbonBurst size={28} />}</AnimatePresence>
+        </span>
         <span title={cat.label} style={{ width: 6, height: 6, borderRadius: "50%", background: cat.color, flexShrink: 0 }} />
         <motion.span
           animate={isUpcoming && !t.done ? { boxShadow: ["0 0 0 0 rgba(252,163,17,0.45)", "0 0 0 5px rgba(252,163,17,0)"] } : { boxShadow: "0 0 0 0 rgba(0,0,0,0)" }}
@@ -15235,11 +15382,14 @@ function BTLDashboardInner() {
       next.lastCompletedDate = todayISO();
       next.streak = (next.streak || 0) + 1;
       triggerShine();
-      if (isMilestone(next.streak)) {
-        setConfetti(true);
-        setMilestoneStreak(next.streak);
-        setTimeout(() => { setConfetti(false); setMilestoneStreak(null); }, 2600);
-      }
+      // Full celebration — now fires every single time Daily + Extry Goals both
+      // hit 100% for the day, not just on milestone streak counts (3/7/14/...).
+      // MilestoneBanner still shows the special streak-number message on a
+      // milestone day; any other day it shows a generic "All Goals Complete"
+      // message instead — either way the full confetti + ribbon burst plays.
+      setConfetti(true);
+      setMilestoneStreak(next.streak);
+      setTimeout(() => { setConfetti(false); setMilestoneStreak(null); }, 3200);
     }
     return next;
   }
@@ -15833,14 +15983,23 @@ function BTLDashboardInner() {
           100% { top: 105%; opacity: 0.9; }
         }
         .btl-confetti-piece { position: absolute; top: -10px; animation-name: btlConfettiFall; animation-timing-function: cubic-bezier(.25,.6,.4,1); animation-fill-mode: forwards; }
+        /* Ribbon streamers (this update) — long thin strips that fall with a
+           side-to-side sway and a lazy spin, distinct from Confetti's small
+           squares/dots, layered in for the full daily-completion celebration. */
+        @keyframes btlRibbonFall {
+          0% { top: -40px; opacity: 1; transform: translateX(0) rotate(0deg); }
+          50% { transform: translateX(var(--btl-ribbon-sway)) rotate(180deg); }
+          100% { top: 108%; opacity: 0.85; transform: translateX(calc(var(--btl-ribbon-sway) * -1)) rotate(360deg); }
+        }
+        .btl-ribbon-piece { position: absolute; top: -40px; animation-name: btlRibbonFall; animation-timing-function: ease-in-out; animation-fill-mode: forwards; }
         @keyframes btlMilestonePop {
           0% { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.85); }
-          15% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.05); }
-          25% { transform: translateX(-50%) translateY(0) scale(1); }
-          85% { opacity: 1; }
+          12% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.05); }
+          20% { transform: translateX(-50%) translateY(0) scale(1); }
+          88% { opacity: 1; }
           100% { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(0.95); }
         }
-        .btl-milestone-banner { animation: btlMilestonePop 2.6s ease forwards; }
+        .btl-milestone-banner { animation: btlMilestonePop 3.2s ease forwards; }
         input, textarea, button { font-family: inherit; }
 
         /* ---------------- Step 5 — Mobile top bar (Back + Profile only) ----------------
@@ -15929,8 +16088,9 @@ function BTLDashboardInner() {
       `}</style>
 
       <ShineOverlay active={shine} />
+      <RibbonStreamers active={confetti} />
       <Confetti active={confetti} />
-      <MilestoneBanner streak={milestoneStreak} visible={!!milestoneStreak} />
+      <MilestoneBanner streak={milestoneStreak} visible={!!milestoneStreak} isMilestoneDay={!!milestoneStreak && isMilestone(milestoneStreak)} />
       {/* Step 7: QuickNavFab is desktop-only now — RadialDialMenu (rendered further down,
           mobile-only, inside the "dashboard" tab branch) takes over its job on mobile.
           Wrapping rather than editing QuickNavFab itself keeps it byte-for-byte identical
