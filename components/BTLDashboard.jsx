@@ -7901,29 +7901,81 @@ function MoneyResetModal({ onClose, onConfirm }) {
    Opened from Money Management's "Summary" button. Mirrors the Memories
    modal's date-sidebar layout, but focused purely on money: pick a date
    on the left, see every earn/spend entry logged that day on the right —
-   amount, category or attached photo, and note — plus a day total strip.
-   Reuses MemPhotoLightbox for full-screen photo viewing. */
+   amount, category or attached photo, and note — plus a day total strip,
+   a pair of live ring widgets, and an "all categories" strip up top.
+   Reuses MemPhotoLightbox for full-screen photo viewing, and the same
+   MoneyFilterModal the main tab uses so Filter here is fully functional
+   and independent of the main tab's own filter state. */
 function MoneySummaryModal({ state, onClose }) {
-  const entries = state.moneyEntries || [];
+  const allEntries = state.moneyEntries || [];
+  const [selectedDate, setSelectedDate] = useState(todayISO());
+  const [lightbox, setLightbox] = useState(null);
+  const [filters, setFilters] = useState(DEFAULT_MONEY_FILTERS);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const dateJumpRef = useRef(null);
+  const filterActive = isMoneyFilterActive(filters);
+  const activeFilterCount = (filters.types.length !== 2 ? 1 : 0) + (filters.categories.length > 0 ? 1 : 0) + (filters.dateRange !== "all" ? 1 : 0);
+
+  // Everything below (sidebar dates, category strip, day totals) is derived
+  // from the filtered set when a filter is active — same convention the
+  // main Money Management tab uses — so "Filter" here genuinely narrows
+  // what Summary shows, not just a decorative button.
+  const entries = useMemo(() => (filterActive ? filterMoneyEntries(allEntries, filters) : allEntries), [allEntries, filters, filterActive]);
+
   const dates = useMemo(() => {
     const set = new Set(entries.map((e) => e.date));
     return Array.from(set).sort((a, b) => (a < b ? 1 : -1));
   }, [entries]);
-  const [selectedDate, setSelectedDate] = useState(dates[0] || todayISO());
-  const [lightbox, setLightbox] = useState(null);
 
   useEffect(() => {
     if (dates.length && !dates.includes(selectedDate)) setSelectedDate(dates[0]);
   }, [dates.join("|")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dayEntries = useMemo(() => entries.filter((e) => e.date === selectedDate), [entries, selectedDate]);
-  const dayAgg = (state.moneyHistory && state.moneyHistory[selectedDate]) || { earn: 0, spend: 0 };
+  const dayAgg = useMemo(() => {
+    if (!filterActive) return (state.moneyHistory && state.moneyHistory[selectedDate]) || { earn: 0, spend: 0 };
+    const earn = dayEntries.filter((e) => e.type === "earn").reduce((s, e) => s + (e.amount || 0), 0);
+    const spend = dayEntries.filter((e) => e.type === "spend").reduce((s, e) => s + (e.amount || 0), 0);
+    return { earn, spend };
+  }, [filterActive, state.moneyHistory, selectedDate, dayEntries]);
   const dayNet = (dayAgg.earn || 0) - (dayAgg.spend || 0);
+
+  // "All category · name & total amount" strip — lifetime (or filtered)
+  // totals across every spend category, same source data + sort the main
+  // tab's category donut uses.
+  const allCategoryTotals = useMemo(() => {
+    const map = {};
+    entries.filter((e) => e.type === "spend").forEach((e) => {
+      const key = e.category || "other";
+      map[key] = (map[key] || 0) + (e.amount || 0);
+    });
+    return SPEND_CATEGORIES.map((c) => ({ ...c, total: map[c.key] || 0 })).filter((c) => c.total > 0).sort((a, b) => b.total - a.total);
+  }, [entries]);
+
+  // Per-selected-day category split, for the "category amount" ring.
+  const dayCategoryTotals = useMemo(() => {
+    const map = {};
+    dayEntries.filter((e) => e.type === "spend").forEach((e) => {
+      const key = e.category || "other";
+      map[key] = (map[key] || 0) + (e.amount || 0);
+    });
+    return SPEND_CATEGORIES.map((c) => ({ ...c, total: map[c.key] || 0 })).filter((c) => c.total > 0).sort((a, b) => b.total - a.total);
+  }, [dayEntries]);
+  const dayCategorySum = dayCategoryTotals.reduce((s, c) => s + c.total, 0);
+
+  const earnSpendPie = useMemo(() => {
+    const arr = [];
+    if (dayAgg.earn > 0) arr.push({ key: "earn", label: "Earned", total: dayAgg.earn, color: "#4a7c59" });
+    if (dayAgg.spend > 0) arr.push({ key: "spend", label: "Spent", total: dayAgg.spend, color: "#c0392b" });
+    return arr;
+  }, [dayAgg]);
 
   const handleRequestClose = () => {
     if (lightbox) { setLightbox(null); return; }
     onClose();
   };
+
+  const handleJumpToDate = (iso) => { if (iso) setSelectedDate(iso); };
 
   return (
     <motion.div
@@ -7941,131 +7993,321 @@ function MoneySummaryModal({ state, onClose }) {
         exit={{ opacity: 0, scale: 0.96, y: 12 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
         style={{
-          width: "min(960px, 95vw)", height: "min(640px, 88vh)",
+          width: "min(1040px, 96vw)", height: "min(680px, 90vh)",
           background: "rgba(255,252,242,0.72)",
           backdropFilter: "blur(22px) saturate(180%)", WebkitBackdropFilter: "blur(22px) saturate(180%)",
           border: "1px solid rgba(255,255,255,0.65)", borderRadius: 20,
           boxShadow: "0 30px 80px rgba(37,36,34,0.28), inset 0 1px 0 rgba(255,255,255,0.6)",
-          display: "flex", overflow: "hidden", position: "relative",
+          display: "flex", flexDirection: "column", overflow: "hidden", position: "relative",
         }}>
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)", zIndex: 1 }} />
 
-        {/* ---------- SIDEBAR: date timeline ---------- */}
-        <div style={{ width: 220, flexShrink: 0, borderRight: "1px solid rgba(255,255,255,0.55)", display: "flex", flexDirection: "column", background: "rgba(255,255,255,0.25)" }}>
-          <div style={{ padding: "14px 14px 8px", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-            <ListChecks size={14} color={C.accent} />
-            <span style={{ fontWeight: 900, fontSize: 13, color: C.dark }}>Summary</span>
-            <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: "#9c9584", background: "rgba(255,255,255,0.6)", borderRadius: 999, padding: "2px 7px" }}>{dates.length}</span>
-          </div>
-          <div style={{ flex: 1, overflowY: "auto", padding: "2px 8px 10px" }} className="btl-scroll">
-            {dates.length === 0 && (
-              <div style={{ fontSize: 10, color: "#a39c88", padding: "10px 6px" }}>No money logged yet — use Add on the dashboard to record your first entry.</div>
+        {/* ---------- TOP BAR: title, live totals, Date / Filter / Back ---------- */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.55)", flexShrink: 0, flexWrap: "wrap", rowGap: 8 }}>
+          <ListChecks size={15} color={C.accent} />
+          <span style={{ fontWeight: 900, fontSize: 13.5, color: C.dark }}>Summary</span>
+          <span style={{ fontSize: 9, fontWeight: 700, color: "#9c9584", background: "rgba(255,255,255,0.6)", borderRadius: 999, padding: "2px 7px" }}>{dates.length} {dates.length === 1 ? "day" : "days"}</span>
+
+          <div style={{ flex: 1, minWidth: 8 }} />
+
+          <motion.div layout initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} style={{
+            display: "flex", alignItems: "center", gap: 5, borderRadius: 999, padding: "4px 12px 4px 8px",
+            background: "linear-gradient(135deg, #4a7c5922, transparent)", border: "1px solid #4a7c5945",
+          }}>
+            <ArrowUpCircle size={12} color="#4a7c59" />
+            <span style={{ fontSize: 9, color: "#6b8f77", fontWeight: 700 }}>Total earn</span>
+            <motion.span key={dayAgg.earn} initial={{ opacity: 0.4 }} animate={{ opacity: 1 }} style={{ fontSize: 11.5, fontWeight: 900, color: "#4a7c59" }}>
+              ₹{entries.filter((e) => e.type === "earn").reduce((s, e) => s + (e.amount || 0), 0).toFixed(0)}
+            </motion.span>
+          </motion.div>
+          <motion.div layout initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.03 }} style={{
+            display: "flex", alignItems: "center", gap: 5, borderRadius: 999, padding: "4px 12px 4px 8px",
+            background: "linear-gradient(135deg, #c0392b22, transparent)", border: "1px solid #c0392b45",
+          }}>
+            <ArrowDownCircle size={12} color="#c0392b" />
+            <span style={{ fontSize: 9, color: "#c0776b", fontWeight: 700 }}>Total spend</span>
+            <span style={{ fontSize: 11.5, fontWeight: 900, color: "#c0392b" }}>
+              ₹{entries.filter((e) => e.type === "spend").reduce((s, e) => s + (e.amount || 0), 0).toFixed(0)}
+            </span>
+          </motion.div>
+
+          {/* hidden native date input — powers the round "Date" jump button */}
+          <input
+            ref={dateJumpRef} type="date" value={selectedDate}
+            onChange={(e) => handleJumpToDate(e.target.value)}
+            style={{ position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }}
+          />
+          <motion.button
+            onClick={() => { try { dateJumpRef.current?.showPicker?.(); } catch { dateJumpRef.current?.focus?.(); } }}
+            whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+            title="Jump to a specific date"
+            style={{
+              width: 30, height: 30, borderRadius: "50%", border: `1px solid ${C.text}`, background: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0,
+            }}
+          ><CalendarDays size={14} color={C.dark} /></motion.button>
+
+          <motion.button
+            onClick={() => setFilterOpen(true)}
+            whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+            title="Filter by type, category & date"
+            style={{
+              position: "relative", width: 30, height: 30, borderRadius: "50%",
+              border: `1px solid ${filterActive ? C.accent : C.text}`, background: filterActive ? `${C.accent}18` : "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0,
+            }}
+          >
+            <Filter size={14} color={filterActive ? C.accent : C.dark} />
+            {filterActive && (
+              <span style={{
+                position: "absolute", top: -4, right: -4, width: 14, height: 14, borderRadius: "50%",
+                background: C.accent, color: "#fff", fontSize: 7.5, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 2px 6px rgba(252,163,17,0.5)",
+              }}>{activeFilterCount || "•"}</span>
             )}
-            {dates.map((d, i) => {
-              const agg = (state.moneyHistory && state.moneyHistory[d]) || { earn: 0, spend: 0 };
-              const net = (agg.earn || 0) - (agg.spend || 0);
-              const fmt = formatMemDate(d);
-              const dayImgs = entries.filter((e) => e.date === d && e.image);
-              return (
-                <motion.div
-                  key={d} onClick={() => setSelectedDate(d)}
-                  initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i, 12) * 0.02 }}
-                  whileHover={{ x: 2 }}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 10, cursor: "pointer",
-                    marginBottom: 2, position: "relative",
-                    background: d === selectedDate ? "rgba(255,255,255,0.85)" : "transparent",
-                    boxShadow: d === selectedDate ? "0 3px 10px rgba(37,36,34,0.12)" : "none",
-                  }}>
-                  {d === selectedDate && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
-                      style={{ position: "absolute", inset: 0, borderRadius: 10, border: `1px solid ${C.accent}`, pointerEvents: "none" }} />
-                  )}
-                  <div style={{ width: 34, textAlign: "center", flexShrink: 0 }}>
-                    <div style={{ fontWeight: 900, fontSize: 13, color: C.dark, lineHeight: 1 }}>{fmt.day}</div>
-                    <div style={{ fontSize: 8, color: "#a39c88", textTransform: "uppercase" }}>{fmt.month}</div>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: net >= 0 ? "#4a7c59" : "#c0392b" }}>{net >= 0 ? "+" : ""}₹{net.toFixed(0)} net</div>
-                    <div style={{ fontSize: 8, color: "#a39c88" }}>{entries.filter((e) => e.date === d).length} {entries.filter((e) => e.date === d).length === 1 ? "entry" : "entries"}</div>
-                  </div>
-                  {dayImgs[0] && (
-                    <img src={dayImgs[0].image} alt="" style={{ width: 22, height: 22, borderRadius: 6, objectFit: "cover", border: "1px solid rgba(255,255,255,0.7)", flexShrink: 0 }} />
-                  )}
-                </motion.div>
-              );
-            })}
-          </div>
+          </motion.button>
+
+          <motion.button
+            onClick={handleRequestClose}
+            whileHover={{ scale: 1.08, x: -1 }} whileTap={{ scale: 0.9 }}
+            title="Back to Money Management"
+            style={{
+              width: 30, height: 30, borderRadius: "50%", border: "none", background: C.accent, color: "#fff",
+              display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0,
+              boxShadow: "0 4px 12px rgba(252,163,17,0.4)",
+            }}
+          ><ArrowLeft size={15} /></motion.button>
         </div>
 
-        {/* ---------- DETAIL PANE ---------- */}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "14px 18px 10px", display: "flex", alignItems: "center", gap: 12, borderBottom: "1px solid rgba(255,255,255,0.55)", flexShrink: 0 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 900, fontSize: 15, color: C.dark }}>{formatMemDate(selectedDate).full}</div>
-              <div style={{ fontSize: 10, color: "#8a8579" }}>{formatMemDate(selectedDate).weekday} · {dayEntries.length} {dayEntries.length === 1 ? "entry" : "entries"} logged</div>
-            </div>
-            <motion.div whileHover={{ scale: 1.15, rotate: 90 }} whileTap={{ scale: 0.9 }} onClick={handleRequestClose} style={{ cursor: "pointer", color: C.dark }}>
-              <X size={18} />
+        {/* ---------- "All category · name & total amount" strip ---------- */}
+        <div style={{ padding: "10px 16px 8px", borderBottom: "1px solid rgba(255,255,255,0.5)", flexShrink: 0 }}>
+          <div style={{ fontSize: 9, fontWeight: 800, color: "#8a8579", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
+            <Tag size={10} /> All categories — name &amp; total amount
+          </div>
+          {allCategoryTotals.length === 0 ? (
+            <div style={{ fontSize: 9.5, color: "#a39c88" }}>No spending logged yet.</div>
+          ) : (
+            <motion.div
+              initial="hidden" animate="show"
+              variants={{ hidden: {}, show: { transition: { staggerChildren: 0.025 } } }}
+              style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }} className="btl-scroll"
+            >
+              {allCategoryTotals.map((c) => (
+                <motion.div
+                  key={c.key}
+                  variants={{ hidden: { opacity: 0, y: 6, scale: 0.9 }, show: { opacity: 1, y: 0, scale: 1 } }}
+                  whileHover={{ y: -2, scale: 1.03 }}
+                  style={{
+                    flexShrink: 0, display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 999,
+                    background: `${c.color}1c`, border: `1px solid ${c.color}45`, whiteSpace: "nowrap",
+                  }}
+                >
+                  <span style={{ fontSize: 13 }}>{c.emoji}</span>
+                  <span style={{ fontSize: 10, fontWeight: 800, color: C.dark }}>{c.label}</span>
+                  <span style={{ fontSize: 10, fontWeight: 900, color: c.color }}>₹{c.total.toFixed(0)}</span>
+                </motion.div>
+              ))}
             </motion.div>
+          )}
+        </div>
+
+        <div style={{ flex: 1, minHeight: 0, display: "flex", overflow: "hidden" }}>
+          {/* ---------- SIDEBAR: date timeline ---------- */}
+          <div style={{ width: 200, flexShrink: 0, borderRight: "1px solid rgba(255,255,255,0.55)", display: "flex", flexDirection: "column", background: "rgba(255,255,255,0.25)" }}>
+            <AnimatePresence>
+              {filterActive && (
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} style={{ overflow: "hidden", flexShrink: 0 }}>
+                  <div style={{ margin: "10px 10px 0", padding: "5px 9px", borderRadius: 8, background: `${C.accent}16`, border: `1px solid ${C.accent}40`, display: "flex", alignItems: "center", gap: 5 }}>
+                    <Filter size={10} color={C.accent} />
+                    <span style={{ fontSize: 8.5, fontWeight: 800, color: C.dark, flex: 1 }}>Filtered</span>
+                    <motion.div whileTap={{ scale: 0.9 }} onClick={() => setFilters(DEFAULT_MONEY_FILTERS)} style={{ cursor: "pointer", color: "#c0392b" }}><X size={11} /></motion.div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <div style={{ flex: 1, overflowY: "auto", padding: "10px 8px" }} className="btl-scroll">
+              {dates.length === 0 && (
+                <div style={{ fontSize: 10, color: "#a39c88", padding: "10px 6px" }}>{filterActive ? "No entries match these filters." : "No money logged yet — use Add on the dashboard to record your first entry."}</div>
+              )}
+              {dates.map((d, i) => {
+                const dEntries = entries.filter((e) => e.date === d);
+                const agg = !filterActive ? ((state.moneyHistory && state.moneyHistory[d]) || { earn: 0, spend: 0 }) : {
+                  earn: dEntries.filter((e) => e.type === "earn").reduce((s, e) => s + (e.amount || 0), 0),
+                  spend: dEntries.filter((e) => e.type === "spend").reduce((s, e) => s + (e.amount || 0), 0),
+                };
+                const net = (agg.earn || 0) - (agg.spend || 0);
+                const fmt = formatMemDate(d);
+                const dayImgs = dEntries.filter((e) => e.image);
+                return (
+                  <motion.div
+                    key={d} layout onClick={() => setSelectedDate(d)}
+                    initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i, 12) * 0.02 }}
+                    whileHover={{ x: 2 }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 10, cursor: "pointer",
+                      marginBottom: 2, position: "relative",
+                      background: d === selectedDate ? "rgba(255,255,255,0.85)" : "transparent",
+                      boxShadow: d === selectedDate ? "0 3px 10px rgba(37,36,34,0.12)" : "none",
+                    }}>
+                    {d === selectedDate && (
+                      <motion.div layoutId="moneySummarySelectedDay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
+                        style={{ position: "absolute", inset: 0, borderRadius: 10, border: `1px solid ${C.accent}`, pointerEvents: "none" }} />
+                    )}
+                    <div style={{ width: 34, textAlign: "center", flexShrink: 0 }}>
+                      <div style={{ fontWeight: 900, fontSize: 13, color: C.dark, lineHeight: 1 }}>{fmt.day}</div>
+                      <div style={{ fontSize: 8, color: "#a39c88", textTransform: "uppercase" }}>{fmt.month}</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: net >= 0 ? "#4a7c59" : "#c0392b" }}>{net >= 0 ? "+" : ""}₹{net.toFixed(0)} net</div>
+                      <div style={{ fontSize: 8, color: "#a39c88" }}>{dEntries.length} {dEntries.length === 1 ? "entry" : "entries"}</div>
+                    </div>
+                    {dayImgs[0] && (
+                      <img src={dayImgs[0].image} alt="" style={{ width: 22, height: 22, borderRadius: 6, objectFit: "cover", border: "1px solid rgba(255,255,255,0.7)", flexShrink: 0 }} />
+                    )}
+                  </motion.div>
+                );
+              })}
+            </div>
           </div>
 
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 18px 18px" }} className="btl-scroll">
-            {/* day total strip */}
-            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-              <MoneyStatCard label="Earned" value={dayAgg.earn || 0} color="#4a7c59" Icon={ArrowUpCircle} />
-              <MoneyStatCard label="Spent" value={dayAgg.spend || 0} color="#c0392b" Icon={ArrowDownCircle} />
-              <MoneyStatCard label="Net" value={dayNet} color={dayNet >= 0 ? "#4a7c59" : "#c0392b"} Icon={PiggyBank} />
+          {/* ---------- DETAIL PANE ---------- */}
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: "12px 18px 8px", flexShrink: 0 }}>
+              <div style={{ fontWeight: 900, fontSize: 15, color: C.dark }}>{formatMemDate(selectedDate).full}</div>
+              <div style={{ fontSize: 10, color: "#8a8579" }}>{formatMemDate(selectedDate).weekday} · {dayEntries.length} {dayEntries.length === 1 ? "entry" : "entries"} logged{filterActive ? " · filtered" : ""}</div>
             </div>
 
-            {dayEntries.length === 0 ? (
-              <MemEmptyState icon={Wallet} text="Nothing logged on this day." />
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {dayEntries.map((e, i) => {
-                  const isEarn = e.type === "earn";
-                  const cat = !isEarn ? spendCatInfo(e.category) : null;
-                  return (
-                    <motion.div
-                      key={e.id || i}
-                      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 10) * 0.03 }}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 12, padding: 10, borderRadius: 12,
-                        background: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.7)",
-                      }}
-                    >
-                      {e.image ? (
-                        <motion.img
-                          src={e.image} alt="" onClick={() => setLightbox(e.image)}
-                          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.96 }}
-                          style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover", flexShrink: 0, cursor: "zoom-in", border: "1px solid rgba(255,255,255,0.8)" }}
-                        />
-                      ) : (
-                        <div style={{
-                          width: 44, height: 44, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                          background: isEarn ? "#4a7c5918" : `${cat.color}22`, fontSize: isEarn ? undefined : 18,
-                        }}>
-                          {isEarn ? <ArrowUpCircle size={19} color="#4a7c59" /> : cat.emoji}
-                        </div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 11.5, fontWeight: 800, color: C.dark }}>{isEarn ? "Earning" : cat.label}</div>
-                        {e.note && <div style={{ fontSize: 9.5, color: "#8a8579", marginTop: 1 }}>{e.note}</div>}
-                        <div style={{ fontSize: 8.5, color: "#a39c88", marginTop: 1 }}>{new Date(e.ts || Date.now()).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</div>
-                      </div>
-                      <div style={{ fontSize: 13, fontWeight: 900, color: isEarn ? "#4a7c59" : "#c0392b", flexShrink: 0 }}>
-                        {isEarn ? "+" : "−"}₹{(e.amount || 0).toFixed(0)}
-                      </div>
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "6px 18px 18px" }} className="btl-scroll">
+              <AnimatePresence mode="wait">
+                <motion.div key={selectedDate + activeFilterCount} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>
+                  {/* day total strip */}
+                  <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+                    <MoneyStatCard label="Today Earn" value={dayAgg.earn || 0} color="#4a7c59" Icon={ArrowUpCircle} />
+                    <MoneyStatCard label="Today Spend" value={dayAgg.spend || 0} color="#c0392b" Icon={ArrowDownCircle} />
+                    <MoneyStatCard label="Net" value={dayNet} color={dayNet >= 0 ? "#4a7c59" : "#c0392b"} Icon={PiggyBank} />
+                  </div>
+
+                  {/* two ring widgets — "earn and spend money" + "category amount" */}
+                  <div style={{ display: "flex", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+                    <MoneyRingWidget
+                      title="Earn & Spend money" icon={<ArrowLeftRight size={11} />}
+                      data={earnSpendPie} centerLabel={dayNet >= 0 ? "+" : "−"} centerValue={Math.abs(dayNet)} centerColor={dayNet >= 0 ? "#4a7c59" : "#c0392b"}
+                      emptyText="Nothing logged today"
+                    />
+                    <MoneyRingWidget
+                      title="Category amount" icon={<Tag size={11} />}
+                      data={dayCategoryTotals} centerLabel="" centerValue={dayCategorySum} centerColor={C.dark}
+                      emptyText="No spend category today"
+                    />
+                  </div>
+
+                  {dayEntries.length === 0 ? (
+                    <MemEmptyState icon={Wallet} text="Nothing logged on this day." />
+                  ) : (
+                    <motion.div layout style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {dayEntries.map((e, i) => {
+                        const isEarn = e.type === "earn";
+                        const cat = !isEarn ? spendCatInfo(e.category) : null;
+                        return (
+                          <motion.div
+                            key={e.id || i} layout
+                            initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 10) * 0.03 }}
+                            whileHover={{ y: -1, boxShadow: "0 6px 16px rgba(37,36,34,0.1)" }}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 12, padding: 10, borderRadius: 12,
+                              background: "rgba(255,255,255,0.55)", border: "1px solid rgba(255,255,255,0.7)",
+                            }}
+                          >
+                            {e.image ? (
+                              <motion.img
+                                src={e.image} alt="" onClick={() => setLightbox(e.image)}
+                                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.96 }}
+                                style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover", flexShrink: 0, cursor: "zoom-in", border: "1px solid rgba(255,255,255,0.8)" }}
+                              />
+                            ) : (
+                              <div style={{
+                                width: 44, height: 44, borderRadius: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                                background: isEarn ? "#4a7c5918" : `${cat.color}22`, fontSize: isEarn ? undefined : 18,
+                              }}>
+                                {isEarn ? <ArrowUpCircle size={19} color="#4a7c59" /> : cat.emoji}
+                              </div>
+                            )}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 11.5, fontWeight: 800, color: C.dark }}>{isEarn ? "Earning" : cat.label}</div>
+                              {e.note && <div style={{ fontSize: 9.5, color: "#8a8579", marginTop: 1 }}>{e.note}</div>}
+                              <div style={{ fontSize: 8.5, color: "#a39c88", marginTop: 1 }}>{formatMemDate(e.date).full} · {new Date(e.ts || Date.now()).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</div>
+                            </div>
+                            <div style={{ fontSize: 13, fontWeight: 900, color: isEarn ? "#4a7c59" : "#c0392b", flexShrink: 0 }}>
+                              {isEarn ? "+" : "−"}₹{(e.amount || 0).toFixed(0)}
+                            </div>
+                          </motion.div>
+                        );
+                      })}
                     </motion.div>
-                  );
-                })}
-              </div>
-            )}
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </div>
           </div>
         </div>
 
         <AnimatePresence>{lightbox && <MemPhotoLightbox src={lightbox} onClose={() => setLightbox(null)} />}</AnimatePresence>
+        <AnimatePresence>
+          {filterOpen && (
+            <MoneyFilterModal entries={allEntries} filters={filters} onApply={setFilters} onClose={() => setFilterOpen(false)} />
+          )}
+        </AnimatePresence>
       </motion.div>
+    </motion.div>
+  );
+}
+
+/* Small circular ring widget used twice inside Summary: a mini donut
+   (recharts Pie, same chart engine the rest of the app uses) with a
+   center label overlaid, wrapped in a card. Used for the "earn and spend
+   money" ring and the "category amount" ring. Animates in on mount /
+   whenever its data changes (e.g. switching the selected date). */
+function MoneyRingWidget({ title, icon, data, centerLabel, centerValue, centerColor, emptyText }) {
+  const total = data.reduce((s, c) => s + c.total, 0);
+  return (
+    <motion.div
+      layout initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ y: -2 }}
+      transition={{ type: "spring", stiffness: 260, damping: 22 }}
+      style={{ flex: 1, minWidth: 160, border: "1px solid #ece7d8", borderRadius: 12, padding: 10, display: "flex", alignItems: "center", gap: 10, background: "rgba(255,255,255,0.4)" }}
+    >
+      <div style={{ width: 74, height: 74, flexShrink: 0, position: "relative" }}>
+        {total > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={data} dataKey="total" nameKey="label" innerRadius={22} outerRadius={35} paddingAngle={3} strokeWidth={2} stroke="#fff" isAnimationActive>
+                {data.map((c) => <Cell key={c.key} fill={c.color} />)}
+              </Pie>
+              <Tooltip formatter={(v, n, p) => [`₹${Number(v).toFixed(0)}`, p?.payload?.label]} contentStyle={{ fontSize: 9, borderRadius: 8, border: "1px solid #ece7d8" }} />
+            </PieChart>
+          </ResponsiveContainer>
+        ) : (
+          <div style={{ width: "100%", height: "100%", borderRadius: "50%", border: "6px solid #f0ece0", display: "flex", alignItems: "center", justifyContent: "center" }} />
+        )}
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+          <span style={{ fontSize: 10, fontWeight: 900, color: centerColor }}>{centerLabel}₹{Math.round(centerValue)}</span>
+        </div>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 9.5, fontWeight: 800, color: C.dark, display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>{icon} {title}</div>
+        {data.length === 0 ? (
+          <div style={{ fontSize: 8.5, color: "#a39c88" }}>{emptyText}</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            {data.slice(0, 3).map((c) => (
+              <div key={c.key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: c.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 8.5, color: C.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.emoji ? `${c.emoji} ` : ""}{c.label}</span>
+                <span style={{ fontSize: 8.5, fontWeight: 800, color: c.color, flexShrink: 0 }}>₹{c.total.toFixed(0)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 }
