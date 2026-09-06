@@ -2662,6 +2662,16 @@ function formatFocusDuration(totalSeconds) {
     ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`
     : `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
+/* Minutes -> "Xh Ym" (or just "Ym" under an hour) — used for the
+   Analytics "7-day avg / day" stat cards (this update), so averages
+   read in hours+minutes instead of a raw, harder-to-parse minute count
+   like "202m". */
+function formatMinutesAsHours(totalMinutes) {
+  const mins = Math.max(0, Math.round(totalMinutes));
+  const h = Math.floor(mins / 60), m = mins % 60;
+  if (h <= 0) return `${m}m`;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
 /* Seconds banked today for one category — banked history plus, if that
    category is the one currently running, the live in-progress elapsed. */
 function focusSecondsToday(focusTimer, categoryId, now = Date.now()) {
@@ -2747,6 +2757,238 @@ function fitnessSecondsToday(fitnessLog) {
   const dayLog = fitnessLog?.[day] || {};
   return Object.values(dayLog).reduce((a, b) => a + b, 0);
 }
+
+/* ---------------- PAST DATA EXPORT (this update) ----------------
+   Powers the "Past Data" button in AnalyticsTab: a date-range + feature
+   picker (PastDataModal, defined near AnalyticsTab below) that builds a
+   fully self-contained, styled HTML report from whichever widgets the
+   person selects, then downloads it as a file — see buildPastDataReportHTML. */
+const PAST_DATA_FEATURES = [
+  { id: "completion", label: "Overall Completion & Streak", emoji: "🔥" },
+  { id: "mood", label: "Mood", emoji: "😊" },
+  { id: "dailyGoals", label: "Daily Goals", emoji: "✅" },
+  { id: "extryGoals", label: "Extra Goals", emoji: "🎯" },
+  { id: "timeTable", label: "Time Table", emoji: "🕒" },
+  { id: "focusTimer", label: "Focus Timer", emoji: "⏱️" },
+  { id: "fitness", label: "Fitness", emoji: "🏋️" },
+  { id: "money", label: "Money (Earn / Spend)", emoji: "💰" },
+];
+
+/* All ISO (YYYY-MM-DD) dates from `fromISO` to `toISO` inclusive, ascending. */
+function isoDateRange(fromISO, toISO) {
+  const out = [];
+  const start = new Date(fromISO + "T00:00:00");
+  const end = new Date(toISO + "T00:00:00");
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return out;
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+function prettyDate(iso) {
+  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+}
+
+/* Builds one full, standalone HTML document (own <style>, no external
+   requests) covering just the selected features over the selected date
+   range — glass/gradient design matching the app's own look, so it
+   reads like a real report rather than a data dump. Returned as a
+   string; the modal turns this into a Blob and triggers a download.
+   Opening the downloaded file in any browser and using Print → Save as
+   PDF turns it into a PDF with the same design intact. */
+function buildPastDataReportHTML(state, { fromISO, toISO, selectedIds, userLabel }) {
+  const dates = isoDateRange(fromISO, toISO);
+  const has = (id) => selectedIds.includes(id);
+  const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  const sections = [];
+  const overviewStats = [];
+
+  // ---- Overall Completion & Streak ----
+  if (has("completion")) {
+    const hist = state.completionHistory || {};
+    const rows = dates.map((iso) => ({ iso, pct: hist[iso] }));
+    const withData = rows.filter((r) => r.pct !== undefined);
+    const avg = withData.length ? Math.round(withData.reduce((a, r) => a + r.pct, 0) / withData.length) : null;
+    overviewStats.push({ label: "Avg. daily completion", value: avg === null ? "—" : `${avg}%`, color: C.accent });
+    overviewStats.push({ label: "Current streak", value: `${state.streak || 0} 🔥`, color: "#e85d4c" });
+    sections.push({
+      title: "🔥 Overall Completion & Streak", color: C.accent,
+      body: `
+        <table class="rpt-table"><thead><tr><th>Date</th><th>Completion</th></tr></thead><tbody>
+          ${rows.map((r) => `<tr><td>${esc(prettyDate(r.iso))}</td><td>${r.pct === undefined ? "—" : `<div class="bar-wrap"><div class="bar" style="width:${Math.round(r.pct)}%;background:${C.accent}"></div><span>${Math.round(r.pct)}%</span></div>`}</td></tr>`).join("")}
+        </tbody></table>`,
+    });
+  }
+
+  // ---- Mood ----
+  if (has("mood")) {
+    const mood = state.moodLog || {};
+    const EMOJI = { happy: "😊 Happy", neutral: "😐 Neutral", sad: "😔 Low" };
+    const rows = dates.map((iso) => ({ iso, m: mood[iso] }));
+    sections.push({
+      title: "😊 Mood", color: C.blue,
+      body: `
+        <table class="rpt-table"><thead><tr><th>Date</th><th>Mood</th></tr></thead><tbody>
+          ${rows.map((r) => `<tr><td>${esc(prettyDate(r.iso))}</td><td>${r.m ? esc(EMOJI[r.m] || r.m) : "—"}</td></tr>`).join("")}
+        </tbody></table>`,
+    });
+  }
+
+  // ---- Daily Goals / Extra Goals (per-day % from widgetHistory + current list) ----
+  const goalSection = (key, label, emoji, color, items) => {
+    const hist = state.widgetHistory?.[key] || {};
+    const rows = dates.map((iso) => ({ iso, pct: hist[iso] })).filter((r) => r.pct !== undefined);
+    const currentList = (items || []).map((g) => `<li>${g.done ? "✅" : "⬜️"} ${esc(g.title || g.text || g.name || "")}</li>`).join("");
+    sections.push({
+      title: `${emoji} ${label}`, color,
+      body: `
+        ${rows.length ? `<table class="rpt-table"><thead><tr><th>Date</th><th>Completion</th></tr></thead><tbody>
+          ${rows.map((r) => `<tr><td>${esc(prettyDate(r.iso))}</td><td><div class="bar-wrap"><div class="bar" style="width:${Math.round(r.pct)}%;background:${color}"></div><span>${Math.round(r.pct)}%</span></div></td></tr>`).join("")}
+        </tbody></table>` : `<p class="rpt-empty">No recorded completion in this range.</p>`}
+        ${currentList ? `<div class="rpt-sub">Current list</div><ul class="rpt-list">${currentList}</ul>` : ""}`,
+    });
+  };
+  if (has("dailyGoals")) goalSection("dailyGoals", "Daily Goals", "✅", C.accent, state.dailyGoals);
+  if (has("extryGoals")) goalSection("extryGoals", "Extra Goals", "🎯", C.blue, state.extryGoals);
+
+  // ---- Time Table ----
+  if (has("timeTable")) {
+    const hist = state.widgetHistory?.timeTable || {};
+    const rows = dates.map((iso) => ({ iso, pct: hist[iso] })).filter((r) => r.pct !== undefined);
+    const currentList = (state.timeTable || []).map((t) => `<li>${t.done ? "✅" : "⬜️"} ${esc(t.time || "")} — ${esc(t.title || t.text || "")}</li>`).join("");
+    sections.push({
+      title: "🕒 Time Table", color: "#3a86c8",
+      body: `
+        ${rows.length ? `<table class="rpt-table"><thead><tr><th>Date</th><th>Completion</th></tr></thead><tbody>
+          ${rows.map((r) => `<tr><td>${esc(prettyDate(r.iso))}</td><td><div class="bar-wrap"><div class="bar" style="width:${Math.round(r.pct)}%;background:#3a86c8"></div><span>${Math.round(r.pct)}%</span></div></td></tr>`).join("")}
+        </tbody></table>` : `<p class="rpt-empty">No recorded completion in this range.</p>`}
+        ${currentList ? `<div class="rpt-sub">Current schedule</div><ul class="rpt-list">${currentList}</ul>` : ""}`,
+    });
+  }
+
+  // ---- Focus Timer ----
+  if (has("focusTimer")) {
+    const focusTimer = normalizeFocusTimer(state.focusTimer);
+    const rows = dates.map((iso) => {
+      const dayHist = focusTimer.history?.[iso] || {};
+      const secs = Object.values(dayHist).reduce((a, b) => a + b, 0);
+      return { iso, secs };
+    });
+    const totalSecs = rows.reduce((a, r) => a + r.secs, 0);
+    overviewStats.push({ label: "Focus time (range)", value: formatFocusDuration(totalSecs), color: C.accent });
+    sections.push({
+      title: "⏱️ Focus Timer", color: C.accent,
+      body: `
+        <table class="rpt-table"><thead><tr><th>Date</th><th>Focused</th></tr></thead><tbody>
+          ${rows.map((r) => `<tr><td>${esc(prettyDate(r.iso))}</td><td>${r.secs > 0 ? formatFocusDuration(r.secs) : "—"}</td></tr>`).join("")}
+        </tbody></table>`,
+    });
+  }
+
+  // ---- Fitness ----
+  if (has("fitness")) {
+    const rows = dates.map((iso) => {
+      const dayLog = state.fitnessLog?.[iso] || {};
+      const secs = Object.values(dayLog).reduce((a, b) => a + b, 0);
+      return { iso, secs };
+    });
+    const totalSecs = rows.reduce((a, r) => a + r.secs, 0);
+    overviewStats.push({ label: "Workout time (range)", value: formatFocusDuration(totalSecs), color: "#e85d4c" });
+    sections.push({
+      title: "🏋️ Fitness", color: "#e85d4c",
+      body: `
+        <table class="rpt-table"><thead><tr><th>Date</th><th>Worked out</th></tr></thead><tbody>
+          ${rows.map((r) => `<tr><td>${esc(prettyDate(r.iso))}</td><td>${r.secs > 0 ? formatFocusDuration(r.secs) : "—"}</td></tr>`).join("")}
+        </tbody></table>`,
+    });
+  }
+
+  // ---- Money ----
+  if (has("money")) {
+    const all = state.moneyEntries || [];
+    const inRange = all.filter((e) => e.date >= fromISO && e.date <= toISO);
+    const earn = inRange.filter((e) => e.type === "earn").reduce((a, e) => a + (e.amount || 0), 0);
+    const spend = inRange.filter((e) => e.type === "spend").reduce((a, e) => a + (e.amount || 0), 0);
+    overviewStats.push({ label: "Net money (range)", value: `₹${Math.round(earn - spend)}`, color: earn - spend >= 0 ? "#4a7c59" : "#e07a5f" });
+    const sortedEntries = [...inRange].sort((a, b) => (a.date < b.date ? 1 : -1));
+    sections.push({
+      title: "💰 Money (Earn / Spend)", color: "#4a7c59",
+      body: `
+        <div class="rpt-stat-row">
+          <div class="rpt-mini-stat"><div class="v" style="color:#4a7c59">₹${Math.round(earn)}</div><div class="l">Earned</div></div>
+          <div class="rpt-mini-stat"><div class="v" style="color:#e07a5f">₹${Math.round(spend)}</div><div class="l">Spent</div></div>
+          <div class="rpt-mini-stat"><div class="v" style="color:${earn - spend >= 0 ? "#4a7c59" : "#e07a5f"}">₹${Math.round(earn - spend)}</div><div class="l">Net</div></div>
+        </div>
+        ${sortedEntries.length ? `<table class="rpt-table"><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Amount</th><th>Note</th></tr></thead><tbody>
+          ${sortedEntries.map((e) => `<tr><td>${esc(prettyDate(e.date))}</td><td>${e.type === "earn" ? "🟢 Earn" : "🔴 Spend"}</td><td>${esc(e.category || "—")}</td><td>₹${Math.round(e.amount || 0)}</td><td>${esc(e.note || "—")}</td></tr>`).join("")}
+        </tbody></table>` : `<p class="rpt-empty">No entries in this range.</p>`}`,
+    });
+  }
+
+  const rangeLabel = `${prettyDate(fromISO)} → ${prettyDate(toISO)}`;
+  const genLabel = new Date().toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Beyond The Life — Past Data Report</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 18px; background: linear-gradient(160deg,#fffcf2,#f0ece0); font-family: Inter, system-ui, -apple-system, sans-serif; color: #403d39; }
+  .rpt-shell { max-width: 820px; margin: 0 auto; }
+  .rpt-hero { border-radius: 20px; padding: 28px 30px; margin-bottom: 22px; color: #fffcf2;
+    background: linear-gradient(135deg, #252422, #403d39 55%, #fca311); box-shadow: 0 20px 50px rgba(37,36,34,0.25); }
+  .rpt-hero h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: 0.2px; }
+  .rpt-hero .sub { opacity: 0.85; font-size: 13px; }
+  .rpt-overview { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 26px; }
+  .rpt-overview .card { flex: 1; min-width: 140px; border-radius: 14px; padding: 14px 16px;
+    background: rgba(255,255,255,0.65); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.6);
+    box-shadow: 0 8px 20px rgba(37,36,34,0.08); }
+  .rpt-overview .card .v { font-size: 19px; font-weight: 900; }
+  .rpt-overview .card .l { font-size: 11px; color: #8a8371; margin-top: 2px; }
+  .rpt-section { border-radius: 16px; padding: 18px 20px; margin-bottom: 18px;
+    background: rgba(255,255,255,0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.6);
+    box-shadow: 0 10px 26px rgba(37,36,34,0.07); }
+  .rpt-section h2 { margin: 0 0 12px; font-size: 15px; }
+  .rpt-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .rpt-table th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px;
+    color: #8a8371; padding: 6px 8px; border-bottom: 1px solid rgba(64,61,57,0.14); }
+  .rpt-table td { padding: 6px 8px; border-bottom: 1px solid rgba(64,61,57,0.06); vertical-align: middle; }
+  .rpt-table tr:last-child td { border-bottom: none; }
+  .bar-wrap { display: flex; align-items: center; gap: 8px; min-width: 140px; }
+  .bar-wrap > div.bar { height: 8px; border-radius: 4px; min-width: 2px; }
+  .bar-wrap span { font-size: 11px; font-weight: 700; color: #403d39; width: 34px; }
+  .rpt-sub { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; color: #8a8371; margin: 14px 0 6px; }
+  .rpt-list { margin: 0; padding-left: 4px; list-style: none; font-size: 12.5px; }
+  .rpt-list li { padding: 3px 0; }
+  .rpt-empty { font-size: 12px; color: #a39c86; font-style: italic; margin: 4px 0; }
+  .rpt-stat-row { display: flex; gap: 10px; margin-bottom: 14px; }
+  .rpt-mini-stat { flex: 1; text-align: center; padding: 10px; border-radius: 10px; background: rgba(0,0,0,0.03); }
+  .rpt-mini-stat .v { font-size: 16px; font-weight: 900; }
+  .rpt-mini-stat .l { font-size: 10px; color: #8a8371; }
+  .rpt-footer { text-align: center; font-size: 10.5px; color: #a39c86; padding: 18px 0 6px; }
+  .rpt-print-btn { display: inline-block; margin: 0 0 20px; border: none; border-radius: 10px; padding: 9px 16px;
+    background: #403d39; color: #fffcf2; font-size: 12px; font-weight: 700; cursor: pointer; }
+  @media print { .rpt-print-btn { display: none; } body { background: #fff; } }
+</style>
+</head>
+<body>
+  <div class="rpt-shell">
+    <button class="rpt-print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
+    <div class="rpt-hero">
+      <h1>🌟 Beyond The Life — Past Data Report</h1>
+      <div class="sub">${esc(rangeLabel)}${userLabel ? ` · Prepared for ${esc(userLabel)}` : ""} · Generated ${esc(genLabel)}</div>
+    </div>
+    ${overviewStats.length ? `<div class="rpt-overview">${overviewStats.map((s) => `<div class="card"><div class="v" style="color:${s.color}">${esc(s.value)}</div><div class="l">${esc(s.label)}</div></div>`).join("")}</div>` : ""}
+    ${sections.map((s) => `<div class="rpt-section"><h2 style="color:${s.color}">${s.title}</h2>${s.body}</div>`).join("")}
+    <div class="rpt-footer">Beyond The Life · Personal life-goals dashboard</div>
+  </div>
+</body>
+</html>`;
+}
+
 
 
 /* ---- Glass popup for naming + coloring a new timer category ---- */
@@ -4960,8 +5202,151 @@ function DeepAnalyticsGrid({ state, ac }) {
   );
 }
 
+/* ---------------- PAST DATA EXPORT MODAL (this update) ----------------
+   Glass popup opened from the "Past Data" button in AnalyticsTab: pick a
+   date range + which widgets/features to include, then Apply builds
+   (buildPastDataReportHTML above) and downloads a fully-designed,
+   standalone HTML report for just that slice of data. Same blurred-
+   backdrop + scale-in animation language as WidgetExpandModal, so it
+   feels consistent with the rest of the app. */
+const PAST_DATA_OPEN = { duration: 0.34, ease: [0.16, 1, 0.3, 1] };
+const PAST_DATA_CLOSE = { duration: 0.22, ease: [0.7, 0, 0.84, 0] };
+function PastDataModal({ state, user, onClose }) {
+  const [fromDate, setFromDate] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 29);
+    return d.toISOString().slice(0, 10);
+  });
+  const [toDate, setToDate] = useState(() => todayISO());
+  const [selected, setSelected] = useState(() => PAST_DATA_FEATURES.map((f) => f.id));
+  const [status, setStatus] = useState("idle"); // idle | building | done
+
+  const toggleFeature = (id) => setSelected((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+  const allSelected = selected.length === PAST_DATA_FEATURES.length;
+  const toggleAll = () => setSelected(allSelected ? [] : PAST_DATA_FEATURES.map((f) => f.id));
+
+  const handleApply = () => {
+    if (!fromDate || !toDate || fromDate > toDate || selected.length === 0) return;
+    setStatus("building");
+    // Tiny timeout so the "Building..." state actually paints before the
+    // (synchronous) report build + download kicks off — otherwise on a
+    // big date range the button just looks like it did nothing for a beat.
+    setTimeout(() => {
+      const html = buildPastDataReportHTML(state, {
+        fromISO: fromDate, toISO: toDate, selectedIds: selected,
+        userLabel: user?.displayName || user?.email || "",
+      });
+      const blob = new Blob([html], { type: "text/html" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `BTL-Past-Data_${fromDate}_to_${toDate}.html`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      setStatus("done");
+      setTimeout(() => setStatus("idle"), 1800);
+    }, 250);
+  };
+
+  return (
+    <>
+      <motion.div
+        onClick={onClose}
+        initial={{ opacity: 0 }} animate={{ opacity: 1, transition: PAST_DATA_OPEN }} exit={{ opacity: 0, transition: PAST_DATA_CLOSE }}
+        style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(37,36,34,0.38)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)" }}
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.88, y: 18 }}
+        animate={{ opacity: 1, scale: 1, y: 0, transition: PAST_DATA_OPEN }}
+        exit={{ opacity: 0, scale: 0.9, y: 12, transition: PAST_DATA_CLOSE }}
+        style={{ position: "fixed", inset: 0, zIndex: 201, display: "flex", alignItems: "center", justifyContent: "center", padding: "5vh 4vw", pointerEvents: "none" }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            pointerEvents: "auto", width: "min(460px, 92vw)", maxHeight: "88vh",
+            display: "flex", flexDirection: "column", background: "rgba(255,252,242,0.97)",
+            borderRadius: 18, boxShadow: "0 30px 70px rgba(37,36,34,0.4)", border: "1px solid rgba(255,255,255,0.5)",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid rgba(64,61,57,0.08)", flexShrink: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 900, color: C.dark, display: "flex", alignItems: "center", gap: 7 }}>📁 Past Data</span>
+            <motion.button type="button" onClick={onClose} aria-label="Close"
+              whileHover={{ scale: 1.1, backgroundColor: "rgba(64,61,57,0.14)" }} whileTap={{ scale: 0.92 }}
+              style={{ width: 26, height: 26, borderRadius: "50%", border: "none", background: "rgba(64,61,57,0.08)", color: C.dark, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+            ><X size={14} /></motion.button>
+          </div>
+
+          <div className="btl-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 18 }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.4, color: "#8a8371", marginBottom: 8 }}>Date range</div>
+            <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: C.text, fontWeight: 700 }}>
+                From
+                <input type="date" value={fromDate} max={toDate} onChange={(e) => setFromDate(e.target.value)}
+                  style={{ border: "1px solid #ece7d8", borderRadius: 8, padding: "7px 8px", fontSize: 12, fontFamily: "inherit" }} />
+              </label>
+              <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: C.text, fontWeight: 700 }}>
+                To
+                <input type="date" value={toDate} min={fromDate} max={todayISO()} onChange={(e) => setToDate(e.target.value)}
+                  style={{ border: "1px solid #ece7d8", borderRadius: 8, padding: "7px 8px", fontSize: 12, fontFamily: "inherit" }} />
+              </label>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <div style={{ fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.4, color: "#8a8371" }}>Widgets / features</div>
+              <button onClick={toggleAll} style={{ border: "none", background: "none", color: C.accent, fontSize: 10.5, fontWeight: 800, cursor: "pointer" }}>
+                {allSelected ? "Clear all" : "Select all"}
+              </button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 22 }}>
+              {PAST_DATA_FEATURES.map((f) => {
+                const on = selected.includes(f.id);
+                return (
+                  <motion.button
+                    key={f.id} type="button" onClick={() => toggleFeature(f.id)}
+                    whileTap={{ scale: 0.98 }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 9, textAlign: "left", cursor: "pointer",
+                      border: `1.5px solid ${on ? C.accent : "#ece7d8"}`, borderRadius: 10, padding: "9px 11px",
+                      background: on ? hexToRgba(C.accent, 0.1) : "#fff",
+                    }}
+                  >
+                    <span style={{
+                      width: 16, height: 16, borderRadius: 5, flexShrink: 0, border: `1.5px solid ${on ? C.accent : "#ccc4ac"}`,
+                      background: on ? C.accent : "transparent", display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>{on && <CheckCircle2 size={12} color="#fff" style={{ marginTop: -1 }} />}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: C.text }}>{f.emoji} {f.label}</span>
+                  </motion.button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ padding: "12px 18px", borderTop: "1px solid rgba(64,61,57,0.08)", flexShrink: 0 }}>
+            <motion.button
+              type="button" onClick={handleApply} disabled={selected.length === 0 || fromDate > toDate}
+              whileHover={selected.length ? { scale: 1.015 } : undefined} whileTap={selected.length ? { scale: 0.98 } : undefined}
+              style={{
+                width: "100%", border: "none", borderRadius: 10, padding: "11px 0",
+                background: selected.length === 0 || fromDate > toDate ? "#d8d2c1" : C.dark,
+                color: "#fffcf2", fontSize: 13, fontWeight: 800,
+                cursor: selected.length === 0 || fromDate > toDate ? "not-allowed" : "pointer",
+              }}
+            >
+              {status === "building" ? "Building report…" : status === "done" ? "Downloaded ✓" : "Apply & Download Report"}
+            </motion.button>
+          </div>
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
 function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
   const [showShare, setShowShare] = useState(false);
+  const [showPastData, setShowPastData] = useState(false);
   const at = normalizeScopeTheme(state.theme?.analytics);
   const atFontFamily = at.font ? fontStackFor(at.font) : undefined;
   const ac = normalizeAnalyticsColors(state.theme?.analyticsColors);
@@ -5141,6 +5526,10 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
         <BarChart3 size={14} color={ac.header || C.dark} />
         <span style={{ fontSize: 13, fontWeight: 800, color: ac.header || C.dark }}>Analytics & Insights</span>
         <div style={{ flex: 1 }} />
+        <button onClick={() => setShowPastData(true)} style={{
+          border: `1px solid ${hexToRgba(C.dark, 0.16)}`, borderRadius: 8, padding: "5px 10px", background: "transparent", color: C.dark,
+          fontSize: 10, fontWeight: 800, cursor: "pointer", marginRight: 6,
+        }}>📁 Past Data</button>
         <button onClick={() => setShowShare(true)} style={{
           border: "none", borderRadius: 8, padding: "5px 10px", background: C.accent, color: "#fff",
           fontSize: 10, fontWeight: 800, cursor: "pointer", marginRight: 6,
@@ -5150,6 +5539,11 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
           display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
         }}><X size={13} color={C.dark} /></button>
       </div>
+
+      <AnimatePresence>
+        {showPastData && <PastDataModal state={state} user={user} onClose={() => setShowPastData(false)} />}
+      </AnimatePresence>
+
 
       <div style={{ flex: 1, overflowY: "auto", padding: 14 }} className="btl-scroll">
         {/* Life Score badge */}
@@ -5238,7 +5632,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
           </div>
           <div style={{ flex: 1, minWidth: 100, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
             <TrendingUp size={14} color="#4a7c59" />
-            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>{focus7dAvgMinutes}m</div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>{formatMinutesAsHours(focus7dAvgMinutes)}</div>
             <div style={{ fontSize: 9, color: "#b3ac99" }}>7-day avg / day</div>
           </div>
           <div style={{ flex: 1, minWidth: 100, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
@@ -5296,7 +5690,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
           </div>
           <div style={{ flex: 1, minWidth: 100, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
             <TrendingUp size={14} color="#4a7c59" />
-            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>{fitness7dAvgMinutes}m</div>
+            <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>{formatMinutesAsHours(fitness7dAvgMinutes)}</div>
             <div style={{ fontSize: 9, color: "#b3ac99" }}>7-day avg / day</div>
           </div>
           <div style={{ flex: 1, minWidth: 100, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>

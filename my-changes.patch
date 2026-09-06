@@ -1,0 +1,243 @@
+diff --git a/components/BTLDashboard.jsx b/components/BTLDashboard.jsx
+index 566e57e..6e31dde 100644
+--- a/components/BTLDashboard.jsx
++++ b/components/BTLDashboard.jsx
+@@ -5000,7 +5000,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
+   );
+ 
+   const focusTimer = useMemo(() => normalizeFocusTimer(state.focusTimer), [state.focusTimer]);
+-  const focusDailyTotals = useMemo(() => computeFocusDailyTotals(focusTimer, 14), [focusTimer]);
++  const focusDailyTotals = useMemo(() => computeFocusDailyTotals(focusTimer, 30), [focusTimer]);
+   const focusBreakdown30d = useMemo(() => computeFocusBreakdown(focusTimer, 30), [focusTimer]);
+   const focusTodaySeconds = useMemo(
+     () => focusTimer.categories.reduce((sum, c) => sum + focusSecondsToday(focusTimer, c.id), 0),
+@@ -5015,7 +5015,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
+   // Fitness Time analytics (this update) — mirrors the Focus Timer block
+   // just above, reading state.fitnessLog (banked by the guided workout
+   // player in FitnessTab) instead of state.focusTimer.
+-  const fitnessDailyTotals = useMemo(() => computeFitnessDailyTotals(state.fitnessLog, 14), [state.fitnessLog]);
++  const fitnessDailyTotals = useMemo(() => computeFitnessDailyTotals(state.fitnessLog, 30), [state.fitnessLog]);
+   const fitnessBreakdown30d = useMemo(() => computeFitnessBreakdown(state.fitnessLog, 30), [state.fitnessLog]);
+   const fitnessTodaySeconds = useMemo(() => fitnessSecondsToday(state.fitnessLog), [state.fitnessLog]);
+   const fitness7dAvgMinutes = useMemo(() => {
+@@ -5229,7 +5229,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
+         </div>
+ 
+         {/* ---------- Focus Timer analytics (this update) ---------- */}
+-        <div style={{ fontSize: 11, fontWeight: 800, color: ac.sectionHeader || C.dark, margin: "18px 0 6px" }}>Focus Time — last 14 days</div>
++        <div style={{ fontSize: 11, fontWeight: 800, color: ac.sectionHeader || C.dark, margin: "18px 0 6px" }}>Focus Time — last 30 days</div>
+         <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+           <div style={{ flex: 1, minWidth: 100, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
+             <Gauge size={14} color={C.accent} />
+@@ -5251,7 +5251,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
+           <ResponsiveContainer width="100%" height="100%">
+             <ComposedChart data={focusDailyTotals} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+               <CartesianGrid stroke={ac.chartAxis || "#f0ece0"} vertical={false} />
+-              <XAxis dataKey="date" tick={{ fontSize: 8, fill: ac.chartAxis || "#b3ac99" }} interval={1} />
++              <XAxis dataKey="date" tick={{ fontSize: 8, fill: ac.chartAxis || "#b3ac99" }} interval={4} />
+               <YAxis tick={{ fontSize: 9, fill: ac.chartAxis || undefined }} width={28} />
+               <Tooltip formatter={(v) => [`${v}m`, "Focused"]} labelStyle={{ fontSize: 10 }} contentStyle={{ fontSize: 10 }} />
+               <Bar dataKey="minutes" fill={C.accent} radius={[4, 4, 0, 0]} />
+@@ -5287,7 +5287,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
+         )}
+ 
+         {/* ---------- Fitness Time analytics (this update) ---------- */}
+-        <div style={{ fontSize: 11, fontWeight: 800, color: ac.sectionHeader || C.dark, margin: "18px 0 6px" }}>🏋️ Fitness Time — last 14 days</div>
++        <div style={{ fontSize: 11, fontWeight: 800, color: ac.sectionHeader || C.dark, margin: "18px 0 6px" }}>🏋️ Fitness Time — last 30 days</div>
+         <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+           <div style={{ flex: 1, minWidth: 100, border: "1px solid #ece7d8", borderRadius: 8, padding: 10, textAlign: "center" }}>
+             <Dumbbell size={14} color="#e85d4c" />
+@@ -5311,7 +5311,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
+               <ResponsiveContainer width="100%" height="100%">
+                 <ComposedChart data={fitnessDailyTotals} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                   <CartesianGrid stroke={ac.chartAxis || "#f0ece0"} vertical={false} />
+-                  <XAxis dataKey="date" tick={{ fontSize: 8, fill: ac.chartAxis || "#b3ac99" }} interval={1} />
++                  <XAxis dataKey="date" tick={{ fontSize: 8, fill: ac.chartAxis || "#b3ac99" }} interval={4} />
+                   <YAxis tick={{ fontSize: 9, fill: ac.chartAxis || undefined }} width={28} />
+                   <Tooltip formatter={(v) => [`${v}m`, "Worked out"]} labelStyle={{ fontSize: 10 }} contentStyle={{ fontSize: 10 }} />
+                   <Bar dataKey="minutes" fill="#e85d4c" radius={[4, 4, 0, 0]} />
+@@ -7374,7 +7374,7 @@ function MoveHandle({ onPointerDown, onPointerMove, onPointerUp, dragging }) {
+    continuously, one drag-pixel at a time — because GRID_COLS is a fine
+    100-unit (%) grid instead of a coarse 6-column one. See handleResizeMove
+    below and the GRID_COLS/MIN_WIDGET_W comments above. */
+-function ResizableWidgetTile({ id, index, size, editable, gridRef, onResize, onDropOnto, children }) {
++function ResizableWidgetTile({ id, index, size, editable, gridRef, onResize, onDropOnto, onExpand, children }) {
+   const [liveSize, setLiveSize] = useState(null);  // live resize preview, null = not resizing
+   const [dragPos, setDragPos] = useState(null);     // live reorder drag offset {x,y}, null = not dragging
+   const resizeRef = useRef(null);
+@@ -7481,10 +7481,119 @@ function ResizableWidgetTile({ id, index, size, editable, gridRef, onResize, onD
+           <ResizeHandle onPointerDown={handleResizeDown} onPointerMove={handleResizeMove} onPointerUp={handleResizeUp} />
+         </>
+       )}
++      {/* ---- Widget expand button (this update) ----
++          Tiny corner glyph, read-only-mode only (hidden while dragging/
++          resizing in the Layout editor so it never fights those handles).
++          Opens WidgetExpandModal for just this widget with a blurred
++          backdrop — see onExpand wiring in WidgetGrid / BTLDashboard. */}
++      {!editable && onExpand && (
++        <ExpandWidgetButton onClick={(e) => { e.stopPropagation(); onExpand(id); }} />
++      )}
+     </motion.div>
+   );
+ }
+ 
++/* Small "expand to popup" glyph — bottom-right corner of every widget
++   card. Deliberately tiny + low-contrast at rest so it doesn't compete
++   with widget content, and grows/brightens on hover to confirm it's
++   tappable. */
++function ExpandWidgetButton({ onClick }) {
++  return (
++    <motion.button
++      type="button"
++      onClick={onClick}
++      aria-label="Expand widget"
++      title="Expand"
++      whileHover={{ scale: 1.14, backgroundColor: "rgba(64,61,57,0.92)" }}
++      whileTap={{ scale: 0.92 }}
++      initial={false}
++      style={{
++        position: "absolute", right: 6, bottom: 6, zIndex: 5,
++        width: 20, height: 20, borderRadius: "50%", border: "none",
++        display: "flex", alignItems: "center", justifyContent: "center",
++        background: "rgba(64,61,57,0.32)", color: "#fffcf2",
++        cursor: "pointer", padding: 0, backdropFilter: "blur(2px)",
++      }}
++    >
++      <Maximize2 size={11} />
++    </motion.button>
++  );
++}
++
++/* ---------------- WIDGET EXPAND MODAL (this update) ----------------
++   Full popup for a single widget: dims + blurs everything behind it
++   (backdrop-filter, so the rest of the dashboard is still visibly
++   there, just frosted) and scales/fades the widget's own card up from
++   the center — "best animation" per the ask, reusing the same
++   easeOutExpo-ish curve as RadialPanel for a consistent feel across
++   the app. Renders the exact same widgetsMap[id] JSX the grid uses,
++   just at a larger, mostly-viewport size, so there's only ever one
++   copy of any widget's live state on screen at a time. */
++const WIDGET_EXPAND_OPEN = { duration: 0.34, ease: [0.16, 1, 0.3, 1] };
++const WIDGET_EXPAND_CLOSE = { duration: 0.22, ease: [0.7, 0, 0.84, 0] };
++function WidgetExpandModal({ title, onClose, children }) {
++  return (
++    <>
++      <motion.div
++        onClick={onClose}
++        initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
++        animate={{ opacity: 1, backdropFilter: "blur(10px)", transition: WIDGET_EXPAND_OPEN }}
++        exit={{ opacity: 0, backdropFilter: "blur(0px)", transition: WIDGET_EXPAND_CLOSE }}
++        style={{
++          position: "fixed", inset: 0, zIndex: 200,
++          background: "rgba(37,36,34,0.38)",
++          WebkitBackdropFilter: "blur(10px)",
++        }}
++      />
++      <motion.div
++        initial={{ opacity: 0, scale: 0.88, y: 18 }}
++        animate={{ opacity: 1, scale: 1, y: 0, transition: WIDGET_EXPAND_OPEN }}
++        exit={{ opacity: 0, scale: 0.9, y: 12, transition: WIDGET_EXPAND_CLOSE }}
++        style={{
++          position: "fixed", inset: 0, zIndex: 201,
++          display: "flex", alignItems: "center", justifyContent: "center",
++          padding: "5vh 4vw", pointerEvents: "none",
++        }}
++      >
++        <div
++          onClick={(e) => e.stopPropagation()}
++          style={{
++            pointerEvents: "auto",
++            width: "min(680px, 92vw)", height: "min(720px, 88vh)",
++            display: "flex", flexDirection: "column",
++            background: "rgba(255,252,242,0.96)", borderRadius: 18,
++            boxShadow: "0 30px 70px rgba(37,36,34,0.4)",
++            border: "1px solid rgba(255,255,255,0.5)",
++            overflow: "hidden",
++          }}
++        >
++          <div style={{
++            display: "flex", alignItems: "center", justifyContent: "space-between",
++            padding: "12px 16px", flexShrink: 0, borderBottom: "1px solid rgba(64,61,57,0.08)",
++          }}>
++            <span style={{ fontSize: 13, fontWeight: 800, color: C.text }}>{title}</span>
++            <motion.button
++              type="button" onClick={onClose} aria-label="Close"
++              whileHover={{ scale: 1.1, backgroundColor: "rgba(64,61,57,0.14)" }}
++              whileTap={{ scale: 0.92 }}
++              style={{
++                width: 26, height: 26, borderRadius: "50%", border: "none",
++                background: "rgba(64,61,57,0.08)", color: C.text,
++                display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
++              }}
++            >
++              <X size={14} />
++            </motion.button>
++          </div>
++          <div className="btl-scroll" style={{ flex: 1, minHeight: 0, padding: 12, overflowY: "auto" }}>
++            <div style={{ height: "100%", minHeight: 260 }}>{children}</div>
++          </div>
++        </div>
++      </motion.div>
++    </>
++  );
++}
++
+ /* ---------------- CUSTOMIZABLE WIDGET GRID (drag-to-reorder + free-form resize) ----------------
+    Reads state.layout.order / .sizes / .pinned and lays widgets out in
+    a GRID_COLS-column CSS grid with row-dense auto-flow, so reordering
+@@ -7493,7 +7602,7 @@ function ResizableWidgetTile({ id, index, size, editable, gridRef, onResize, onD
+    `editable` + `onResize` + `onReorder` to turn on the corner
+    drag-to-resize / drag-and-drop-to-reorder handles (used in the
+    Layout tab); omit them for the plain read-only dashboard view. */
+-function WidgetGrid({ layout, widgets, editable = false, onResize, onReorder }) {
++function WidgetGrid({ layout, widgets, editable = false, onResize, onReorder, onExpand }) {
+   const gridRef = useRef(null);
+   const visible = layout.order.filter((id) => {
+     if (id === "analyticsSummary") return !!layout.pinned.analyticsSummary;
+@@ -7530,6 +7639,7 @@ function WidgetGrid({ layout, widgets, editable = false, onResize, onReorder })
+           gridRef={gridRef}
+           onResize={onResize}
+           onDropOnto={handleDropOnto}
++          onExpand={onExpand}
+         >
+           {widgets[id]}
+         </ResizableWidgetTile>
+@@ -13384,6 +13494,10 @@ function BTLDashboardInner() {
+   // "tab" and "modal" kind items reuse existing setTab/setMemOpen/etc — see
+   // handleRadialSelect below — since those already ARE full screens or overlays.
+   const [activeRadialWidget, setActiveRadialWidget] = useState(null);
++  // Which widget (by id) is currently blown up into WidgetExpandModal —
++  // null when no popup is open. Desktop-grid-only (see the expand button
++  // added to ResizableWidgetTile / WidgetGrid's onExpand prop).
++  const [expandedWidgetId, setExpandedWidgetId] = useState(null);
+   const [saveStatus, setSaveStatus] = useState("idle"); // "idle" | "saving" | "saved"
+   const [activeAlarm, setActiveAlarm] = useState(null); // { id, time } | null — Clock & Alarm widget (this update)
+   const incomingFriendReqCount = useIncomingFriendRequestCount(fbUser?.uid);
+@@ -14458,11 +14572,26 @@ function BTLDashboardInner() {
+               {!isMobileView && (
+               <div className="btl-desktop-only-grid" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+                 <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }} className="btl-scroll">
+-                  <WidgetGrid layout={state.layout} widgets={widgetsMap} />
++                  <WidgetGrid layout={state.layout} widgets={widgetsMap} onExpand={setExpandedWidgetId} />
+                 </div>
+               </div>
+               )}
+ 
++              {/* ---- Expanded widget popup (this update) ---- blurred backdrop
++                   + scale-in card showing just the one widget the corner
++                   glyph was tapped on; see WidgetExpandModal above. */}
++              <AnimatePresence>
++                {expandedWidgetId && (
++                  <WidgetExpandModal
++                    key={expandedWidgetId}
++                    title={WIDGETS.find((w) => w.id === expandedWidgetId)?.label || ""}
++                    onClose={() => setExpandedWidgetId(null)}
++                  >
++                    {widgetsMap[expandedWidgetId]}
++                  </WidgetExpandModal>
++                )}
++              </AnimatePresence>
++
+               {isMobileView && (
+                 <>
+               {/* ---------- RADIAL DIAL HOME (mobile) — Step 7 ----------
