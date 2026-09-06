@@ -1,6 +1,144 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🎨 PDF report — no more broken emoji boxes, real icons, new palette, charts on every widget (this update)
+## 🔥 "Start Streak" per-goal option in Daily/Extra Goals (this update)
+Per your screenshots: Daily Goals (and Extra Goals, same widget component)
+now has an opt-in per-goal streak, right in the widget itself — not just
+in Analytics.
+
+- **Adding a new goal**: tap the 🏷 options button next to "Add item…"
+  (same button that already opens Category / Priority / Recurring) —
+  the popup that opens below now also has a **"🔥 Start Streak"**
+  checkbox. Check it and the goal is created with streak tracking on.
+- **An existing goal**: tap its row to expand (the ⌄ chevron), and the
+  same "🔥 Streak" checkbox is there next to its category tag — toggle it
+  on/off any time, no need to delete and re-add the goal.
+- **The flame badge**: any streak-enabled goal shows a small pulsing
+  flame + its current day-count right next to its name, live.
+- **The reset**: this needed no separate "reset" code — the streak count
+  is computed fresh from `dailyLogs[date].completedGoals[daily/extry]`
+  (the same per-day snapshot of exactly which goal ids were done, already
+  recorded on every toggle) walked backward from today. The moment a
+  full day goes by without that goal being ticked, the next recorded day
+  simply won't have it in the snapshot, so the flame's count naturally
+  drops back to 0 on its own — same convention the Analytics → Deep
+  Analytics "Per-goal streaks" / "Best-ever streak per goal" widgets
+  already use, just surfaced live on the widget now too.
+
+## 📤 Time Table score added next to Daily Goals ring on the Share card (earlier update)
+Per your screenshot markup: the **Share Your Journey** card's big score
+ring now shows Time Table alongside Daily Goals, not just Daily Goals
+alone. Both in `generateShareCard` (`components/BTLDashboard.jsx`):
+
+- **Daily Goals** stays the primary ring, same size and position feel as
+  before, on the left.
+- **Time Table** is a new, smaller secondary ring on the right, same
+  "progress ring + %  + done/total" language, colored with the same
+  purple (`#8a6fd6`) the Time Table ring already uses in the dashboard
+  header (RingStat) and Analytics — so it visually matches everywhere
+  else Time Table progress shows up.
+- Reads straight off `state.timeTable` (done vs total), the same field
+  the header's Time Table ring and completion % already use — nothing
+  new to store.
+
+## 🕛 Fix: daily reset now happens at local midnight, not 5:30 AM (earlier update)
+You flagged that Daily Goals / Extra Goals / Time Table checkboxes should
+reset when "the day ends" — turns out they were resetting at **5:30 AM
+IST**, not midnight. Root cause found and fixed in `components/BTLDashboard.jsx`:
+
+- The app's shared `todayISO()` helper — used everywhere something needs
+  today's date as a key (goal/Time Table reset, streaks, mood log, money
+  history, completionHistory, dailyLogs, etc.) — was built from
+  `new Date().toISOString().slice(0, 10)`, which is the **UTC** calendar
+  date, not your device's local one. Since IST is UTC+5:30, the UTC date
+  only rolls over at 5:30 AM local time — so that's when every reset tied
+  to it actually fired, a full 5.5 hours late.
+- `todayISO()` now builds the date string from the local `Date` getters
+  (`getFullYear`/`getMonth`/`getDate`) instead, so "today" always means
+  true local midnight-to-midnight — same convention the Calendar/Memories
+  widgets' own `localDateToISO` already used.
+- Went further and swept every other spot in the file computing a
+  "N days ago" date key for charts/trends/filters (Focus Timer & Fitness
+  breakdowns, Analytics weekday/momentum/money-velocity, mood trend, Past
+  Data date range, etc.) — all 16 of them were using the same UTC-based
+  `.toISOString().slice(0, 10)` pattern. Pulled them all into one shared
+  `dateISO(d)` helper (also local-date-based) so every date key in the app
+  now agrees with `todayISO()` — otherwise those charts would've stayed
+  silently misaligned by a day specifically during the 12:00–5:29 AM IST
+  window, even after the main reset was fixed.
+
+Nothing about *what* gets stored changed — only when "today" flips over.
+Past dates already saved (streak history, mood log, money history, etc.)
+are untouched; only new day-keys going forward use the corrected local
+date.
+
+## 🏆 "Best-ever streak per goal" widget added (earlier update)
+One more Deep Analytics widget, right after "Goal consistency — last 30
+days": per goal, its **longest-ever run** of consecutive calendar days
+completed — not just the streak still active today. Sorted longest-first,
+with a small "● NOW" tag on any goal whose current streak has actually
+reached (i.e. is tying or re-setting) its own all-time best.
+
+Computed the same way the existing top-level "Streak record" widget
+checks for calendar-day continuity (a skipped or unrecorded day breaks
+the run), just walked per-goal using the same
+`dailyLogs[date].completedGoals` snapshots the streak/consistency widgets
+below it already use — still nothing new stored.
+
+## 🎯 Per-goal streak & consistency widgets in Deep Analytics (earlier update)
+Two new widgets added to Analytics & Insights → **🔬 Deep Analytics** (after
+"Weekly momentum"), going deeper than the existing whole-list stats —
+per **individual** Daily/Extra Goal this time, not just the combined %:
+
+- **Per-goal streaks** — for every goal that's currently on a streak, shows
+  how many *consecutive* days in a row it's been ticked off, sorted longest
+  first (flame icon, colored by list: Daily Goals accent vs Extra Goals
+  blue).
+- **Goal consistency — last 30 days** — every goal that has at least one
+  recorded day, as a % of the last 30 *recorded* days (days the app was
+  actually used) it was completed on — same bar-row style as "Category
+  performance" above it.
+
+Both are computed from data that already existed and needed no new
+schema: `dailyLogs[date].completedGoals.{daily,extry}` already snapshots
+exactly which goal **ids** were done each day (this was already recorded
+on every toggle, originally for the Memories modal) — matching a goal's
+current id against that day-by-day snapshot going backward gives its true
+streak and consistency, per goal, with nothing fabricated and nothing new
+to store. A goal only counts days from *after* it was created (no
+snapshot before that), so a brand-new goal won't be unfairly scored
+against days it didn't exist.
+
+## ⏱️ Per-category "today" widgets in Analytics → Focus Time (earlier update)
+Per your screenshot markup: the **Focus Time — last 30 days** section
+(Analytics & Insights tab) now shows a small widget card for **every
+Focus Timer category** — Screen time / Social media / Deep work / Study by
+default, plus any custom category you've added from the Focus Timer
+widget's own "+" popup — right below the existing Focused today / 7-day
+avg / Top category row.
+
+Each card shows: the category's own colored dot (same color used
+everywhere else — the widget, the 30d breakdown donut below), the
+category name, and **today's tracked time** for just that category
+(`focusSecondsToday` — same helper the Focus Timer widget itself uses).
+If a category is the one currently running, its card gets a highlighted
+border/background in its color and a small "● LIVE" tag, and its time
+keeps ticking up live, same as the widget.
+
+## 📊 Analytics & Layout icons added to desktop header (earlier update)
+Per your screenshot markup: the desktop header's icon row (Focus Mode /
+Share Journey / Setting / Friend Celebration, next to the top-right) now
+also has two more round glow-icon buttons, right after Friend Celebration:
+- **Analytics** (bar-chart icon) — jumps straight to the Analytics tab
+  (`setTab("analytics")`), same tab the "Analytics Summary" widget's
+  "Open full" link already opens.
+- **Layout** (grid icon) — jumps straight to the Customize Layout tab
+  (`setTab("layout")`), same one the mobile FAB's "Layout" shortcut opens.
+
+Both light up (filled state) while their tab is active, same as the
+existing icons in that row. Mobile view is unaffected — the mobile FAB
+already had both of these shortcuts.
+
+## 🎨 PDF report — no more broken emoji boxes, real icons, new palette, charts on every widget (earlier update)
 Two things you flagged from the actual generated PDF, both fixed in
 `components/BTLDashboard.jsx`:
 

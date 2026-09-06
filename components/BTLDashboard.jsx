@@ -43,7 +43,30 @@ const C = {
 };
 
 const STORAGE_KEY = "btl_state_v1";
-const todayISO = () => new Date().toISOString().slice(0, 10);
+/* "Today", as a plain YYYY-MM-DD string, used everywhere state needs a
+   day key — Daily/Extra Goals + Time Table reset, streaks, mood log,
+   money history, completionHistory, dailyLogs, etc.
+   Fixed (this update): this used to be `new Date().toISOString().slice(0,10)`,
+   which reads the UTC calendar date, not the device's local one. For an
+   IST user (UTC+5:30) that meant the "new day" boundary — and therefore
+   every reset that keys off it, like Daily/Extra Goals + recurring Time
+   Table items unchecking for the new day — actually landed at 5:30 AM
+   local time (UTC midnight), not local midnight as expected. Now built
+   from the local Date getters instead, so "today" always means local
+   midnight-to-midnight, same convention the Calendar/Memories widgets'
+   own `localDateToISO` already used. */
+const todayISO = () => dateISO(new Date());
+/* Shared local-date formatter — YYYY-MM-DD from local Date getters
+   (not UTC), used everywhere a Date needs to become a day-key: "last N
+   days" loops for charts/trends, date-range filters, etc. Keeping every
+   one of these on the same local-date convention as todayISO() (see
+   above) matters — mixing UTC-based keys back in here would silently
+   misalign "today"/"last 7 days" lookups against history that's actually
+   stored under local-date keys, especially during the 00:00–05:29 IST
+   window where the UTC calendar date still lags a day behind. */
+function dateISO(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 /* ---------------- CUSTOMIZABLE WIDGET LAYOUT ----------------
    2026 trend: user-controlled, rearrangeable + FREE-FORM resizable
@@ -682,6 +705,12 @@ function ensureGoalDefaults(g) {
     recurring: g.recurring !== undefined ? g.recurring : true,
     subtasks: g.subtasks || [],
     icon: g.icon || "",
+    // "Start Streak" (this update) — opt-in per goal. When on, the goal
+    // shows a flame badge + running streak count in its row (computed
+    // live from dailyLogs[date].completedGoals, same data the Analytics
+    // per-goal streak widgets use) and that streak naturally drops back
+    // to 0 the moment a day goes by without this goal being ticked.
+    streakEnabled: !!g.streakEnabled,
   };
 }
 
@@ -1922,7 +1951,7 @@ function useIsMobileView(breakpoint = 768) {
   return isMobile;
 }
 
-function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent, textStyle, cardBg, streak = 0, history = {}, hideAddForm = false }) {
+function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, onSetStreakEnabled, listKey, dailyLogs, accent, textStyle, cardBg, streak = 0, history = {}, hideAddForm = false }) {
   const ts = normalizeTextStyle(textStyle);
   const itemFontSize = Math.round(11 * ts.scale);
   const subFontSize = Math.round(10 * ts.scale);
@@ -1934,6 +1963,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
   const [priority, setPriority] = useState("medium");
   const [recurring, setRecurring] = useState(true);
   const [icon, setIcon] = useState("");
+  const [streakEnabled, setStreakEnabled] = useState(false);
   const [openId, setOpenId] = useState(null);
   const [subVal, setSubVal] = useState("");
   const [showOptions, setShowOptions] = useState(false);
@@ -1985,9 +2015,35 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
 
   const submit = () => {
     if (!val.trim()) return;
-    onAdd(val.trim(), { category, priority, recurring, icon });
-    setVal(""); setIcon("");
+    onAdd(val.trim(), { category, priority, recurring, icon, streakEnabled });
+    setVal(""); setIcon(""); setStreakEnabled(false);
   };
+
+  // ---- "Start Streak" — live per-goal streak count (this update) ----
+  // Same convention Analytics' per-goal streak widgets use:
+  // dailyLogs[date].completedGoals[listKey] is a per-day snapshot of
+  // exactly which goal ids were done that day, already recorded on every
+  // toggle — walking it backward from the most recent recorded day gives
+  // each streak-enabled goal's current run with nothing new to store.
+  // A day that goes by without the goal being ticked breaks the run the
+  // moment that day's snapshot exists without it, so the badge naturally
+  // drops back to 0 — no separate reset logic needed.
+  const goalStreakCounts = useMemo(() => {
+    if (!listKey) return {};
+    const logs = dailyLogs || {};
+    const recordedDates = Object.keys(logs).filter((d) => logs[d]?.completedGoals).sort().reverse();
+    const counts = {};
+    (items || []).forEach((g) => {
+      if (!g.streakEnabled) return;
+      let streak = 0;
+      for (const iso of recordedDates) {
+        const present = (logs[iso]?.completedGoals?.[listKey] || []).some((x) => x.id === g.id);
+        if (present) streak++; else break;
+      }
+      counts[g.id] = streak;
+    });
+    return counts;
+  }, [items, dailyLogs, listKey]);
 
   return (
     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0, height: "100%" }}>
@@ -2109,6 +2165,21 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                     transition={{ duration: 0.3 }}
                     onClick={() => handleToggle(g.id, g.done)}
                   >{g.text}</motion.span>
+                  {g.streakEnabled && (
+                    <span title={`Streak: ${goalStreakCounts[g.id] || 0} day(s) in a row`} style={{
+                      display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0,
+                      fontSize: 9, fontWeight: 900, color: "#e07a5f",
+                    }}>
+                      <motion.span
+                        animate={{ scale: [1, 1.18, 1] }}
+                        transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+                        style={{ display: "inline-flex" }}
+                      >
+                        <Flame size={11} style={{ color: (goalStreakCounts[g.id] || 0) > 0 ? "#e07a5f" : "#d8d2bf" }} />
+                      </motion.span>
+                      {goalStreakCounts[g.id] || 0}
+                    </span>
+                  )}
                   <span title={`Priority: ${prio.label}`} style={{
                     fontSize: 8, fontWeight: 900, color: "#fff", background: prio.color,
                     borderRadius: 4, padding: "1px 4px", flexShrink: 0,
@@ -2148,8 +2219,18 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
                       style={{ overflow: "hidden" }}
                     >
                       <div style={{ padding: "2px 8px 8px 22px", background: "#fbf9f2" }}>
-                        <div style={{ fontSize: 8, color: "#a39c86", marginBottom: 3 }}>
-                          <Tag size={9} style={{ verticalAlign: -1, marginRight: 3 }} />{cat.label}
+                        <div style={{ fontSize: 8, color: "#a39c86", marginBottom: 3, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <span><Tag size={9} style={{ verticalAlign: -1, marginRight: 3 }} />{cat.label}</span>
+                          {onSetStreakEnabled && (
+                            <label style={{ display: "flex", alignItems: "center", gap: 3, cursor: "pointer", fontWeight: 800, color: g.streakEnabled ? "#e07a5f" : "#a39c86" }}>
+                              <input
+                                type="checkbox" checked={!!g.streakEnabled}
+                                onChange={(e) => onSetStreakEnabled(g.id, e.target.checked)}
+                                style={{ width: 10, height: 10, accentColor: "#e07a5f" }}
+                              />
+                              <Flame size={10} /> Streak
+                            </label>
+                          )}
                         </div>
                         <AnimatePresence initial={false}>
                           {(g.subtasks || []).map((s) => (
@@ -2238,6 +2319,10 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
               <label style={{ fontSize: 9, display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
                 <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} style={{ width: 11, height: 11 }} />
                 Recurring
+              </label>
+              <label style={{ fontSize: 9, display: "flex", alignItems: "center", gap: 3, cursor: "pointer", fontWeight: 800, color: streakEnabled ? "#e07a5f" : undefined }}>
+                <input type="checkbox" checked={streakEnabled} onChange={(e) => setStreakEnabled(e.target.checked)} style={{ width: 11, height: 11, accentColor: "#e07a5f" }} />
+                <Flame size={11} style={{ color: "#e07a5f" }} /> Start Streak
               </label>
             </div>
           )}
@@ -2687,7 +2772,7 @@ function computeFocusBreakdown(focusTimer, days = 1) {
   const now = new Date();
   for (let i = 0; i < days; i++) {
     const d = new Date(now); d.setDate(d.getDate() - i);
-    const iso = d.toISOString().slice(0, 10);
+    const iso = dateISO(d);
     const dayHist = focusTimer.history?.[iso] || {};
     Object.entries(dayHist).forEach(([catId, secs]) => { totals[catId] = (totals[catId] || 0) + secs; });
   }
@@ -2709,7 +2794,7 @@ function computeFocusDailyTotals(focusTimer, days = 14) {
   const now = new Date();
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now); d.setDate(d.getDate() - i);
-    const iso = d.toISOString().slice(0, 10);
+    const iso = dateISO(d);
     const dayHist = focusTimer.history?.[iso] || {};
     let secs = Object.values(dayHist).reduce((a, b) => a + b, 0);
     if (i === 0 && focusTimer.active) secs += Math.max(0, Math.floor((Date.now() - focusTimer.active.startTs) / 1000));
@@ -2728,7 +2813,7 @@ function computeFitnessBreakdown(fitnessLog, days = 30) {
   const now = new Date();
   for (let i = 0; i < days; i++) {
     const d = new Date(now); d.setDate(d.getDate() - i);
-    const iso = d.toISOString().slice(0, 10);
+    const iso = dateISO(d);
     const dayLog = fitnessLog?.[iso] || {};
     Object.entries(dayLog).forEach(([catId, secs]) => { totals[catId] = (totals[catId] || 0) + secs; });
   }
@@ -2745,7 +2830,7 @@ function computeFitnessDailyTotals(fitnessLog, days = 14) {
   const now = new Date();
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now); d.setDate(d.getDate() - i);
-    const iso = d.toISOString().slice(0, 10);
+    const iso = dateISO(d);
     const dayLog = fitnessLog?.[iso] || {};
     const secs = Object.values(dayLog).reduce((a, b) => a + b, 0);
     out.push({ date: d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }), minutes: +(secs / 60).toFixed(1) });
@@ -3117,7 +3202,7 @@ function isoDateRange(fromISO, toISO) {
   const end = new Date(toISO + "T00:00:00");
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return out;
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    out.push(d.toISOString().slice(0, 10));
+    out.push(dateISO(d));
   }
   return out;
 }
@@ -4657,12 +4742,25 @@ async function generateShareCard(state, lifeScore, userName, userPhoto) {
   ctx.fillStyle = "#a39c86";
   ctx.fillText(new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" }), W / 2, 150);
 
-  // Daily Goal score ring — shows today's goal completion % (doneGoals /
-  // allGoals, the same count already shown in the modal's "X/Y goals done
-  // today" subtitle) instead of the overall Life Score.
+  // Daily Goal + Time Table score rings, side by side (this update) — Daily
+  // Goals stays the primary/bigger ring on the left, Time Table joins as a
+  // smaller secondary ring on the right using the same "done/total" ring
+  // language, colored with the Time Table accent used everywhere else in
+  // the app (header's RingStat, Analytics). Both read straight off
+  // `state` (dailyGoals/extryGoals done vs state.timeTable done), same as
+  // the modal's own "X/Y goals done today" subtitle.
   const goalPct = allGoals.length ? Math.round((doneGoals.length / allGoals.length) * 100) : 0;
-  const cx = W / 2, cy = 400, R = 150;
-  ctx.lineWidth = 22;
+  const timeTableItems = state.timeTable || [];
+  const timeTableDone = timeTableItems.filter((t) => t.done).length;
+  const timeTablePct = timeTableItems.length ? Math.round((timeTableDone / timeTableItems.length) * 100) : 0;
+  const TIME_TABLE_COLOR = "#8a6fd6";
+
+  const centerX = W / 2, cy = 400;
+  const cx = centerX - 130, R = 130;
+  const cx2 = centerX + 230, R2 = 78;
+
+  // Daily Goals ring (primary)
+  ctx.lineWidth = 20;
   ctx.strokeStyle = "#ece7d8";
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
   ctx.strokeStyle = lifeScore.color;
@@ -4671,17 +4769,37 @@ async function generateShareCard(state, lifeScore, userName, userPhoto) {
   ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * goalPct) / 100);
   ctx.stroke();
   ctx.fillStyle = C.dark;
-  ctx.font = "900 72px Inter, sans-serif";
-  ctx.fillText(`${goalPct}%`, cx, cy + 22);
-  ctx.font = "700 22px Inter, sans-serif";
+  ctx.font = "900 62px Inter, sans-serif";
+  ctx.fillText(`${goalPct}%`, cx, cy + 18);
+  ctx.font = "700 19px Inter, sans-serif";
   ctx.fillStyle = "#a39c86";
-  ctx.fillText("DAILY GOALS", cx, cy + 58);
-  ctx.font = "700 24px Inter, sans-serif";
+  ctx.fillText("DAILY GOALS", cx, cy + 52);
+  ctx.font = "700 21px Inter, sans-serif";
   ctx.fillStyle = lifeScore.color;
-  ctx.fillText(`${doneGoals.length}/${allGoals.length} completed`, cx, cy + 92);
+  ctx.fillText(`${doneGoals.length}/${allGoals.length} completed`, cx, cy + 84);
+
+  // Time Table ring (secondary, smaller — this update)
+  ctx.lineWidth = 14;
+  ctx.strokeStyle = "#ece7d8";
+  ctx.beginPath(); ctx.arc(cx2, cy, R2, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = TIME_TABLE_COLOR;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.arc(cx2, cy, R2, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * timeTablePct) / 100);
+  ctx.stroke();
+  ctx.fillStyle = C.dark;
+  ctx.font = "900 34px Inter, sans-serif";
+  ctx.fillText(`${timeTablePct}%`, cx2, cy + 12);
+  ctx.font = "700 14px Inter, sans-serif";
+  ctx.fillStyle = "#a39c86";
+  ctx.fillText("TIME TABLE", cx2, cy + 34);
+  ctx.font = "700 13px Inter, sans-serif";
+  ctx.fillStyle = TIME_TABLE_COLOR;
+  ctx.fillText(`${timeTableDone}/${timeTableItems.length} completed`, cx2, cy + 54);
+
   ctx.font = "700 30px Inter, sans-serif";
   ctx.fillStyle = lifeScore.color;
-  ctx.fillText(`${lifeScore.emoji} ${lifeScore.label}`, cx, cy + 210);
+  ctx.fillText(`${lifeScore.emoji} ${lifeScore.label}`, centerX, cy + 210);
 
   // stat row — Total Earned pill removed (money now gets its own proper
   // Earn/Spend panel below instead of being squeezed in here)
@@ -4926,7 +5044,7 @@ function ShareJourneyModal({ state, lifeScore, userName, userPhoto, onClose }) {
     if (!imgUrl) return;
     const a = document.createElement("a");
     a.href = imgUrl;
-    a.download = `byound-the-life-${new Date().toISOString().slice(0, 10)}.png`;
+    a.download = `byound-the-life-${dateISO(new Date())}.png`;
     a.click();
   };
 
@@ -5043,7 +5161,7 @@ function Heatmap({ completionHistory, accentColor, weeks = 12, cellSize = 10 }) 
         {cols.map((col, ci) => (
           <div key={ci} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
             {col.map((d, di) => {
-              const iso = d.toISOString().slice(0, 10);
+              const iso = dateISO(d);
               const isFuture = d > today;
               const pct = completionHistory[iso];
               return (
@@ -5250,7 +5368,7 @@ function computeLifeScore(state, colorOverride) {
   let compSum = 0, compN = 0, moodSum = 0, moodN = 0;
   for (let i = 0; i < 7; i++) {
     const d = new Date(); d.setDate(d.getDate() - i);
-    const iso = d.toISOString().slice(0, 10);
+    const iso = dateISO(d);
     if (hist[iso] !== undefined) { compSum += hist[iso]; compN++; }
     const mv = moodToNum(mood[iso]);
     if (mv !== null) { moodSum += mv; moodN++; }
@@ -5410,7 +5528,7 @@ function DeepAnalyticsGrid({ state, ac }) {
     const days = [];
     for (let i = 13; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
+      const iso = dateISO(d);
       const v = hist[iso] || { earn: 0, spend: 0 };
       days.push({ date: d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }), earn: v.earn || 0, spend: v.spend || 0, net: (v.earn || 0) - (v.spend || 0) });
     }
@@ -5418,11 +5536,106 @@ function DeepAnalyticsGrid({ state, ac }) {
     let prevSum = 0;
     for (let i = 27; i >= 14; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
-      const v = hist[d.toISOString().slice(0, 10)];
+      const v = hist[dateISO(d)];
       if (v) prevSum += (v.earn || 0) - (v.spend || 0);
     }
     return { days, thisSum, delta: thisSum - prevSum };
   }, [state.moneyHistory]);
+
+  // ---- Monthly Money Trend (this update) ----
+  // Same source as "Money velocity" (state.moneyHistory) but aggregated by
+  // calendar month over the last 6 months, so long-term earn/spend shape
+  // is visible instead of just the last 14 days.
+  const monthlyMoneyTrend = useMemo(() => {
+    const hist = state.moneyHistory || {};
+    const now = new Date();
+    const months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      months.push({ key, label: d.toLocaleDateString(undefined, { month: "short", year: "2-digit" }), earn: 0, spend: 0 });
+    }
+    const byKey = Object.fromEntries(months.map((m) => [m.key, m]));
+    Object.entries(hist).forEach(([iso, rec]) => {
+      const bucket = byKey[iso.slice(0, 7)];
+      if (bucket) { bucket.earn += rec.earn || 0; bucket.spend += rec.spend || 0; }
+    });
+    return months.map((m) => ({ ...m, net: m.earn - m.spend }));
+  }, [state.moneyHistory]);
+
+  // ---- Savings Rate % (this update) ----
+  // (earn − spend) / earn per month, off the same monthly buckets above —
+  // months with zero earning are left as `null` so the chart shows a gap
+  // instead of a misleading 0%/100%.
+  const savingsRateTrend = useMemo(() => {
+    return monthlyMoneyTrend.map((m) => ({
+      label: m.label,
+      rate: m.earn > 0 ? Math.round(((m.earn - m.spend) / m.earn) * 100) : null,
+    }));
+  }, [monthlyMoneyTrend]);
+  const savingsRateAvg = useMemo(() => {
+    const withData = savingsRateTrend.filter((m) => m.rate !== null);
+    if (!withData.length) return null;
+    return Math.round(withData.reduce((s, m) => s + m.rate, 0) / withData.length);
+  }, [savingsRateTrend]);
+
+  // ---- Fitness Volume Trend (this update) ----
+  // state.fitnessLog only ever banks *time* (seconds per category per day —
+  // see computeFitnessDailyTotals above), not reps/sets/weight, since the
+  // guided workout player doesn't collect those. "Volume" here means total
+  // workout minutes, aggregated weekly over the last 8 weeks, same
+  // convention as everywhere else fitness time is shown.
+  const fitnessVolumeWeekly = useMemo(() => {
+    const log = state.fitnessLog || {};
+    const now = new Date();
+    const weeks = [];
+    for (let w = 7; w >= 0; w--) {
+      let mins = 0;
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(now); day.setDate(day.getDate() - (w * 7 + d));
+        const dayLog = log[dateISO(day)] || {};
+        mins += Object.values(dayLog).reduce((a, b) => a + b, 0) / 60;
+      }
+      const weekStart = new Date(now); weekStart.setDate(weekStart.getDate() - (w * 7 + 6));
+      weeks.push({ label: weekStart.toLocaleDateString(undefined, { day: "2-digit", month: "short" }), minutes: Math.round(mins) });
+    }
+    return weeks;
+  }, [state.fitnessLog]);
+
+  // ---- Fitness Personal Best (this update) ----
+  // A stand-in for a true reps/weight "PR" (which the app doesn't log
+  // today): longest single-day workout, and the best-ever 7-day rolling
+  // average, both in minutes — same all-time-record spirit as "Best-ever
+  // streak per goal" above, just on fitness time instead of goal streaks.
+  const fitnessRecord = useMemo(() => {
+    const log = state.fitnessLog || {};
+    const dates = Object.keys(log).sort();
+    let bestDayMinutes = 0, bestDayIso = null;
+    dates.forEach((iso) => {
+      const mins = Object.values(log[iso] || {}).reduce((a, b) => a + b, 0) / 60;
+      if (mins > bestDayMinutes) { bestDayMinutes = mins; bestDayIso = iso; }
+    });
+    let bestWeekAvg = 0;
+    if (dates.length) {
+      const first = new Date(dates[0] + "T00:00:00");
+      const last = new Date();
+      for (let d = new Date(first); d <= last; d.setDate(d.getDate() + 1)) {
+        let sum = 0;
+        for (let k = 0; k < 7; k++) {
+          const day = new Date(d); day.setDate(day.getDate() - k);
+          const dayLog = log[dateISO(day)] || {};
+          sum += Object.values(dayLog).reduce((a, b) => a + b, 0) / 60;
+        }
+        bestWeekAvg = Math.max(bestWeekAvg, sum / 7);
+      }
+    }
+    return {
+      bestDayMinutes: Math.round(bestDayMinutes),
+      bestDayLabel: bestDayIso ? new Date(bestDayIso + "T00:00:00").toLocaleDateString(undefined, { day: "2-digit", month: "short" }) : null,
+      bestWeekAvg: Math.round(bestWeekAvg),
+      hasData: dates.length > 0,
+    };
+  }, [state.fitnessLog]);
 
   const subtaskStats = useMemo(() => {
     let done = 0, total = 0;
@@ -5435,12 +5648,80 @@ function DeepAnalyticsGrid({ state, ac }) {
   const momentum = useMemo(() => {
     const hist = state.completionHistory || {};
     const today = new Date();
-    const isoOf = (d) => d.toISOString().slice(0, 10);
+    const isoOf = (d) => dateISO(d);
     let thisSum = 0, thisN = 0, lastSum = 0, lastN = 0;
     for (let i = 0; i < 7; i++) { const d = new Date(today); d.setDate(d.getDate() - i); const v = hist[isoOf(d)]; if (v !== undefined) { thisSum += v; thisN++; } }
     for (let i = 7; i < 14; i++) { const d = new Date(today); d.setDate(d.getDate() - i); const v = hist[isoOf(d)]; if (v !== undefined) { lastSum += v; lastN++; } }
     return { thisAvg: thisN ? Math.round(thisSum / thisN) : 0, lastAvg: lastN ? Math.round(lastSum / lastN) : 0, hasData: thisN > 0 && lastN > 0 };
   }, [state.completionHistory]);
+
+  // ---- Per-goal streak & consistency (this update) ----
+  // dailyLogs[iso].completedGoals.{daily,extry} is a per-day snapshot of
+  // exactly which goal ids were ticked off that day (already recorded by
+  // recordCompletionHistory on every toggle) — matching a *current* goal's
+  // id against that snapshot, day by day, gives a true per-goal history
+  // without needing any new schema or state field.
+  const goalHistoryStats = useMemo(() => {
+    const logs = state.dailyLogs || {};
+    // Only count days the app actually recorded a completedGoals snapshot —
+    // days before a goal existed, or days the app wasn't opened, shouldn't
+    // drag a goal's consistency % down.
+    const recordedDates = Object.keys(logs).filter((d) => logs[d]?.completedGoals).sort().reverse();
+    const recordedDatesAsc = recordedDates.slice().reverse();
+    const last30 = recordedDates.slice(0, 30);
+    const wasDoneOn = (iso, listKey, id) => (logs[iso]?.completedGoals?.[listKey] || []).some((x) => x.id === id);
+
+    const allGoals = [
+      ...(state.dailyGoals || []).map((g) => ({ ...g, listKey: "daily" })),
+      ...(state.extryGoals || []).map((g) => ({ ...g, listKey: "extry" })),
+    ];
+
+    const perGoal = allGoals.map((g) => {
+      let streak = 0;
+      for (const iso of recordedDates) {
+        if (wasDoneOn(iso, g.listKey, g.id)) streak++; else break;
+      }
+      const consideredDays = last30.length;
+      const doneDays = last30.filter((iso) => wasDoneOn(iso, g.listKey, g.id)).length;
+      const consistency = consideredDays ? Math.round((doneDays / consideredDays) * 100) : 0;
+
+      // All-time best streak (this update) — walks every recorded day in
+      // calendar order and counts the longest *consecutive-calendar-day*
+      // run where the goal was done, not just the run still active today.
+      // A gap of more than 1 calendar day (a day that wasn't recorded, or
+      // a day it was skipped) breaks the run, same convention as the
+      // existing "Streak record" widget's calendar-day check above.
+      let bestStreak = 0, run = 0, prevDate = null;
+      for (const iso of recordedDatesAsc) {
+        const done = wasDoneOn(iso, g.listKey, g.id);
+        if (done) {
+          const d = new Date(iso + "T00:00:00");
+          run = prevDate && (d - prevDate) / 86400000 === 1 ? run + 1 : 1;
+          bestStreak = Math.max(bestStreak, run);
+          prevDate = d;
+        } else {
+          run = 0; prevDate = null;
+        }
+      }
+
+      return { id: g.id, text: g.text || "Untitled goal", listKey: g.listKey, streak, consistency, consideredDays, bestStreak };
+    });
+
+    return { perGoal, recordedDays: recordedDates.length };
+  }, [state.dailyGoals, state.extryGoals, state.dailyLogs]);
+
+  const topStreakGoals = useMemo(
+    () => goalHistoryStats.perGoal.filter((g) => g.streak > 0).sort((a, b) => b.streak - a.streak).slice(0, 6),
+    [goalHistoryStats]
+  );
+  const consistencyGoals = useMemo(
+    () => goalHistoryStats.perGoal.filter((g) => g.consideredDays > 0).sort((a, b) => b.consistency - a.consistency),
+    [goalHistoryStats]
+  );
+  const bestEverGoals = useMemo(
+    () => goalHistoryStats.perGoal.filter((g) => g.bestStreak > 0).sort((a, b) => b.bestStreak - a.bestStreak).slice(0, 6),
+    [goalHistoryStats]
+  );
 
   const moodTotal = moodDist.total || 0;
   const moodPct = (k) => (moodTotal ? Math.round((moodDist.counts[k] / moodTotal) * 100) : 0);
@@ -5577,6 +5858,141 @@ function DeepAnalyticsGrid({ state, ac }) {
           ) : <EmptyNote text="Keep logging — momentum needs 2 weeks of data." />}
         </ProCard>
 
+        <ProCard title="Per-goal streaks" icon={Flame} color="#e07a5f" index={8}>
+          {topStreakGoals.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {topStreakGoals.map((g, i) => (
+                <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                  <span style={{
+                    width: 20, height: 20, borderRadius: "50%", flexShrink: 0, display: "flex",
+                    alignItems: "center", justifyContent: "center",
+                    background: g.listKey === "daily" ? hexToRgba(C.accent, 0.14) : hexToRgba(C.blue, 0.14),
+                  }}>
+                    <Flame size={10} color={g.listKey === "daily" ? C.accent : C.blue} />
+                  </span>
+                  <span style={{ fontSize: 9.5, flex: 1, minWidth: 0, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.text}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 900, color: C.dark }}>{g.streak}d</span>
+                </div>
+              ))}
+            </div>
+          ) : <EmptyNote text="Complete the same goal on consecutive days to build a streak." />}
+        </ProCard>
+
+        <ProCard title="Goal consistency — last 30 days" icon={Tag} color="#4a7c59" index={9} wide>
+          {consistencyGoals.length ? (
+            <div style={{ display: "flex", flexWrap: "wrap", columnGap: 18 }}>
+              {consistencyGoals.map((g, i) => (
+                <div key={g.id} style={{ flex: "1 1 220px", minWidth: 200 }}>
+                  <AnimatedBarRow
+                    label={g.text}
+                    pct={g.consistency}
+                    color={g.listKey === "daily" ? C.accent : C.blue}
+                    rightLabel={`${g.consistency}%`}
+                    delay={i * 0.03}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : <EmptyNote text="Keep completing goals a few more days to see consistency scores." />}
+        </ProCard>
+
+        <ProCard title="Best-ever streak per goal" icon={Award} color="#e07a5f" index={10}>
+          {bestEverGoals.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {bestEverGoals.map((g) => {
+                const isLive = g.streak > 0 && g.streak === g.bestStreak;
+                return (
+                  <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <span style={{
+                      width: 20, height: 20, borderRadius: "50%", flexShrink: 0, display: "flex",
+                      alignItems: "center", justifyContent: "center",
+                      background: g.listKey === "daily" ? hexToRgba(C.accent, 0.14) : hexToRgba(C.blue, 0.14),
+                    }}>
+                      <Award size={10} color={g.listKey === "daily" ? C.accent : C.blue} />
+                    </span>
+                    <span style={{ fontSize: 9.5, flex: 1, minWidth: 0, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.text}</span>
+                    <span style={{ fontSize: 10.5, fontWeight: 900, color: C.dark }}>{g.bestStreak}d</span>
+                    {isLive && <span style={{ fontSize: 7, fontWeight: 900, color: "#4a7c59" }}>● NOW</span>}
+                  </div>
+                );
+              })}
+            </div>
+          ) : <EmptyNote text="A goal's longest-ever run will show up here once it's done on 2+ days in a row." />}
+        </ProCard>
+
+        <ProCard title="Monthly money trend — last 6 months" icon={PiggyBank} color={C.accent} index={11} wide>
+          {monthlyMoneyTrend.some((m) => m.earn > 0 || m.spend > 0) ? (
+            <div style={{ height: 140 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={monthlyMoneyTrend} margin={{ top: 6, right: 8, left: -22, bottom: 0 }}>
+                  <CartesianGrid stroke={ac.chartAxis || "#f0ece0"} vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 9, fill: ac.chartAxis || "#b3ac99" }} />
+                  <YAxis tick={{ fontSize: 9, fill: ac.chartAxis || "#b3ac99" }} width={34} />
+                  <Tooltip contentStyle={{ fontSize: 10 }} />
+                  <Bar dataKey="earn" fill={tintHex("#4a7c59", 0.2)} radius={[3, 3, 0, 0]} isAnimationActive animationDuration={900} />
+                  <Bar dataKey="spend" fill={tintHex("#e07a5f", 0.2)} radius={[3, 3, 0, 0]} isAnimationActive animationDuration={900} />
+                  <Line type="monotone" dataKey="net" stroke={C.dark} strokeWidth={2} dot={false} isAnimationActive animationDuration={1000} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : <EmptyNote text="Log some earn/spend entries to see your monthly trend." />}
+        </ProCard>
+
+        <ProCard title="Savings rate %" icon={TrendingUp} color="#4a7c59" index={12}>
+          {savingsRateAvg !== null ? (
+            <>
+              <div style={{ height: 100 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={savingsRateTrend} margin={{ top: 6, right: 8, left: -22, bottom: 0 }}>
+                    <CartesianGrid stroke={ac.chartAxis || "#f0ece0"} vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 8, fill: ac.chartAxis || "#b3ac99" }} />
+                    <YAxis tick={{ fontSize: 9, fill: ac.chartAxis || "#b3ac99" }} width={30} />
+                    <Tooltip formatter={(v) => (v === null ? ["No data", ""] : [`${v}%`, "Savings rate"])} contentStyle={{ fontSize: 10 }} />
+                    <Line type="monotone" dataKey="rate" stroke="#4a7c59" strokeWidth={2} dot={{ r: 2 }} connectNulls isAnimationActive animationDuration={900} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div style={{ textAlign: "center", fontSize: 10.5, fontWeight: 800, color: savingsRateAvg >= 0 ? "#4a7c59" : "#e07a5f", marginTop: 2 }}>
+                {savingsRateAvg}% average of what you earn is saved
+              </div>
+            </>
+          ) : <EmptyNote text="Log some earnings to see your savings rate." />}
+        </ProCard>
+
+        <ProCard title="Fitness volume trend — last 8 weeks" icon={Dumbbell} color={C.blue} index={13} wide>
+          {fitnessVolumeWeekly.some((w) => w.minutes > 0) ? (
+            <div style={{ height: 130 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={fitnessVolumeWeekly} margin={{ top: 6, right: 8, left: -22, bottom: 0 }}>
+                  <CartesianGrid stroke={ac.chartAxis || "#f0ece0"} vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 8, fill: ac.chartAxis || "#b3ac99" }} />
+                  <YAxis tick={{ fontSize: 9, fill: ac.chartAxis || "#b3ac99" }} width={30} />
+                  <Tooltip formatter={(v) => [`${v} min`, "Workout time"]} contentStyle={{ fontSize: 10 }} />
+                  <Bar dataKey="minutes" fill={tintHex(C.blue, 0.2)} radius={[3, 3, 0, 0]} isAnimationActive animationDuration={900} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : <EmptyNote text="Log a workout in Fitness to see your weekly volume." />}
+        </ProCard>
+
+        <ProCard title="Fitness personal best" icon={Award} color="#e07a5f" index={14}>
+          {fitnessRecord.hasData ? (
+            <div style={{ display: "flex", gap: 16, alignItems: "center", justifyContent: "space-around", padding: "4px 0" }}>
+              <div style={{ textAlign: "center" }}>
+                <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 16 }}
+                  style={{ fontSize: 20, fontWeight: 900, color: "#e07a5f" }}>{fitnessRecord.bestDayMinutes}m</motion.div>
+                <div style={{ fontSize: 9, color: "#b3ac99" }}>Best day{fitnessRecord.bestDayLabel ? ` · ${fitnessRecord.bestDayLabel}` : ""}</div>
+              </div>
+              <div style={{ width: 1, height: 30, background: "#ece7d8" }} />
+              <div style={{ textAlign: "center" }}>
+                <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 260, damping: 16, delay: 0.1 }}
+                  style={{ fontSize: 20, fontWeight: 900, color: C.dark }}>{fitnessRecord.bestWeekAvg}m/d</motion.div>
+                <div style={{ fontSize: 9, color: "#b3ac99" }}>Best 7-day avg</div>
+              </div>
+            </div>
+          ) : <EmptyNote text="Log a workout in Fitness to start tracking your personal bests." />}
+        </ProCard>
+
       </div>
     </div>
   );
@@ -5596,7 +6012,7 @@ const PAST_DATA_CLOSE = { duration: 0.22, ease: [0.7, 0, 0.84, 0] };
 function PastDataModal({ state, user, onClose }) {
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 29);
-    return d.toISOString().slice(0, 10);
+    return dateISO(d);
   });
   const [toDate, setToDate] = useState(() => todayISO());
   const [selected, setSelected] = useState(() => PAST_DATA_FEATURES.map((f) => f.id));
@@ -5666,12 +6082,14 @@ function PastDataModal({ state, user, onClose }) {
               <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: C.text, fontWeight: 700 }}>
                 From
                 <input type="date" value={fromDate} max={toDate} onChange={(e) => setFromDate(e.target.value)}
-                  style={{ border: "1px solid #ece7d8", borderRadius: 8, padding: "7px 8px", fontSize: 12, fontFamily: "inherit" }} />
+                  onClick={(e) => { try { e.target.showPicker?.(); } catch {} }}
+                  style={{ border: "1px solid #ece7d8", borderRadius: 8, padding: "7px 8px", fontSize: 12, fontFamily: "inherit", cursor: "pointer" }} />
               </label>
               <label style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: C.text, fontWeight: 700 }}>
                 To
                 <input type="date" value={toDate} min={fromDate} max={todayISO()} onChange={(e) => setToDate(e.target.value)}
-                  style={{ border: "1px solid #ece7d8", borderRadius: 8, padding: "7px 8px", fontSize: 12, fontFamily: "inherit" }} />
+                  onClick={(e) => { try { e.target.showPicker?.(); } catch {} }}
+                  style={{ border: "1px solid #ece7d8", borderRadius: 8, padding: "7px 8px", fontSize: 12, fontFamily: "inherit", cursor: "pointer" }} />
               </label>
             </div>
 
@@ -5736,7 +6154,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
     for (let i = 29; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
+      const iso = dateISO(d);
       const v = moodToNum(state.moodLog[iso]);
       arr.push({ date: d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }), mood: v === null ? null : v });
     }
@@ -5841,7 +6259,7 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
 
     // 3. Week-over-week trend
     const today = new Date();
-    const isoOf = (d) => d.toISOString().slice(0, 10);
+    const isoOf = (d) => dateISO(d);
     let thisWeekSum = 0, thisWeekN = 0, lastWeekSum = 0, lastWeekN = 0;
     for (let i = 0; i < 7; i++) {
       const d = new Date(today); d.setDate(d.getDate() - i);
@@ -6022,6 +6440,41 @@ function AnalyticsTab({ state, user, onClose, onOpenMoneyManagement }) {
             <div style={{ fontSize: 9, color: "#b3ac99" }}>Top category · 30d</div>
           </div>
         </div>
+
+        {/* ---------- Per-category "today" widgets (this update) ----------
+             One small card per Focus Timer category (Screen time / Social
+             media / Deep work / Study, plus any custom ones added from the
+             widget's own "+" popup) showing just today's tracked time —
+             same colored dot as the category uses everywhere else (the
+             widget itself, the 30d breakdown donut below). Updates live
+             while a category is actively running, same as the widget. */}
+        {focusTimer.categories.length > 0 && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            {focusTimer.categories.map((cat) => {
+              const running = focusTimer.active?.categoryId === cat.id;
+              const secs = focusSecondsToday(focusTimer, cat.id);
+              return (
+                <div
+                  key={cat.id}
+                  style={{
+                    flex: "1 1 100px", minWidth: 100, borderRadius: 8, padding: "8px 10px",
+                    border: `1px solid ${running ? cat.color : "#ece7d8"}`,
+                    background: running ? hexToRgba(cat.color, 0.08) : "transparent",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: cat.color, flexShrink: 0 }} />
+                    <span style={{ fontSize: 9.5, fontWeight: 800, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cat.label}</span>
+                    {running && <span style={{ fontSize: 7, fontWeight: 900, color: cat.color, marginLeft: "auto" }}>● LIVE</span>}
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: C.dark }}>{formatFocusDuration(secs)}</div>
+                  <div style={{ fontSize: 8, color: "#b3ac99" }}>Today</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <div style={{ height: 130, marginBottom: 14 }}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={focusDailyTotals} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
@@ -6195,7 +6648,7 @@ function moneyDateInRange(dateStr, filters) {
   const days = { today: 0, "7d": 6, "14d": 13, "30d": 29 }[filters.dateRange] ?? 0;
   const d = new Date();
   d.setDate(d.getDate() - days);
-  return dateStr >= d.toISOString().slice(0, 10);
+  return dateStr >= dateISO(d);
 }
 function filterMoneyEntries(entries, filters) {
   return entries.filter((e) => {
@@ -6239,7 +6692,7 @@ function isMoneyFilterActive(filters) {
    for a finance widget grid — say the word if you'd like one of those added for a
    specific effect and I'll wire it in. */
 function daysAgoISO(n) {
-  const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10);
+  const d = new Date(); d.setDate(d.getDate() - n); return dateISO(d);
 }
 
 /* Animated count-up used across the widgets below for a "ticking" dashboard feel
@@ -6664,7 +7117,7 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
     for (let i = range - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
+      const iso = dateISO(d);
       const rec = hist[iso] || { earn: 0, spend: 0 };
       running += (rec.earn || 0) - (rec.spend || 0);
       arr.push({
@@ -7642,7 +8095,15 @@ function MoneyFilterModal({ entries, filters, onApply, onClose }) {
   const matches = useMemo(() => filterMoneyEntries(entries, draft), [entries, draft]);
   const spendIncluded = draft.types.includes("spend");
 
-  const handleApply = () => { onApply(draft); onClose(); };
+  const handleApply = () => {
+    // Snapshot the draft before calling onClose — some parents batch state
+    // updates and unmount this component as part of the same tick, so the
+    // apply must be committed to the parent first, synchronously, not
+    // deferred behind anything that could get skipped by the unmount.
+    const toApply = draft;
+    onApply(toApply);
+    onClose();
+  };
   const handleClearAll = () => { onApply(DEFAULT_MONEY_FILTERS); onClose(); };
 
   return (
@@ -7775,13 +8236,15 @@ function MoneyFilterModal({ entries, filters, onApply, onClose }) {
                       <div style={{ fontSize: 8.5, color: "#a39c86", marginBottom: 3, fontWeight: 700 }}>From</div>
                       <input type="date" value={draft.from} max={draft.to || undefined}
                         onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))}
-                        style={{ width: "100%", fontSize: 10.5, padding: "7px 8px", borderRadius: 8, border: "1px solid #ddd6c4", outline: "none", boxSizing: "border-box", background: "rgba(255,255,255,0.7)", color: C.dark }} />
+                        onClick={(e) => { try { e.target.showPicker?.(); } catch {} }}
+                        style={{ width: "100%", fontSize: 10.5, padding: "7px 8px", borderRadius: 8, border: "1px solid #ddd6c4", outline: "none", boxSizing: "border-box", background: "rgba(255,255,255,0.7)", color: C.dark, cursor: "pointer" }} />
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 8.5, color: "#a39c86", marginBottom: 3, fontWeight: 700 }}>To</div>
                       <input type="date" value={draft.to} min={draft.from || undefined}
                         onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))}
-                        style={{ width: "100%", fontSize: 10.5, padding: "7px 8px", borderRadius: 8, border: "1px solid #ddd6c4", outline: "none", boxSizing: "border-box", background: "rgba(255,255,255,0.7)", color: C.dark }} />
+                        onClick={(e) => { try { e.target.showPicker?.(); } catch {} }}
+                        style={{ width: "100%", fontSize: 10.5, padding: "7px 8px", borderRadius: 8, border: "1px solid #ddd6c4", outline: "none", boxSizing: "border-box", background: "rgba(255,255,255,0.7)", color: C.dark, cursor: "pointer" }} />
                     </div>
                   </div>
                 </motion.div>
@@ -7793,6 +8256,7 @@ function MoneyFilterModal({ entries, filters, onApply, onClose }) {
         {/* footer */}
         <div style={{ display: "flex", gap: 8, padding: "14px 20px 20px", flexShrink: 0, borderTop: "1px solid rgba(255,255,255,0.5)", marginTop: 8 }}>
           <motion.button
+            type="button"
             onClick={handleClearAll}
             whileHover={{ y: -1 }} whileTap={{ scale: 0.96 }}
             style={{ border: "1px solid #ddd6c4", background: "rgba(255,255,255,0.6)", borderRadius: 10, padding: "10px 14px", fontSize: 11, fontWeight: 800, color: C.dark, cursor: "pointer" }}
@@ -7800,6 +8264,7 @@ function MoneyFilterModal({ entries, filters, onApply, onClose }) {
             Clear all
           </motion.button>
           <motion.button
+            type="button"
             onClick={handleApply}
             whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }}
             style={{ flex: 1, border: "none", borderRadius: 10, padding: "10px 0", background: C.accent, color: "#fff", fontSize: 11.5, fontWeight: 900, cursor: "pointer" }}
@@ -14465,6 +14930,10 @@ function BTLDashboardInner() {
     s[listKey] = s[listKey].map((g) => g.id === goalId ? { ...g, icon } : g);
     return s;
   });
+  const setGoalStreakEnabled = (listKey) => (goalId, on) => update((s) => {
+    s[listKey] = s[listKey].map((g) => g.id === goalId ? { ...g, streakEnabled: on } : g);
+    return s;
+  });
 
   const toggleTimeItem = (id) => update((s) => {
     const wasDone = !!(s.timeTable || []).find((t) => t.id === id)?.done;
@@ -14825,8 +15294,8 @@ function BTLDashboardInner() {
   const widgetsMap = {
     bigGoals: <TextList title="Life Big Goals" items={state.bigGoals} textStyle={state.layout.textStyles?.bigGoals} cardBg={theme.widgets.bigGoals?.bg} />,
     lifeRules: <TextList title="Life Rules" items={state.lifeRules} textStyle={state.layout.textStyles?.lifeRules} cardBg={theme.widgets.lifeRules?.bg} />,
-    dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} textStyle={state.layout.textStyles?.dailyGoals} cardBg={theme.widgets.dailyGoals?.bg} streak={state.widgetStreaks?.dailyGoals || 0} history={state.widgetHistory?.dailyGoals || {}} />,
-    extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} cardBg={theme.widgets.extryGoals?.bg} streak={state.widgetStreaks?.extryGoals || 0} history={state.widgetHistory?.extryGoals || {}} />,
+    dailyGoals: <GoalChecklist title="Daily Goals" items={state.dailyGoals} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} onSetStreakEnabled={setGoalStreakEnabled("dailyGoals")} listKey="daily" dailyLogs={state.dailyLogs} accent={C.accent} textStyle={state.layout.textStyles?.dailyGoals} cardBg={theme.widgets.dailyGoals?.bg} streak={state.widgetStreaks?.dailyGoals || 0} history={state.widgetHistory?.dailyGoals || {}} />,
+    extryGoals: <GoalChecklist title="Extry Goals" items={state.extryGoals} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} onSetStreakEnabled={setGoalStreakEnabled("extryGoals")} listKey="extry" dailyLogs={state.dailyLogs} accent={C.blue} textStyle={state.layout.textStyles?.extryGoals} cardBg={theme.widgets.extryGoals?.bg} streak={state.widgetStreaks?.extryGoals || 0} history={state.widgetHistory?.extryGoals || {}} />,
     timeTable: <TimeTable items={state.timeTable || []} onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem} onReschedule={rescheduleTimeItem} onToggleRecurring={toggleTimeRecurring} accent={C.accent} textStyle={state.layout.textStyles?.timeTable} cardBg={theme.widgets.timeTable?.bg} streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}} />,
     earnMoney: <EarnMoneyNotesCard state={state} update={update} onOpenEarn={() => openMoneyModal("earn")} onOpenSpend={() => openMoneyModal("spend")} onImageFile={onImageFile} onImageDrop={processImageFile} fileRef={fileRef} todayMood={state.moodLog?.[todayISO()]} onSetMood={(m) => setMood(todayISO(), m)} textStyle={state.layout.textStyles?.earnMoney} cardBg={theme.widgets.earnMoney?.bg} />,
     analyticsSummary: <AnalyticsSummaryWidget state={state} onOpen={() => setTab("analytics")} cardBg={theme.widgets.analyticsSummary?.bg} metrics={theme.analyticsSummary.metrics} colors={theme.analyticsSummaryColors} />,
@@ -15210,6 +15679,7 @@ function BTLDashboardInner() {
                   title="Daily Goals" items={state.dailyGoals}
                   onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")}
                   onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")}
+                  onSetStreakEnabled={setGoalStreakEnabled("dailyGoals")} listKey="daily" dailyLogs={state.dailyLogs}
                   accent={C.accent} cardBg={theme.widgets.dailyGoals?.bg}
                   streak={state.widgetStreaks?.dailyGoals || 0} history={state.widgetHistory?.dailyGoals || {}}
                 />
@@ -15283,6 +15753,8 @@ function BTLDashboardInner() {
                   >{incomingFriendReqCount}</motion.span>
                 )}
               </div>
+              <GlowIconButton icon={BarChart3} label="Analytics" active={tab === "analytics"} color="#4f5d75" onClick={() => setTab("analytics")} />
+              <GlowIconButton icon={LayoutGrid} label="Layout" active={tab === "layout"} color={C.dark} onClick={() => setTab("layout")} />
             </div>
 
 
@@ -15323,10 +15795,10 @@ function BTLDashboardInner() {
               <FocusModeNowBanner items={state.timeTable} accent={C.accent} fm={fm} />
               <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0, flexWrap: "wrap" }}>
                 <div style={{ flex: "1 1 240px", minWidth: 220, display: "flex" }}>
-                  <GoalChecklist title="Daily Goals" items={state.dailyGoals.filter((g) => !g.done)} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} accent={C.accent} cardBg={theme.widgets.dailyGoals?.bg} />
+                  <GoalChecklist title="Daily Goals" items={state.dailyGoals.filter((g) => !g.done)} onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")} onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")} onSetStreakEnabled={setGoalStreakEnabled("dailyGoals")} listKey="daily" dailyLogs={state.dailyLogs} accent={C.accent} cardBg={theme.widgets.dailyGoals?.bg} />
                 </div>
                 <div style={{ flex: "1 1 240px", minWidth: 220, display: "flex" }}>
-                  <GoalChecklist title="Extry Goals" items={state.extryGoals.filter((g) => !g.done)} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} accent={C.blue} cardBg={theme.widgets.extryGoals?.bg} />
+                  <GoalChecklist title="Extry Goals" items={state.extryGoals.filter((g) => !g.done)} onToggle={toggleGoal("extryGoals")} onAdd={addGoal("extryGoals")} onRemove={removeGoal("extryGoals")} onToggleSubtask={toggleSubtask("extryGoals")} onAddSubtask={addSubtask("extryGoals")} onSetIcon={setGoalIcon("extryGoals")} onSetStreakEnabled={setGoalStreakEnabled("extryGoals")} listKey="extry" dailyLogs={state.dailyLogs} accent={C.blue} cardBg={theme.widgets.extryGoals?.bg} />
                 </div>
                 <div style={{ flex: "1 1 240px", minWidth: 220, display: "flex" }}>
                   <TimeTable items={(state.timeTable || []).filter((t) => !t.done)} onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem} onReschedule={rescheduleTimeItem} onToggleRecurring={toggleTimeRecurring} accent={C.accent} cardBg={theme.widgets.timeTable?.bg} streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}} />
