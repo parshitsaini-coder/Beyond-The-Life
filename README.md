@@ -1,6 +1,39 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 📄 Past Data export is now a real, professionally designed PDF (this update)
+## 🎨 PDF report — no more broken emoji boxes, real icons, new palette, charts on every widget (this update)
+Two things you flagged from the actual generated PDF, both fixed in
+`components/BTLDashboard.jsx`:
+
+1. **Broken "☐ X" boxes where emoji used to be.** pdfmake's bundled font
+   (Roboto) has no emoji glyphs at all — every 🔥/✅/🎯/🕒/😊/✔/○ character in
+   a text node was rendering as a "tofu" box in the actual PDF viewer, even
+   though it looked fine in the editor. Fixed by removing every emoji/unicode
+   symbol from PDF text entirely:
+   - New `drawSectionIcon(type, color)` draws small, flat, single-color line
+     icons on a canvas (checkmark badge, target, clock, flame, smiley, timer,
+     dumbbell, wallet, calendar) and embeds them as real PNG images via
+     `pdfIconHeading()` — every section/card title is now an icon image + text
+     row instead of an emoji character, so it renders identically in every
+     PDF viewer.
+   - The Daily Goals / Extra Goals / Time Table checklists on the cover page
+     now use plain `[x]` / `[ ]` instead of ✔/○ (also font-dependent symbols),
+     and no longer use pdfmake's built-in bulleted list (`ul`) either, since
+     its bullet marker is drawn from the font too — just plain stacked lines.
+2. **New color palette** — every PDF color (headings, card accents, chart
+   bars/lines, icons) now comes from
+   [coolors.co/palette/2d3142-bfc0c0-ffffff-ee8354-4f5d75](https://coolors.co/palette/2d3142-bfc0c0-ffffff-ef8354-4f5d75):
+   `#2D3142` (dark ink/headings), `#4F5D75` (secondary/slate accent),
+   `#EF8354` (primary/orange accent), `#BFC0C0` (table hairlines/dividers),
+   `#FFFFFF` (card fills). The page **background stays the `#f7f3e3` cream**
+   from the previous update, exactly as asked — only what's drawn on top of
+   it changed.
+
+Also added: **Daily Goals and Time Table now get their own per-page mini
+chart** (`drawMiniPercentChart`), same as Completion already had — a
+compact 0–100% bar chart for that page's 15 days, sitting above each
+section's detail table (Extra Goals gets one too, for the same reason).
+
+## 📄 Past Data export is now a real, professionally designed PDF (earlier update)
 Per your request: the "Past Data" report (Analytics tab → **Past Data** →
 Apply) no longer downloads an HTML file you had to open and "Print → Save as
 PDF" yourself — it now generates and downloads an actual multi-page **PDF**

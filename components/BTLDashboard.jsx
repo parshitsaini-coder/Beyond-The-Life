@@ -2763,14 +2763,17 @@ function fitnessSecondsToday(fitnessLog) {
    you had to open + "Print → Save as PDF" yourself. pdfmake is loaded with a
    dynamic import() right when a report is actually requested (see
    PastDataModal below) so it never adds weight to the normal app bundle. */
-const PDF_BG = "#f7f3e3";           // requested page background
-const PDF_INK = "#3a3630";
-const PDF_DARK = "#252422";
-const PDF_MUTED = "#8a8371";
-const PDF_ACCENT = "#fca311";
-const PDF_BLUE = "#3a86c8";
-const PDF_GREEN = "#4a7c59";
-const PDF_RED = "#e07a5f";
+/* Palette per your spec (coolors.co/palette/2d3142-bfc0c0-ffffff-ef8354-4f5d75)
+   — page background stays the requested cream (#f7f3e3); everything drawn
+   on top of it (text, cards, chart colors, icons) now comes from this set. */
+const PDF_BG = "#f7f3e3";            // page background — unchanged, do not touch
+const PDF_DARK = "#2D3142";          // headings / cover name / dark ink
+const PDF_INK = "#2D3142";           // body text
+const PDF_MUTED = "#4F5D75";         // secondary/muted text (readable on cream)
+const PDF_LINE = "#BFC0C0";          // hairlines, table rules, dividers
+const PDF_ACCENT = "#EF8354";        // primary accent (orange)
+const PDF_BLUE = "#4F5D75";          // secondary accent (slate blue)
+const PDF_WHITE = "#FFFFFF";         // card fills
 const PDF_DAYS_PER_PAGE = 15; // hard cap the whole design is built around
 
 /* Splits an ascending array of ISO dates into chunks of at most `size`,
@@ -2779,6 +2782,145 @@ function chunkDates(dates, size = PDF_DAYS_PER_PAGE) {
   const out = [];
   for (let i = 0; i < dates.length; i += size) out.push(dates.slice(i, i + size));
   return out;
+}
+
+/* Small, flat, hand-drawn (canvas) icons used instead of emoji everywhere
+   in the PDF. pdfmake's bundled font has no emoji glyphs, so any 🔥/✅/🎯
+   character in a text node rendered as a broken "tofu" box in the actual
+   PDF viewer — these vector-simple line icons render identically in every
+   PDF reader since they're baked-in raster images, not font glyphs. */
+function drawSectionIcon(type, color, size = 64) {
+  const canvas = document.createElement("canvas");
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const cx = size / 2, cy = size / 2;
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = size * 0.08;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+
+  const ring = (r) => { ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); };
+
+  switch (type) {
+    case "check": { // Daily Goals
+      ring(size * 0.42);
+      ctx.beginPath();
+      ctx.moveTo(size * 0.30, size * 0.52);
+      ctx.lineTo(size * 0.44, size * 0.66);
+      ctx.lineTo(size * 0.72, size * 0.34);
+      ctx.stroke();
+      break;
+    }
+    case "target": { // Extra Goals
+      ring(size * 0.42); ring(size * 0.27);
+      ctx.beginPath(); ctx.arc(cx, cy, size * 0.10, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case "clock": { // Time Table
+      ring(size * 0.42);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, size * 0.24); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(size * 0.68, cy + size * 0.08); ctx.stroke();
+      break;
+    }
+    case "fire": { // Completion & Streak
+      ctx.beginPath();
+      ctx.moveTo(cx, size * 0.12);
+      ctx.bezierCurveTo(size * 0.85, size * 0.42, size * 0.62, size * 0.55, size * 0.7, size * 0.82);
+      ctx.bezierCurveTo(size * 0.6, size * 0.95, size * 0.4, size * 0.95, size * 0.3, size * 0.82);
+      ctx.bezierCurveTo(size * 0.38, size * 0.7, size * 0.28, size * 0.66, size * 0.32, size * 0.5);
+      ctx.bezierCurveTo(size * 0.4, size * 0.6, size * 0.46, size * 0.5, size * 0.42, size * 0.34);
+      ctx.bezierCurveTo(size * 0.55, size * 0.4, size * 0.5, size * 0.22, cx, size * 0.12);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case "smiley": { // Mood
+      ring(size * 0.42);
+      ctx.beginPath(); ctx.arc(cx - size * 0.14, cy - size * 0.08, size * 0.045, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx + size * 0.14, cy - size * 0.08, size * 0.045, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, cy + size * 0.02, size * 0.2, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+      break;
+    }
+    case "timer": { // Focus Timer
+      ring(size * 0.38);
+      ctx.beginPath(); ctx.moveTo(cx - size * 0.1, size * 0.08); ctx.lineTo(cx + size * 0.1, size * 0.08); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - size * 0.2); ctx.stroke();
+      break;
+    }
+    case "dumbbell": { // Fitness
+      ctx.lineWidth = size * 0.1;
+      ctx.beginPath(); ctx.moveTo(size * 0.22, cy); ctx.lineTo(size * 0.78, cy); ctx.stroke();
+      ctx.lineWidth = size * 0.16;
+      ctx.beginPath(); ctx.moveTo(size * 0.16, cy - size * 0.14); ctx.lineTo(size * 0.16, cy + size * 0.14); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(size * 0.84, cy - size * 0.14); ctx.lineTo(size * 0.84, cy + size * 0.14); ctx.stroke();
+      break;
+    }
+    case "wallet": { // Money
+      ctx.lineWidth = size * 0.07;
+      ctx.strokeRect(size * 0.14, size * 0.26, size * 0.72, size * 0.5);
+      ctx.beginPath(); ctx.arc(size * 0.66, size * 0.51, size * 0.07, 0, Math.PI * 2); ctx.fill();
+      break;
+    }
+    case "calendar": { // chunk page header
+      ctx.lineWidth = size * 0.07;
+      ctx.strokeRect(size * 0.14, size * 0.2, size * 0.72, size * 0.62);
+      ctx.beginPath(); ctx.moveTo(size * 0.14, size * 0.38); ctx.lineTo(size * 0.86, size * 0.38); ctx.stroke();
+      break;
+    }
+    default: ring(size * 0.4);
+  }
+  return canvas.toDataURL("image/png");
+}
+
+/* Icon image + title, side by side — the row every section/card heading
+   uses instead of an emoji character (see drawSectionIcon above). */
+function pdfIconHeading(iconType, label, color, fontSize = 12.5) {
+  return {
+    columns: [
+      { image: drawSectionIcon(iconType, color, 56), width: fontSize * 1.35, height: fontSize * 1.35 },
+      { text: label, style: "sectionTitleNoIcon", color, fontSize, margin: [7, 1, 0, 0], width: "*" },
+    ],
+    columnGap: 0,
+    margin: [0, 0, 0, 8],
+  };
+}
+
+/* A compact per-day % bar chart (0–100) — used for Completion, Daily
+   Goals, Extra Goals and Time Table cards so each one carries its own
+   chart, not just a numbers table. */
+function drawMiniPercentChart(chunkDatesArr, historyMap, color) {
+  const W = 900, H = 220, PAD_L = 40, PAD_R = 16, PAD_T = 14, PAD_B = 40;
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
+  const n = chunkDatesArr.length;
+  const plotW = W - PAD_L - PAD_R, plotH = H - PAD_T - PAD_B;
+  const colW = plotW / n;
+
+  ctx.strokeStyle = PDF_LINE; ctx.lineWidth = 1;
+  ctx.fillStyle = PDF_MUTED; ctx.font = "16px Inter, system-ui, sans-serif";
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (let i = 0; i <= 2; i++) {
+    const y = PAD_T + plotH - (plotH * i) / 2;
+    ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(W - PAD_R, y); ctx.stroke();
+    ctx.fillText(`${i * 50}%`, PAD_L - 8, y);
+  }
+
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  chunkDatesArr.forEach((iso, i) => {
+    const pct = historyMap?.[iso];
+    const cx = PAD_L + colW * i + colW / 2;
+    if (pct !== undefined) {
+      const barW = Math.min(34, colW * 0.5);
+      const barH = (Math.max(0, Math.min(100, pct)) / 100) * plotH;
+      ctx.fillStyle = color;
+      ctx.fillRect(cx - barW / 2, PAD_T + plotH - barH, barW, barH);
+    }
+    ctx.fillStyle = PDF_MUTED; ctx.font = "15px Inter, system-ui, sans-serif";
+    const d = new Date(iso + "T00:00:00");
+    ctx.fillText(d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }), cx, PAD_T + plotH + 10);
+  });
+  return canvas.toDataURL("image/png");
 }
 
 /* Loads a (likely cross-origin, e.g. Google profile photo) image URL and
@@ -2866,7 +3008,7 @@ function drawChunkAnalysisChart(chunkDatesArr, state, selectedIds) {
   }) : null;
 
   // gridlines (0/25/50/75/100%)
-  ctx.strokeStyle = "#ece7d8";
+  ctx.strokeStyle = PDF_LINE;
   ctx.lineWidth = 1;
   ctx.fillStyle = PDF_MUTED;
   ctx.font = "20px Inter, system-ui, sans-serif";
@@ -2889,7 +3031,7 @@ function drawChunkAnalysisChart(chunkDatesArr, state, selectedIds) {
       const barH = (Math.max(0, Math.min(100, pct)) / 100) * plotH;
       const grad = ctx.createLinearGradient(0, PAD_T + plotH - barH, 0, PAD_T + plotH);
       grad.addColorStop(0, PDF_ACCENT);
-      grad.addColorStop(1, "#ffd699");
+      grad.addColorStop(1, "#F8C2A5");
       ctx.fillStyle = grad;
       const bx = cx - barW / 2, by = PAD_T + plotH - barH;
       const r = Math.min(6, barW / 2);
@@ -2934,7 +3076,7 @@ function drawChunkAnalysisChart(chunkDatesArr, state, selectedIds) {
     });
   };
   if (focusMins) drawTrend(focusMins, PDF_BLUE);
-  if (fitnessMins) drawTrend(fitnessMins, "#e85d4c");
+  if (fitnessMins) drawTrend(fitnessMins, PDF_DARK);
 
   // legend
   let lx = PAD_L;
@@ -2947,7 +3089,7 @@ function drawChunkAnalysisChart(chunkDatesArr, state, selectedIds) {
   };
   if (has("completion")) legendItem("Completion %", PDF_ACCENT, true);
   if (focusMins) legendItem("Focus (min)", PDF_BLUE, false);
-  if (fitnessMins) legendItem("Fitness (min)", "#e85d4c", false);
+  if (fitnessMins) legendItem("Fitness (min)", PDF_DARK, false);
 
   return canvas.toDataURL("image/png");
 }
@@ -3010,7 +3152,7 @@ function pdfDayTable(rows) {
     layout: {
       hLineWidth: (i) => (i === 1 ? 1 : 0.5),
       vLineWidth: () => 0,
-      hLineColor: () => "#e5e0cf",
+      hLineColor: () => PDF_LINE,
       paddingLeft: () => 6, paddingRight: () => 6, paddingTop: () => 5, paddingBottom: () => 5,
     },
     margin: [0, 0, 0, 14],
@@ -3021,8 +3163,12 @@ function pdfDayTable(rows) {
    the CURRENT Daily Goals / Extra Goals / Time Table lists exactly as
    they stand today) followed by one page per <=15-day chunk of the
    selected range, each carrying its own analysis chart plus full detail
-   tables for every selected widget, scoped to just that chunk's dates.
-   Async because the cover photo has to be fetched + rasterized first. */
+   tables (and, for Completion/Daily Goals/Extra Goals/Time Table, their
+   own mini % chart) for every selected widget, scoped to just that
+   chunk's dates. Async because the cover photo has to be fetched +
+   rasterized first. No emoji anywhere — every icon is a canvas-drawn
+   image (see drawSectionIcon) so nothing renders as a broken glyph box
+   in a PDF viewer. */
 async function buildPastDataReportDocDefinition(state, { fromISO, toISO, selectedIds, user }) {
   const dates = isoDateRange(fromISO, toISO);
   const has = (id) => selectedIds.includes(id);
@@ -3034,17 +3180,18 @@ async function buildPastDataReportDocDefinition(state, { fromISO, toISO, selecte
   let avatar = user?.photoURL ? await loadImageAsCircularDataURL(user.photoURL, 240) : null;
   if (!avatar) avatar = initialsAvatarDataURL(userName.charAt(0), 240);
 
+  // "[x]" / "[ ]" instead of a unicode checkmark/circle — guaranteed to
+  // render in every font, unlike ✔/○ which can also come out as tofu.
   const listRows = (items, mapFn) => (items || []).map(mapFn);
-  const dailyGoalsList = listRows(state.dailyGoals, (g) => `${g.done ? "✔" : "○"}   ${g.title || g.text || g.name || "Untitled"}`);
-  const extraGoalsList = listRows(state.extryGoals, (g) => `${g.done ? "✔" : "○"}   ${g.title || g.text || g.name || "Untitled"}`);
-  const timeTableList = listRows(state.timeTable, (t) => `${t.done ? "✔" : "○"}   ${t.time ? t.time + "  —  " : ""}${t.title || t.text || "Untitled"}`);
+  const dailyGoalsList = listRows(state.dailyGoals, (g) => `${g.done ? "[x]" : "[ ]"}  ${g.title || g.text || g.name || "Untitled"}`);
+  const extraGoalsList = listRows(state.extryGoals, (g) => `${g.done ? "[x]" : "[ ]"}  ${g.title || g.text || g.name || "Untitled"}`);
+  const timeTableList = listRows(state.timeTable, (t) => `${t.done ? "[x]" : "[ ]"}  ${t.time ? t.time + "  —  " : ""}${t.title || t.text || "Untitled"}`);
 
-  const coverListCard = (title, emoji, items, color) => pdfCard([
-    { text: `${emoji}  ${title}`, style: "cardTitle", color },
-    { canvas: [{ type: "line", x1: 0, y1: 6, x2: 60, y2: 6, lineWidth: 2, lineColor: color }] },
+  const coverListCard = (title, iconType, items, color) => pdfCard([
+    pdfIconHeading(iconType, title, color, 14),
     items.length
-      ? { ul: items, style: "cardList", margin: [0, 8, 0, 0] }
-      : { text: "Nothing added yet.", style: "cardEmpty", margin: [0, 8, 0, 0] },
+      ? { stack: items.map((t) => ({ text: t, style: "cardList", margin: [0, 0, 0, 3] })) }
+      : { text: "Nothing added yet.", style: "cardEmpty" },
   ]);
 
   const coverPage = {
@@ -3066,17 +3213,23 @@ async function buildPastDataReportDocDefinition(state, { fromISO, toISO, selecte
         ],
         margin: [0, 0, 0, 28],
       },
-      coverListCard("Daily Goals", "✅", dailyGoalsList, PDF_ACCENT),
-      coverListCard("Extra Goals", "🎯", extraGoalsList, PDF_BLUE),
-      coverListCard("Time Table", "🕒", timeTableList, PDF_BLUE),
+      coverListCard("Daily Goals", "check", dailyGoalsList, PDF_ACCENT),
+      coverListCard("Extra Goals", "target", extraGoalsList, PDF_BLUE),
+      coverListCard("Time Table", "clock", timeTableList, PDF_BLUE),
     ],
   };
 
   // ---- per-chunk data pages ----
-  const MOOD_EMOJI = { happy: "😊 Happy", neutral: "😐 Neutral", sad: "😔 Low" };
+  const MOOD_LABEL = { happy: "Happy", neutral: "Neutral", sad: "Low" };
   const chunkPages = chunks.map((chunk, idx) => {
     const blocks = [
-      { text: `📅  ${prettyDate(chunk[0])}  –  ${prettyDate(chunk[chunk.length - 1])}`, style: "chunkTitle" },
+      {
+        columns: [
+          { image: drawSectionIcon("calendar", PDF_DARK, 64), width: 20, height: 20, margin: [0, 3, 0, 0] },
+          { text: `${prettyDate(chunk[0])}  –  ${prettyDate(chunk[chunk.length - 1])}`, style: "chunkTitle", margin: [8, 0, 0, 0], width: "*" },
+        ],
+        columnGap: 0,
+      },
       { text: `Page ${idx + 1} of ${chunks.length}  ·  ${chunk.length} day${chunk.length === 1 ? "" : "s"}`, style: "chunkSub" },
       { image: drawChunkAnalysisChart(chunk, state, selectedIds), width: 495, margin: [0, 12, 0, 18] },
     ];
@@ -3084,27 +3237,45 @@ async function buildPastDataReportDocDefinition(state, { fromISO, toISO, selecte
     const twoUp = []; // pairs of (title, table) sections rendered side-by-side where it fits
 
     if (has("completion")) {
-      const rows = chunk.map((iso) => ({ date: prettyDate(iso).slice(0, 10), value: state.completionHistory?.[iso] !== undefined ? `${Math.round(state.completionHistory[iso])}%` : "—" }));
-      twoUp.push(pdfCard([{ text: "🔥 Completion & Streak", style: "sectionTitle", color: PDF_ACCENT }, { text: `Current streak: ${state.streak || 0} 🔥`, style: "cardEmpty", margin: [0, 2, 0, 8] }, pdfDayTable(rows)]));
+      const hist = state.completionHistory || {};
+      const rows = chunk.map((iso) => ({ date: prettyDate(iso).slice(0, 10), value: hist[iso] !== undefined ? `${Math.round(hist[iso])}%` : "—" }));
+      twoUp.push(pdfCard([
+        pdfIconHeading("fire", "Completion & Streak", PDF_ACCENT),
+        { text: `Current streak: ${state.streak || 0} days`, style: "cardEmpty", margin: [0, -4, 0, 8] },
+        { image: drawMiniPercentChart(chunk, hist, PDF_ACCENT), width: 380, margin: [0, 0, 0, 10] },
+        pdfDayTable(rows),
+      ]));
     }
     if (has("mood")) {
-      const rows = chunk.map((iso) => ({ date: prettyDate(iso).slice(0, 10), value: state.moodLog?.[iso] ? (MOOD_EMOJI[state.moodLog[iso]] || state.moodLog[iso]) : "—" }));
-      twoUp.push(pdfCard([{ text: "😊 Mood", style: "sectionTitle", color: PDF_BLUE }, pdfDayTable(rows)]));
+      const rows = chunk.map((iso) => ({ date: prettyDate(iso).slice(0, 10), value: state.moodLog?.[iso] ? (MOOD_LABEL[state.moodLog[iso]] || state.moodLog[iso]) : "—" }));
+      twoUp.push(pdfCard([pdfIconHeading("smiley", "Mood", PDF_BLUE), pdfDayTable(rows)]));
     }
     if (has("dailyGoals")) {
       const hist = state.widgetHistory?.dailyGoals || {};
       const rows = chunk.map((iso) => ({ date: prettyDate(iso).slice(0, 10), value: hist[iso] !== undefined ? `${Math.round(hist[iso])}%` : "—" }));
-      twoUp.push(pdfCard([{ text: "✅ Daily Goals — completion", style: "sectionTitle", color: PDF_ACCENT }, pdfDayTable(rows)]));
+      twoUp.push(pdfCard([
+        pdfIconHeading("check", "Daily Goals — completion", PDF_ACCENT),
+        { image: drawMiniPercentChart(chunk, hist, PDF_ACCENT), width: 380, margin: [0, 0, 0, 10] },
+        pdfDayTable(rows),
+      ]));
     }
     if (has("extryGoals")) {
       const hist = state.widgetHistory?.extryGoals || {};
       const rows = chunk.map((iso) => ({ date: prettyDate(iso).slice(0, 10), value: hist[iso] !== undefined ? `${Math.round(hist[iso])}%` : "—" }));
-      twoUp.push(pdfCard([{ text: "🎯 Extra Goals — completion", style: "sectionTitle", color: PDF_BLUE }, pdfDayTable(rows)]));
+      twoUp.push(pdfCard([
+        pdfIconHeading("target", "Extra Goals — completion", PDF_BLUE),
+        { image: drawMiniPercentChart(chunk, hist, PDF_BLUE), width: 380, margin: [0, 0, 0, 10] },
+        pdfDayTable(rows),
+      ]));
     }
     if (has("timeTable")) {
       const hist = state.widgetHistory?.timeTable || {};
       const rows = chunk.map((iso) => ({ date: prettyDate(iso).slice(0, 10), value: hist[iso] !== undefined ? `${Math.round(hist[iso])}%` : "—" }));
-      twoUp.push(pdfCard([{ text: "🕒 Time Table — completion", style: "sectionTitle", color: PDF_BLUE }, pdfDayTable(rows)]));
+      twoUp.push(pdfCard([
+        pdfIconHeading("clock", "Time Table — completion", PDF_BLUE),
+        { image: drawMiniPercentChart(chunk, hist, PDF_BLUE), width: 380, margin: [0, 0, 0, 10] },
+        pdfDayTable(rows),
+      ]));
     }
     if (has("focusTimer")) {
       const focusTimer = normalizeFocusTimer(state.focusTimer);
@@ -3112,14 +3283,14 @@ async function buildPastDataReportDocDefinition(state, { fromISO, toISO, selecte
         const secs = Object.values(focusTimer.history?.[iso] || {}).reduce((a, b) => a + b, 0);
         return { date: prettyDate(iso).slice(0, 10), value: secs > 0 ? formatFocusDuration(secs) : "—" };
       });
-      twoUp.push(pdfCard([{ text: "⏱️ Focus Timer", style: "sectionTitle", color: PDF_ACCENT }, pdfDayTable(rows)]));
+      twoUp.push(pdfCard([pdfIconHeading("timer", "Focus Timer", PDF_ACCENT), pdfDayTable(rows)]));
     }
     if (has("fitness")) {
       const rows = chunk.map((iso) => {
         const secs = Object.values(state.fitnessLog?.[iso] || {}).reduce((a, b) => a + b, 0);
         return { date: prettyDate(iso).slice(0, 10), value: secs > 0 ? formatFocusDuration(secs) : "—" };
       });
-      twoUp.push(pdfCard([{ text: "🏋️ Fitness", style: "sectionTitle", color: "#e85d4c" }, pdfDayTable(rows)]));
+      twoUp.push(pdfCard([pdfIconHeading("dumbbell", "Fitness", PDF_DARK), pdfDayTable(rows)]));
     }
 
     // two cards per row (fits an A4 page cleanly), any odd one left full-width
@@ -3133,12 +3304,13 @@ async function buildPastDataReportDocDefinition(state, { fromISO, toISO, selecte
       const inChunk = all.filter((e) => chunk.includes(e.date)).sort((a, b) => (a.date < b.date ? 1 : -1));
       const earn = inChunk.filter((e) => e.type === "earn").reduce((a, e) => a + (e.amount || 0), 0);
       const spend = inChunk.filter((e) => e.type === "spend").reduce((a, e) => a + (e.amount || 0), 0);
+      const net = earn - spend;
       blocks.push(pdfCard([
-        { text: "💰 Money (Earn / Spend)", style: "sectionTitle", color: PDF_GREEN },
+        pdfIconHeading("wallet", "Money (Earn / Spend)", PDF_DARK),
         { columns: [
-          { text: `Earned\n₹${Math.round(earn)}`, style: "moneyStat", color: PDF_GREEN },
-          { text: `Spent\n₹${Math.round(spend)}`, style: "moneyStat", color: PDF_RED },
-          { text: `Net\n₹${Math.round(earn - spend)}`, style: "moneyStat", color: earn - spend >= 0 ? PDF_GREEN : PDF_RED },
+          { text: `Earned\nRs. ${Math.round(earn)}`, style: "moneyStat", color: PDF_BLUE },
+          { text: `Spent\nRs. ${Math.round(spend)}`, style: "moneyStat", color: PDF_ACCENT },
+          { text: `Net\nRs. ${Math.round(net)}`, style: "moneyStat", color: net >= 0 ? PDF_DARK : PDF_ACCENT },
         ], margin: [0, 4, 0, 10] },
         inChunk.length
           ? {
@@ -3150,11 +3322,11 @@ async function buildPastDataReportDocDefinition(state, { fromISO, toISO, selecte
                     { text: prettyDate(e.date).slice(0, 10), style: "tdCell" },
                     { text: e.type === "earn" ? "Earn" : "Spend", style: "tdCell" },
                     { text: `${e.category || "—"}${e.note ? " · " + e.note : ""}`, style: "tdCell" },
-                    { text: `₹${Math.round(e.amount || 0)}`, style: "tdCell", alignment: "right" },
+                    { text: `Rs. ${Math.round(e.amount || 0)}`, style: "tdCell", alignment: "right" },
                   ]),
                 ],
               },
-              layout: { hLineWidth: (i) => (i === 1 ? 1 : 0.5), vLineWidth: () => 0, hLineColor: () => "#e5e0cf", paddingLeft: () => 6, paddingRight: () => 6, paddingTop: () => 5, paddingBottom: () => 5 },
+              layout: { hLineWidth: (i) => (i === 1 ? 1 : 0.5), vLineWidth: () => 0, hLineColor: () => PDF_LINE, paddingLeft: () => 6, paddingRight: () => 6, paddingTop: () => 5, paddingBottom: () => 5 },
             }
           : { text: "No entries in this window.", style: "cardEmpty" },
       ]));
@@ -3188,6 +3360,7 @@ async function buildPastDataReportDocDefinition(state, { fromISO, toISO, selecte
       chunkTitle: { fontSize: 16, bold: true, color: PDF_DARK },
       chunkSub: { fontSize: 9.5, color: PDF_MUTED, margin: [0, 2, 0, 0] },
       sectionTitle: { fontSize: 12.5, bold: true, margin: [0, 0, 0, 8] },
+      sectionTitleNoIcon: { bold: true },
       thCell: { fontSize: 8.5, bold: true, color: PDF_MUTED },
       tdCell: { fontSize: 9.5, color: PDF_INK },
       moneyStat: { fontSize: 13, bold: true, alignment: "center" },
