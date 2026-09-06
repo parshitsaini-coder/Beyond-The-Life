@@ -1,6 +1,65 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 💬 Friend chat popup — full screen on mobile + keyboard-aware input (this update)
+## ⚡ Mobile performance pass — fixing "atak-atak"/hangy animations (this update)
+Root cause found: the dashboard was mounting **both** the desktop header +
+full `WidgetGrid` **and** the mobile topbar/stats/dial UI at the same time on
+every device — whichever one didn't apply to the current screen size was
+only hidden with CSS `display:none`, not actually removed from the page.
+A `display:none` subtree still fully exists in React and still runs every
+animation inside it (framer-motion's requestAnimationFrame loop doesn't stop
+just because a parent is invisible) — so on a phone you were effectively
+running **two full copies of the dashboard** every single frame: the visible
+mobile one, plus a hidden desktop one with its own header-logo pulse, 4
+infinite glow-icon animations, and the entire widget grid (including
+per-second-interval widgets like the analog clock). That's exactly the kind
+of invisible, un-debuggable CPU drain that shows up as stutter and hang on
+real hardware even though everything looks fine testing in a resized
+desktop browser.
+
+Fixes, all in `components/BTLDashboard.jsx`:
+- **`useIsMobileView()`** — a `window.matchMedia("(max-width: 768px)")` hook
+  that now actually gates which tree *mounts*, not just which one is
+  visible. Desktop header + `WidgetGrid` only render at all when
+  `!isMobileView`; the mobile topbar/stats/analytics/quick-goals card and
+  the radial dial home only render when `isMobileView`. Only one dashboard
+  now ever exists in the page at a time, on any device.
+- **`glassCardStyle()` lighter on mobile** — `backdrop-filter: blur()` is one
+  of the most GPU-expensive things a phone can paint, and this style backs
+  nearly every card/widget in the app. Desktop keeps the original
+  `blur(20px) saturate(200%)` look untouched; mobile now gets `blur(9px)`
+  with no separate `saturate()` pass (one cheap filter instead of two),
+  same frosted-glass look at a fraction of the paint cost — this matters a
+  lot with a dozen-plus glass cards visible together in the grid.
+- **New global perf CSS**: `contain: content` on every widget card (so one
+  card re-rendering doesn't force the browser to re-check layout/paint for
+  every other card on screen), `-webkit-overflow-scrolling: touch` +
+  `overscroll-behavior: contain` on scrollable panels for native momentum
+  scroll instead of the default janky WebView scroll, `touch-action:
+  manipulation` on buttons/tap targets to drop the ~300ms tap-delay some
+  mobile browsers add, and a `prefers-reduced-motion` block that trims the
+  purely decorative infinite loops (shine sweep, glow pulses) for anyone
+  whose device/OS has asked apps to cut back on animation (some low-RAM
+  Android battery-saver modes set this automatically).
+
+None of this touches how anything looks on desktop — every change above
+either only fires past the 768px breakpoint or is additive CSS that has no
+visible effect on the existing look. If you still feel jank in specific
+spots after this (e.g. one particular modal, one particular list), point me
+at it and I'll profile that one directly — a real device's dev-tools
+performance trace would pin down anything left far faster than guessing.
+
+## ⌨️ Daily Goals / Time Table "Add" bars now keyboard-aware too (earlier update)
+Same WhatsApp-style fix as the Friend chat popup, extended to every place
+you type into these two widgets — the mobile quick-view toggle card, the
+full-screen dial widget panels (`Daily Goal` / `Time Table` back-arrow
+screens), and anywhere else `GoalChecklist` / `TimeTable` render their own
+"Add item…" / "What to do at this time…" bar: a shared `useKeyboardOffset`
+hook (`components/BTLDashboard.jsx`) reads the on-screen keyboard's height
+via `window.visualViewport` and shifts that bar up by the same amount, so it
+always sits right above the keyboard instead of getting hidden under it.
+No-op on desktop.
+
+## 💬 Friend chat popup — full screen on mobile + keyboard-aware input (earlier update)
 Per your marked-up screenshot: the "dev saini" chat popup (`FriendChatModal` in
 `components/FriendCelebration.jsx`) now opens **full screen only on mobile**
 (≤768px, same breakpoint the rest of the app's mobile layout already uses) —
