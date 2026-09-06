@@ -605,6 +605,10 @@ function FriendChatModal({ user, friend, fsId, onClose }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  // this update: how many px the on-screen keyboard is currently covering, so
+  // the input bar can float just above it (WhatsApp-style) instead of being
+  // hidden underneath it. Stays 0 on desktop — no on-screen keyboard there.
+  const [kbOffset, setKbOffset] = useState(0);
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -614,6 +618,25 @@ function FriendChatModal({ user, friend, fsId, onClose }) {
   }, [fsId]);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length]);
+
+  // this update: track the mobile on-screen keyboard via visualViewport — when
+  // it opens, the viewport shrinks by roughly the keyboard's height, so we read
+  // that gap and shift the input bar up by the same amount every time it changes.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.visualViewport) return;
+    const vv = window.visualViewport;
+    const handleResize = () => {
+      const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      setKbOffset(offset);
+    };
+    vv.addEventListener("resize", handleResize);
+    vv.addEventListener("scroll", handleResize);
+    handleResize();
+    return () => {
+      vv.removeEventListener("resize", handleResize);
+      vv.removeEventListener("scroll", handleResize);
+    };
+  }, []);
 
   const send = async () => {
     if (!text.trim() || sending) return;
@@ -628,11 +651,13 @@ function FriendChatModal({ user, friend, fsId, onClose }) {
 
   return (
     <motion.div
+      className="btl-chat-overlay"
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
       style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 20, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)" }}
       onClick={onClose}
     >
       <motion.div
+        className="btl-chat-card"
         onClick={(e) => e.stopPropagation()}
         initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92, y: 14 }}
         transition={{ type: "spring", stiffness: 300, damping: 28 }}
@@ -647,7 +672,7 @@ function FriendChatModal({ user, friend, fsId, onClose }) {
           display: "flex", flexDirection: "column", overflow: "hidden",
         }}
       >
-        <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: ft.glassic ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.12)" }}>
+        <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 10, borderBottom: ft.glassic ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.12)", flexShrink: 0 }}>
           <Avatar name={friend?.name} photoURL={friend?.photoURL} size={34} />
           <div style={{ fontSize: Math.round(13 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{friend?.name}</div>
           <motion.button whileHover={{ rotate: 90, scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={onClose}
@@ -656,7 +681,7 @@ function FriendChatModal({ user, friend, fsId, onClose }) {
           </motion.button>
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 14px 4px", display: "flex", flexDirection: "column", gap: 8 }} className="btl-scroll">
+        <div className="btl-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 14px 4px", display: "flex", flexDirection: "column", gap: 8 }}>
           {messages.length === 0 && <div style={{ margin: "auto", fontSize: 11, color: ft.glassic ? GLASSIC_TOKENS.faint : "rgba(255,255,255,0.35)" }}>Say hi to {friend?.name}! 👋</div>}
           {messages.map((m) => {
             const mine = m.fromUid === user.uid;
@@ -676,7 +701,14 @@ function FriendChatModal({ user, friend, fsId, onClose }) {
           <div ref={endRef} />
         </div>
 
-        <div style={{ display: "flex", gap: 8, padding: 12, borderTop: ft.glassic ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.12)" }}>
+        <div
+          className="btl-chat-inputbar"
+          style={{
+            display: "flex", gap: 8, padding: 12, flexShrink: 0,
+            borderTop: ft.glassic ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.12)",
+            transform: kbOffset ? `translateY(-${kbOffset}px)` : undefined,
+          }}
+        >
           <input
             value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()}
             placeholder="Type a message..."
@@ -693,6 +725,21 @@ function FriendChatModal({ user, friend, fsId, onClose }) {
           </motion.button>
         </div>
       </motion.div>
+
+      {/* this update: full-screen chat, mobile only — desktop keeps the
+          existing centered glass card untouched (no className match above 768px). */}
+      <style jsx>{`
+        @media (max-width: 768px) {
+          .btl-chat-card {
+            width: 100vw !important;
+            height: 100vh !important;
+            height: 100dvh !important;
+            max-width: none !important;
+            max-height: none !important;
+            border-radius: 0 !important;
+          }
+        }
+      `}</style>
     </motion.div>
   );
 }

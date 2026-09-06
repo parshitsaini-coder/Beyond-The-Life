@@ -1,6 +1,23 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 📊 Analytics now has a "Fitness Time" section (this update)
+## 💬 Friend chat popup — full screen on mobile + keyboard-aware input (this update)
+Per your marked-up screenshot: the "dev saini" chat popup (`FriendChatModal` in
+`components/FriendCelebration.jsx`) now opens **full screen only on mobile**
+(≤768px, same breakpoint the rest of the app's mobile layout already uses) —
+width/height go to `100vw` / `100dvh` and the corner radius drops to 0, purely
+via a `@media` block scoped to the modal's own class, so **desktop is
+untouched**: it still opens as the original centered glass card at its
+original size.
+
+The message input bar also now tracks the on-screen keyboard, WhatsApp-style:
+a `window.visualViewport` listener reads how many pixels the keyboard is
+currently covering and shifts the input row up by exactly that much
+(`translateY`) every time it opens, resizes, or closes — so "Type a
+message…" and the send button stay sitting right above the keyboard instead
+of being hidden underneath it. This is a no-op on desktop (no on-screen
+keyboard, so the offset stays 0 and nothing shifts).
+
+## 📊 Analytics now has a "Fitness Time" section (earlier update)
 Guided workouts (Start → select → set time → Apply, see the "Start" update
 below) now actually bank the time you spend into `state.fitnessLog`
 (`FitnessTab`'s new `logWorkoutTime` — same shape/pattern as the existing
