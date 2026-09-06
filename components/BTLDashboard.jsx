@@ -1850,7 +1850,7 @@ function quakeAnimate(isCelebrating) {
   };
 }
 
-function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent, textStyle, cardBg, streak = 0, history = {} }) {
+function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtask, onAddSubtask, onSetIcon, accent, textStyle, cardBg, streak = 0, history = {}, hideAddForm = false }) {
   const ts = normalizeTextStyle(textStyle);
   const itemFontSize = Math.round(11 * ts.scale);
   const subFontSize = Math.round(10 * ts.scale);
@@ -2120,54 +2120,56 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
         </AnimatePresence>
       </div>
 
-      <div style={{ marginTop: 6, flexShrink: 0 }}>
-        <div style={{ display: "flex", gap: 4 }}>
-          <span style={{ position: "relative", flexShrink: 0 }}>
-            <button onClick={(e) => setPicker(picker?.id === "new" ? null : { id: "new", rect: e.currentTarget.getBoundingClientRect() })} title="Pick an icon"
-              style={{ border: "1px solid #ddd6c4", background: "#fff", borderRadius: 6, width: 26, height: "100%", cursor: "pointer", fontSize: 12 }}>
-              {icon || "🙂"}
-            </button>
-            <AnimatePresence>
-              {picker?.id === "new" && (
-                <EmojiPickerPortal anchorRect={picker.rect} onPick={(e) => setIcon(e)} onClose={() => setPicker(null)} />
-              )}
-            </AnimatePresence>
-          </span>
-          <input
-            value={val} onChange={(e) => setVal(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-            placeholder="Add item..."
-            style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
-          />
-          <motion.button
-            onClick={() => setShowOptions((v) => !v)} title="Category / priority / recurring"
-            whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
-            style={{ border: "1px solid #ddd6c4", background: showOptions ? "#f0ece0" : "#fff", borderRadius: 6, padding: "0 7px", cursor: "pointer", fontSize: 10 }}>
-            <Tag size={12} />
-          </motion.button>
-          <motion.button
-            onClick={submit}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.85, rotate: 90 }}
-            style={{ border: "none", background: accent, color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer" }}>
-            <Plus size={13} />
-          </motion.button>
-        </div>
-        {showOptions && (
-          <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
-            <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ fontSize: 9, padding: "3px 4px", borderRadius: 5, border: "1px solid #ddd6c4" }}>
-              {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-            </select>
-            <select value={priority} onChange={(e) => setPriority(e.target.value)} style={{ fontSize: 9, padding: "3px 4px", borderRadius: 5, border: "1px solid #ddd6c4" }}>
-              {PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label} priority</option>)}
-            </select>
-            <label style={{ fontSize: 9, display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
-              <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} style={{ width: 11, height: 11 }} />
-              Recurring
-            </label>
+      {!hideAddForm && (
+        <div style={{ marginTop: 6, flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 4 }}>
+            <span style={{ position: "relative", flexShrink: 0 }}>
+              <button onClick={(e) => setPicker(picker?.id === "new" ? null : { id: "new", rect: e.currentTarget.getBoundingClientRect() })} title="Pick an icon"
+                style={{ border: "1px solid #ddd6c4", background: "#fff", borderRadius: 6, width: 26, height: "100%", cursor: "pointer", fontSize: 12 }}>
+                {icon || "🙂"}
+              </button>
+              <AnimatePresence>
+                {picker?.id === "new" && (
+                  <EmojiPickerPortal anchorRect={picker.rect} onPick={(e) => setIcon(e)} onClose={() => setPicker(null)} />
+                )}
+              </AnimatePresence>
+            </span>
+            <input
+              value={val} onChange={(e) => setVal(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+              placeholder="Add item..."
+              style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none" }}
+            />
+            <motion.button
+              onClick={() => setShowOptions((v) => !v)} title="Category / priority / recurring"
+              whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+              style={{ border: "1px solid #ddd6c4", background: showOptions ? "#f0ece0" : "#fff", borderRadius: 6, padding: "0 7px", cursor: "pointer", fontSize: 10 }}>
+              <Tag size={12} />
+            </motion.button>
+            <motion.button
+              onClick={submit}
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.85, rotate: 90 }}
+              style={{ border: "none", background: accent, color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer" }}>
+              <Plus size={13} />
+            </motion.button>
           </div>
-        )}
-      </div>
+          {showOptions && (
+            <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
+              <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ fontSize: 9, padding: "3px 4px", borderRadius: 5, border: "1px solid #ddd6c4" }}>
+                {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+              </select>
+              <select value={priority} onChange={(e) => setPriority(e.target.value)} style={{ fontSize: 9, padding: "3px 4px", borderRadius: 5, border: "1px solid #ddd6c4" }}>
+                {PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label} priority</option>)}
+              </select>
+              <label style={{ fontSize: 9, display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
+                <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} style={{ width: 11, height: 11 }} />
+                Recurring
+              </label>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -3083,7 +3085,7 @@ function TimeTableRail({ status, isFirst, isLast, accent, isCelebrating, onPoint
    controller per row; hooks can't be created inside a .map()). Dragging the
    grip handle up/down reorders the row, and TimeTable's onReorder below
    turns that new position into a real new "HH:MM" via midpointTime(). */
-function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast, accent, cardBg, itemFontSize, itemFontFamily, itemColorOverride, itemWeight, onToggle, onRemove, onToggleRecurring }) {
+function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast, accent, cardBg, itemFontSize, itemFontFamily, itemColorOverride, itemWeight, onToggle, onRemove, onToggleRecurring, compact = false }) {
   const dragControls = useDragControls();
   const cat = timeCatInfo(t.category);
   const status = t.done ? "done" : isUpcoming ? "now" : isOverdue ? "overdue" : "future";
@@ -3135,16 +3137,16 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
           animate={isUpcoming && !t.done ? { boxShadow: ["0 0 0 0 rgba(252,163,17,0.45)", "0 0 0 5px rgba(252,163,17,0)"] } : { boxShadow: "0 0 0 0 rgba(0,0,0,0)" }}
           transition={{ duration: 1.6, repeat: isUpcoming && !t.done ? Infinity : 0, ease: "easeOut" }}
           style={{
-            fontSize: 9, fontWeight: 800, flexShrink: 0, borderRadius: 999, padding: "2px 6px", minWidth: 58, textAlign: "center",
+            fontSize: 9, fontWeight: 800, flexShrink: 0, borderRadius: 999, padding: "2px 6px", minWidth: compact ? 44 : 58, textAlign: "center",
             color: t.done ? "#a39c86" : isUpcoming ? "#fff" : "#8a8579",
             background: isUpcoming && !t.done ? accent : "rgba(0,0,0,0.05)",
           }}
         >{formatTime12(t.time)}</motion.span>
         <motion.span
           style={{
-            flex: 1, fontSize: itemFontSize, cursor: "pointer", fontFamily: itemFontFamily,
+            flex: 1, fontSize: compact ? Math.max(9, itemFontSize - 1) : itemFontSize, cursor: "pointer", fontFamily: itemFontFamily,
             fontWeight: itemWeight, color: !t.done && itemColorOverride ? itemColorOverride : undefined,
-            display: "inline-block", minWidth: 0,
+            display: "inline-block", minWidth: 0, wordBreak: "break-word",
           }}
           animate={{
             textDecoration: t.done ? "line-through" : "none",
@@ -3154,31 +3156,35 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
           transition={{ duration: 0.3 }}
           onClick={() => onToggle(t.id, t.done)}
         >{t.text}</motion.span>
-        {isUpcoming && !t.done && (
+        {isUpcoming && !t.done && !compact && (
           <span style={{ fontSize: 8, fontWeight: 900, color: accent, flexShrink: 0 }}>NOW</span>
         )}
-        <motion.span
-          whileHover={{ scale: 1.2 }}
-          whileTap={{ scale: 0.85 }}
-          title={t.recurring ? "Repeats daily — click to make one-off" : "One-off — click to repeat daily"}
-          style={{ display: "inline-flex", flexShrink: 0, cursor: "pointer", color: t.recurring ? accent : "#d8d2bf" }}
-          onClick={() => onToggleRecurring(t.id)}
-        >
-          <Repeat size={11} />
-        </motion.span>
-        <motion.span
-          whileHover={{ scale: 1.2, rotate: -10, color: "#e07a5f" }}
-          whileTap={{ scale: 0.85 }}
-          style={{ display: "inline-flex", flexShrink: 0 }}
-        >
-          <Trash2 size={11} style={{ color: "#d8d2bf", cursor: "pointer" }} onClick={() => onRemove(t.id)} />
-        </motion.span>
+        {!compact && (
+          <motion.span
+            whileHover={{ scale: 1.2 }}
+            whileTap={{ scale: 0.85 }}
+            title={t.recurring ? "Repeats daily — click to make one-off" : "One-off — click to repeat daily"}
+            style={{ display: "inline-flex", flexShrink: 0, cursor: "pointer", color: t.recurring ? accent : "#d8d2bf" }}
+            onClick={() => onToggleRecurring(t.id)}
+          >
+            <Repeat size={11} />
+          </motion.span>
+        )}
+        {!compact && (
+          <motion.span
+            whileHover={{ scale: 1.2, rotate: -10, color: "#e07a5f" }}
+            whileTap={{ scale: 0.85 }}
+            style={{ display: "inline-flex", flexShrink: 0 }}
+          >
+            <Trash2 size={11} style={{ color: "#d8d2bf", cursor: "pointer" }} onClick={() => onRemove(t.id)} />
+          </motion.span>
+        )}
       </motion.div>
     </Reorder.Item>
   );
 }
 
-function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRecurring, accent, textStyle, cardBg, streak = 0, history = {} }) {
+function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRecurring, accent, textStyle, cardBg, streak = 0, history = {}, hideAddForm = false, compact = false }) {
   const ts = normalizeTextStyle(textStyle);
   const itemFontSize = Math.round(11 * ts.scale);
   const itemFontFamily = ts.font ? fontStackFor(ts.font) : undefined;
@@ -3324,41 +3330,44 @@ function TimeTable({ items, onToggle, onAdd, onRemove, onReschedule, onToggleRec
                 itemFontSize={itemFontSize} itemFontFamily={itemFontFamily}
                 itemColorOverride={itemColorOverride} itemWeight={itemWeight}
                 onToggle={handleToggle} onRemove={onRemove} onToggleRecurring={onToggleRecurring}
+                compact={compact}
               />
             ))}
           </AnimatePresence>
         </Reorder.Group>
       </div>
 
-      <div style={{ marginTop: 6, flexShrink: 0, display: "flex", gap: 4, flexWrap: "wrap" }}>
-        <CategoryDropdown value={category} onChange={setCategory} categories={TIME_CATEGORIES} accent={accent} />
-        <TimePicker value={time} onChange={setTime} accent={accent} />
-        <input
-          value={text} onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-          placeholder="What to do at this time..."
-          style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", minWidth: 0 }}
-        />
-        <motion.button
-          onClick={() => setRepeatNew((v) => !v)}
-          whileHover={{ scale: 1.08 }}
-          whileTap={{ scale: 0.9 }}
-          title={repeatNew ? "New slot repeats daily — click for one-off" : "New slot is one-off — click to repeat daily"}
-          style={{
-            border: "none", borderRadius: 6, padding: "0 7px", cursor: "pointer", flexShrink: 0,
-            background: repeatNew ? accent : "rgba(0,0,0,0.06)", color: repeatNew ? "#fff" : "#8a8579",
-            display: "flex", alignItems: "center",
-          }}>
-          <Repeat size={12} />
-        </motion.button>
-        <motion.button
-          onClick={submit}
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.85, rotate: 90 }}
-          style={{ border: "none", background: accent, color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer", flexShrink: 0 }}>
-          <Plus size={13} />
-        </motion.button>
-      </div>
+      {!hideAddForm && (
+        <div style={{ marginTop: 6, flexShrink: 0, display: "flex", gap: 4, flexWrap: "wrap" }}>
+          <CategoryDropdown value={category} onChange={setCategory} categories={TIME_CATEGORIES} accent={accent} />
+          <TimePicker value={time} onChange={setTime} accent={accent} />
+          <input
+            value={text} onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+            placeholder="What to do at this time..."
+            style={{ flex: 1, fontSize: 10, padding: "5px 7px", borderRadius: 6, border: "1px solid #ddd6c4", outline: "none", minWidth: 0 }}
+          />
+          <motion.button
+            onClick={() => setRepeatNew((v) => !v)}
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.9 }}
+            title={repeatNew ? "New slot repeats daily — click for one-off" : "New slot is one-off — click to repeat daily"}
+            style={{
+              border: "none", borderRadius: 6, padding: "0 7px", cursor: "pointer", flexShrink: 0,
+              background: repeatNew ? accent : "rgba(0,0,0,0.06)", color: repeatNew ? "#fff" : "#8a8579",
+              display: "flex", alignItems: "center",
+            }}>
+            <Repeat size={12} />
+          </motion.button>
+          <motion.button
+            onClick={submit}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.85, rotate: 90 }}
+            style={{ border: "none", background: accent, color: "#fff", borderRadius: 6, padding: "0 8px", cursor: "pointer", flexShrink: 0 }}>
+            <Plus size={13} />
+          </motion.button>
+        </div>
+      )}
     </div>
   );
 }
@@ -14172,23 +14181,41 @@ function BTLDashboardInner() {
           </div>
 
           {/* ---------- DAILY GOAL + TIME TABLE (mobile) — this update ----------
-               Per your marked-up screenshot: the space right below Analytics
-               Summary is split into two side-by-side cards, Daily Goal (left)
-               / Time Table (right) — same GoalChecklist/TimeTable components
-               and Firestore-synced state (toggle, add, remove, subtasks,
-               reschedule, recurring — all of it) the desktop grid and the
-               dial's own widget panels already use, just laid out here
-               instead of one-at-a-time behind the dial. Each column gets an
-               explicit pixel height (matching the note on RadialPanel above)
-               since both widgets size their internal content off height:100%
-               — without it they'd render collapsed on this auto-height
-               mobile screen. */}
+               Per your marked-up screenshot: Daily Goal (left) / Time Table
+               (right), side by side. This update: wrapped each column in its
+               own proper glass card (matching Analytics Summary's look above
+               it) so nothing floats outside a visible boundary, given both
+               widgets a taller fixed height so every item is on-screen
+               without needing an inner scroll, and passed the new
+               `hideAddForm` prop so the "add new item" / "add new slot"
+               forms — the thing that was spilling out below/across into the
+               other column — don't render here at all. Time Table also gets
+               `compact` (narrower time pill, no recurring/trash icons, text
+               allowed to wrap) so its activity text has room to show in
+               full at half-screen width instead of being squeezed down to a
+               few letters. Nothing about the desktop grid or the dial's own
+               full-screen widget panels changed — both props default to
+               off there, so Add stays fully available in both places. */}
           <div className="btl-mobile-quickgoals">
-            <div style={{ flex: 1, minWidth: 0, height: 280 }}>
-              {widgetsMap.dailyGoals}
+            <div style={{ flex: 1, minWidth: 0, height: 320, borderRadius: 10, padding: 8, boxSizing: "border-box", overflow: "hidden", ...glassCardStyle(theme.widgets.dailyGoals?.bg) }}>
+              <GoalChecklist
+                title="Daily Goals" items={state.dailyGoals}
+                onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")}
+                onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")}
+                accent={C.accent} cardBg={theme.widgets.dailyGoals?.bg}
+                streak={state.widgetStreaks?.dailyGoals || 0} history={state.widgetHistory?.dailyGoals || {}}
+                hideAddForm
+              />
             </div>
-            <div style={{ flex: 1, minWidth: 0, height: 280 }}>
-              {widgetsMap.timeTable}
+            <div style={{ flex: 1, minWidth: 0, height: 320, borderRadius: 10, padding: 8, boxSizing: "border-box", overflow: "hidden", ...glassCardStyle(theme.widgets.timeTable?.bg) }}>
+              <TimeTable
+                items={state.timeTable || []}
+                onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem}
+                onReschedule={rescheduleTimeItem} onToggleRecurring={toggleTimeRecurring}
+                accent={C.accent} cardBg={theme.widgets.timeTable?.bg}
+                streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}}
+                hideAddForm compact
+              />
             </div>
           </div>
 
