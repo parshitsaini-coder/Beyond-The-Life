@@ -12,6 +12,7 @@ import {
   Users, Clock, PieChart as PieChartIcon, Bell, BellOff, Square,
   AlarmClock, Volume2, Play, Pause, Waves, Gauge,
   Dumbbell, Info, Timer, Flower2, Wind, KeyRound, HelpCircle, ShieldAlert, CalendarClock,
+  ArrowLeftRight,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -13298,6 +13299,10 @@ function BTLDashboardInner() {
   const [focusMode, setFocusMode] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [friendOpen, setFriendOpen] = useState(false); // Friend Celebration panel
+  // Mobile "Daily Goal + Time Table" quick card (this update): instead of squeezing
+  // both widgets side by side, one full-width card shows at a time and this toggle
+  // switches which one — tap the swap button once for Daily Goals, again for Time Table.
+  const [mobileQuickView, setMobileQuickView] = useState("dailyGoals"); // "dailyGoals" | "timeTable"
   // Step 7 — mobile radial nav. Only "widget" kind items (Daily Goal, Entry Goals,
   // Life Big Goals, Clock & Alarm, Life Rules, Timer, Time Table, Calendar) need this:
   // they don't have a full-screen or modal presentation today, so selecting one opens
@@ -14181,41 +14186,45 @@ function BTLDashboardInner() {
           </div>
 
           {/* ---------- DAILY GOAL + TIME TABLE (mobile) — this update ----------
-               Per your marked-up screenshot: Daily Goal (left) / Time Table
-               (right), side by side. This update: wrapped each column in its
-               own proper glass card (matching Analytics Summary's look above
-               it) so nothing floats outside a visible boundary, given both
-               widgets a taller fixed height so every item is on-screen
-               without needing an inner scroll, and passed the new
-               `hideAddForm` prop so the "add new item" / "add new slot"
-               forms — the thing that was spilling out below/across into the
-               other column — don't render here at all. Time Table also gets
-               `compact` (narrower time pill, no recurring/trash icons, text
-               allowed to wrap) so its activity text has room to show in
-               full at half-screen width instead of being squeezed down to a
-               few letters. Nothing about the desktop grid or the dial's own
-               full-screen widget panels changed — both props default to
-               off there, so Add stays fully available in both places. */}
+               Per your marked-up screenshot: this card used to show Daily Goal
+               (left) / Time Table (right) squeezed side by side. Now it shows
+               ONE of them at a time, full-width/full-size (add form included,
+               Time Table not compacted) — a swap button top-right of the card
+               toggles `mobileQuickView` between "dailyGoals" and "timeTable":
+               tap once to see Daily Goals in full, tap again for Time Table,
+               and so on. Nothing about the desktop grid or the dial's own
+               full-screen widget panels changed. */}
           <div className="btl-mobile-quickgoals">
-            <div style={{ flex: 1, minWidth: 0, height: 320, borderRadius: 10, padding: 8, boxSizing: "border-box", overflow: "hidden", ...glassCardStyle(theme.widgets.dailyGoals?.bg) }}>
-              <GoalChecklist
-                title="Daily Goals" items={state.dailyGoals}
-                onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")}
-                onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")}
-                accent={C.accent} cardBg={theme.widgets.dailyGoals?.bg}
-                streak={state.widgetStreaks?.dailyGoals || 0} history={state.widgetHistory?.dailyGoals || {}}
-                hideAddForm
-              />
-            </div>
-            <div style={{ flex: 1, minWidth: 0, height: 320, borderRadius: 10, padding: 8, boxSizing: "border-box", overflow: "hidden", ...glassCardStyle(theme.widgets.timeTable?.bg) }}>
-              <TimeTable
-                items={state.timeTable || []}
-                onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem}
-                onReschedule={rescheduleTimeItem} onToggleRecurring={toggleTimeRecurring}
-                accent={C.accent} cardBg={theme.widgets.timeTable?.bg}
-                streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}}
-                hideAddForm compact
-              />
+            <div style={{ flex: 1, minWidth: 0, height: 340, borderRadius: 10, padding: 8, boxSizing: "border-box", overflow: "hidden", position: "relative", ...glassCardStyle(theme.widgets[mobileQuickView]?.bg) }}>
+              <button
+                type="button"
+                onClick={() => setMobileQuickView((v) => (v === "dailyGoals" ? "timeTable" : "dailyGoals"))}
+                title={mobileQuickView === "dailyGoals" ? "Switch to Time Table" : "Switch to Daily Goals"}
+                style={{
+                  position: "absolute", top: 8, right: 8, zIndex: 5, width: 28, height: 28, borderRadius: "50%",
+                  border: "none", background: C.accent, color: "#fff", display: "flex", alignItems: "center",
+                  justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+                }}
+              >
+                <ArrowLeftRight size={14} />
+              </button>
+              {mobileQuickView === "dailyGoals" ? (
+                <GoalChecklist
+                  title="Daily Goals" items={state.dailyGoals}
+                  onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")}
+                  onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")}
+                  accent={C.accent} cardBg={theme.widgets.dailyGoals?.bg}
+                  streak={state.widgetStreaks?.dailyGoals || 0} history={state.widgetHistory?.dailyGoals || {}}
+                />
+              ) : (
+                <TimeTable
+                  items={state.timeTable || []}
+                  onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem}
+                  onReschedule={rescheduleTimeItem} onToggleRecurring={toggleTimeRecurring}
+                  accent={C.accent} cardBg={theme.widgets.timeTable?.bg}
+                  streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}}
+                />
+              )}
             </div>
           </div>
 
