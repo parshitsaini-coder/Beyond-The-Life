@@ -935,6 +935,10 @@ function TimePickerPanel({ anchorRect, value, onPick, onClose, accent }) {
       window.removeEventListener("resize", handleDismiss);
     };
   }, [onClose]);
+
+  if (!anchorRect || typeof document === "undefined") return null;
+
+  const PANEL_W = 176;
   const PANEL_H = 196;
   const GAP = 6;
   const vw = window.innerWidth, vh = window.innerHeight;
