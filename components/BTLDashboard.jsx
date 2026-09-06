@@ -13990,7 +13990,7 @@ function BTLDashboardInner() {
           --btl-radial-bg: #c0d6df;
           --btl-radial-dark: #403d39;
         }
-        .btl-mobile-topbar, .btl-mobile-statsrow, .btl-mobile-dial-home, .btl-mobile-analytics-summary { display: none; }
+        .btl-mobile-topbar, .btl-mobile-statsrow, .btl-mobile-dial-home, .btl-mobile-analytics-summary, .btl-mobile-quickgoals { display: none; }
         @media (max-width: 768px) {
           .btl-desktop-header { display: none !important; }
           /* Step 6 — same #c0d6df override as app/layout.jsx's <body>, applied to this
@@ -14005,8 +14005,14 @@ function BTLDashboardInner() {
           .btl-desktop-only-grid { display: none !important; }
           .btl-mobile-dial-home { display: block !important; flex: 1; min-height: 0; }
           .btl-mobile-topbar {
-            display: flex; align-items: center; justify-content: flex-end;
+            display: flex; align-items: center; justify-content: space-between;
             flex-shrink: 0; padding: calc(6px + env(safe-area-inset-top, 0px)) 2px 6px;
+          }
+          .btl-mobile-quicknav { display: flex; align-items: center; gap: 8px; }
+          .btl-mobile-quicknav-btn {
+            width: 36px; height: 36px; min-width: 40px; min-height: 40px; border: none; border-radius: 50%;
+            background: var(--btl-radial-dark); color: #fffcf2; display: flex; align-items: center;
+            justify-content: center; cursor: pointer; flex-shrink: 0;
           }
           /* ---------------- Analytics Summary (mobile dial home) — this update ----------------
              Sits between the stats row and the (otherwise still mostly-empty) dial
@@ -14014,6 +14020,7 @@ function BTLDashboardInner() {
              height — AnalyticsSummaryWidget's own content (up to 8 metrics now that
              every id is forced on) decides how tall it needs to be. */
           .btl-mobile-analytics-summary { display: block !important; flex-shrink: 0; padding: 0 4px 10px; }
+          .btl-mobile-quickgoals { display: flex !important; gap: 10px; flex-shrink: 0; padding: 0 4px 12px; }
           /* Quick-glance stats (streak / save status / progress rings) — kept as their own
              slim row just below the top bar rather than crammed into it, per the "always
              visible" decision. Horizontally scrollable so it never wraps or clips on the
@@ -14092,14 +14099,34 @@ function BTLDashboardInner() {
         </div>
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          {/* ---------- HEADER (mobile) ----------
-               Back button removed per your call — this is the dial home
-               screen (root of the mobile nav) so it had nothing real to go
-               "back" to besides browser history; Profile stays, now the
-               only thing in the bar (right-aligned via the CSS below).
-               RadialPanel still renders its own Back button once a panel
-               is open — that one's untouched. */}
+          {/* ---------- HEADER (mobile) — this update ----------
+               Back button stays removed. In its place: a row of 4 quick-
+               nav icon buttons — Time Table, Analytics, Friend
+               Celebration, Share Journal — per your marked-up screenshot
+               (4 circles top-left, profile top-right). Time Table opens
+               the same full-screen RadialPanel widget view the dial
+               itself opens (routed through the existing handleRadialSelect
+               "widget" branch, not a new code path); the other three call
+               the exact same setTab/setFriendOpen/setShowShare the
+               desktop header's icon buttons already call. */}
           <div className="btl-mobile-topbar">
+            <div className="btl-mobile-quicknav">
+              <button
+                type="button" className="btl-mobile-quicknav-btn" aria-label="Time Table"
+                onClick={() => handleRadialSelect({ id: "timeTable", label: "Time Table", icon: CalendarClock, kind: "widget" })}
+              >
+                <CalendarClock size={17} />
+              </button>
+              <button type="button" className="btl-mobile-quicknav-btn" aria-label="Analytics" onClick={() => setTab("analytics")}>
+                <BarChart3 size={17} />
+              </button>
+              <button type="button" className="btl-mobile-quicknav-btn" aria-label="Friend Celebration" onClick={() => setFriendOpen(true)}>
+                <Users size={17} />
+              </button>
+              <button type="button" className="btl-mobile-quicknav-btn" aria-label="Share Journal" onClick={() => setShowShare(true)}>
+                <Sparkles size={17} />
+              </button>
+            </div>
             <div style={{ position: "relative" }}>
               <ProfileButton user={fbUser} open={profileOpen} onToggle={() => setProfileOpen((v) => !v)} />
               <ProfilePopup
@@ -14142,6 +14169,27 @@ function BTLDashboardInner() {
               metrics={ANALYTICS_SUMMARY_METRICS.map((m) => m.id)}
               colors={theme.analyticsSummaryColors}
             />
+          </div>
+
+          {/* ---------- DAILY GOAL + TIME TABLE (mobile) — this update ----------
+               Per your marked-up screenshot: the space right below Analytics
+               Summary is split into two side-by-side cards, Daily Goal (left)
+               / Time Table (right) — same GoalChecklist/TimeTable components
+               and Firestore-synced state (toggle, add, remove, subtasks,
+               reschedule, recurring — all of it) the desktop grid and the
+               dial's own widget panels already use, just laid out here
+               instead of one-at-a-time behind the dial. Each column gets an
+               explicit pixel height (matching the note on RadialPanel above)
+               since both widgets size their internal content off height:100%
+               — without it they'd render collapsed on this auto-height
+               mobile screen. */}
+          <div className="btl-mobile-quickgoals">
+            <div style={{ flex: 1, minWidth: 0, height: 280 }}>
+              {widgetsMap.dailyGoals}
+            </div>
+            <div style={{ flex: 1, minWidth: 0, height: 280 }}>
+              {widgetsMap.timeTable}
+            </div>
           </div>
 
 
