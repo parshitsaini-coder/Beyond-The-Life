@@ -762,9 +762,19 @@ const timeCatInfo = (key) => TIME_CATEGORIES.find((c) => c.key === key) || TIME_
 function CategoryPickerPanel({ anchorRect, categories, value, onPick, onClose }) {
   const ref = useRef(null);
 
+  // Bug fix (this update): this listener used to fire onClose() on ANY
+  // "scroll" event anywhere in the document (capture:true is needed since
+  // scroll doesn't bubble — that part's correct), but that included the
+  // panel's OWN list scrolling. So the moment you tried to scroll through
+  // the category list, the very first scroll tick closed the panel out
+  // from under you, making it look like it "wouldn't scroll" and just
+  // dumped you back on the page behind it. Now it only dismisses on
+  // scrolls that happen OUTSIDE the panel (e.g. the page behind it moving,
+  // which would leave the popover mis-anchored) — scrolling the list
+  // itself is left alone.
   useEffect(() => {
     const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    const handleDismiss = () => onClose();
+    const handleDismiss = (e) => { if (ref.current && ref.current.contains(e.target)) return; onClose(); };
     document.addEventListener("mousedown", handleClick);
     window.addEventListener("scroll", handleDismiss, true);
     window.addEventListener("resize", handleDismiss);
@@ -904,9 +914,18 @@ function TimePickerPanel({ anchorRect, value, onPick, onClose, accent }) {
     onPick(`${String(h24).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
   };
 
+  // Bug fix (this update): same root cause as CategoryPickerPanel's fix —
+  // this scroll-to-dismiss listener fired on ANY scroll, including the
+  // hour/minute wheel columns' own scrolling. Worse here specifically:
+  // TimeWheelColumn auto-scrolls the current value into view the instant
+  // it mounts (see its own useEffect below), which fired a "scroll" event
+  // that this listener caught and used to immediately close the panel —
+  // so tapping the time button looked like it did nothing at all, when it
+  // was actually opening and self-closing in the same frame. Now only
+  // scrolls OUTSIDE the panel (the page behind it moving) dismiss it.
   useEffect(() => {
     const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
-    const handleDismiss = () => onClose();
+    const handleDismiss = (e) => { if (ref.current && ref.current.contains(e.target)) return; onClose(); };
     document.addEventListener("mousedown", handleClick);
     window.addEventListener("scroll", handleDismiss, true);
     window.addEventListener("resize", handleDismiss);
@@ -916,10 +935,6 @@ function TimePickerPanel({ anchorRect, value, onPick, onClose, accent }) {
       window.removeEventListener("resize", handleDismiss);
     };
   }, [onClose]);
-
-  if (!anchorRect || typeof document === "undefined") return null;
-
-  const PANEL_W = 176;
   const PANEL_H = 196;
   const GAP = 6;
   const vw = window.innerWidth, vh = window.innerHeight;
@@ -1818,11 +1833,16 @@ function TextList({ title, items, textStyle, cardBg }) {
 function EmojiPickerPortal({ anchorRect, onPick, onClose }) {
   const ref = useRef(null);
 
+  // Bug fix (this update): same fix as CategoryPickerPanel/TimePickerPanel —
+  // this used to dismiss on ANY scroll, including the emoji grid's own
+  // internal scrolling, so scrolling through emojis instantly closed the
+  // picker instead of scrolling it. Now only dismisses on scrolls outside
+  // the picker itself.
   useEffect(() => {
     const handleClick = (e) => {
       if (ref.current && !ref.current.contains(e.target)) onClose();
     };
-    const handleDismiss = () => onClose();
+    const handleDismiss = (e) => { if (ref.current && ref.current.contains(e.target)) return; onClose(); };
     document.addEventListener("mousedown", handleClick);
     window.addEventListener("scroll", handleDismiss, true);
     window.addEventListener("resize", handleDismiss);

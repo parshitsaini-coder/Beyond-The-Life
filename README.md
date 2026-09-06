@@ -1,5 +1,46 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## 🐛 Fix: Time picker "not opening" + Category/emoji popup closing itself on scroll (this update)
+Both bugs you flagged (from your screenshots — the mobile Time Table
+add-row's ⏰ and 🏷 buttons) turned out to share one root cause in
+`components/BTLDashboard.jsx`.
+
+Three popovers — `CategoryPickerPanel`, `TimePickerPanel`, and
+`EmojiPickerPortal` (the 😀 button in the goal add-form) — each close
+themselves on outside-click, on window resize, **and on any `scroll`
+event**, so a stale popover doesn't stay glued to the wrong spot if the
+page behind it moves. That scroll listener was attached with
+`window.addEventListener("scroll", handleDismiss, true)` and closed the
+popover on **every** scroll event it saw — including scroll events fired
+by the popover's *own* content:
+
+- **Category/emoji popup "won't scroll, jumps back"**: scrolling the
+  category list or emoji grid fires a scroll event on that inner
+  `overflowY: auto` container. The old listener caught that too and
+  called `onClose()` immediately — so the very first scroll tick closed
+  the popup and dropped you back on the page behind it, looking exactly
+  like "scroll nahi hota, sidha background chala jata hai."
+- **Time picker "won't open"**: the hour/minute wheel columns
+  (`TimeWheelColumn`) auto-scroll the current value into view the instant
+  they mount (`scrollIntoView`) — which fires a scroll event too. The
+  panel's own listener caught its own opening scroll and closed itself in
+  the same frame, so tapping the time button looked like nothing
+  happened at all.
+
+**Fix**: the scroll-dismiss handler in all three now ignores scroll
+events whose target is inside the popover itself, and only closes on
+scrolls that happen outside it (the actual "page moved, reposition/close
+me" case it was meant for):
+```js
+const handleDismiss = (e) => {
+  if (ref.current && ref.current.contains(e.target)) return; // internal scroll — leave it open
+  onClose();
+};
+```
+Nothing else about these three components changed — same positioning,
+same outside-click/resize dismissal, same portal-to-`document.body`
+rendering.
+
 ## 🔄 Pro swap animation on the mobile Daily Goal / Time Table / Focus Timer card (this update)
 Per your screenshot markup: tapping the orange ⇄ button on the mobile quick
 card (`btl-mobile-quickgoals`, `components/BTLDashboard.jsx`) no longer
