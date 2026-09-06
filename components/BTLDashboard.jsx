@@ -491,6 +491,13 @@ const ANALYTICS_SUMMARY_METRICS = [
   { id: "net", label: "Net Money", type: "money", color: C.dark, icon: Wallet },
 ];
 const ANALYTICS_SUMMARY_DEFAULT_METRICS = ["daily", "extry", "overall", "timeTable", "streak"];
+// Meta for the mobile quick-swap card's animated corner pill (label + icon
+// shown while the ⇄ swap animation plays) — this update.
+const MOBILE_QUICKVIEW_META = {
+  dailyGoals: { label: "Daily Goals", icon: Target },
+  timeTable: { label: "Time Table", icon: Clock },
+  focusTimer: { label: "Focus Timer", icon: Timer },
+};
 function analyticsSummaryMetricMeta(id) {
   return ANALYTICS_SUMMARY_METRICS.find((m) => m.id === id) || null;
 }
@@ -2297,7 +2304,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
             <motion.button
               onClick={() => setShowOptions((v) => !v)} title="Category / priority / recurring"
               whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
-              style={{ border: "1px solid #ddd6c4", background: showOptions ? "#f0ece0" : "#fff", borderRadius: 6, padding: "0 7px", cursor: "pointer", fontSize: 10 }}>
+              style={{ border: "1px solid #ddd6c4", background: showOptions ? "#f0ece0" : "#fff", borderRadius: 6, padding: "0 7px", cursor: "pointer", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Tag size={12} />
             </motion.button>
             <motion.button
@@ -7088,8 +7095,12 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [resetOpen, setResetOpen] = useState(false);
   const [resetDone, setResetDone] = useState(false);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [filters, setFilters] = useState(DEFAULT_MONEY_FILTERS);
+  // Filter is no longer triggered from this tab's own header — `filters`
+  // stays at its default (unfiltered) value here now, and the Filter
+  // button/modal live only inside MoneySummaryModal (opened via Summary
+  // below). Left as state (rather than a constant) so nothing else in
+  // this component that reads `filters`/`filterActive` needs to change.
+  const [filters] = useState(DEFAULT_MONEY_FILTERS);
   const [deepLightbox, setDeepLightbox] = useState(null);
   const mt = normalizeScopeTheme(state.theme?.money);
   const mtFontFamily = mt.font ? fontStackFor(mt.font) : undefined;
@@ -7170,25 +7181,10 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
         <Wallet size={14} color={mc.header || C.dark} />
         <span style={{ fontSize: 13, fontWeight: 800, color: mc.header || C.dark }}>Money Management</span>
         <div style={{ flex: 1 }} />
-        <motion.button
-          onClick={() => setFilterOpen(true)}
-          whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
-          title="Filter by type, category & date"
-          style={{
-            position: "relative", border: `1px solid ${filterActive ? C.accent : C.text}`, borderRadius: 999, padding: "5px 11px",
-            background: filterActive ? `${C.accent}18` : "#fff",
-            display: "flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 10.5, fontWeight: 800, color: filterActive ? C.accent : C.dark,
-          }}
-        >
-          <Filter size={12} /> Filter
-          {filterActive && (
-            <span style={{
-              position: "absolute", top: -5, right: -5, width: 15, height: 15, borderRadius: "50%",
-              background: C.accent, color: "#fff", fontSize: 8, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 2px 6px rgba(252,163,17,0.5)",
-            }}>{activeFilterCount || "•"}</span>
-          )}
-        </motion.button>
+        {/* Filter moved into the Summary popup only (this update) — this
+           tab's own header no longer has a Filter button; Filter now
+           lives exclusively inside MoneySummaryModal, opened via
+           "Summary" below. */}
         <motion.button
           onClick={() => setSummaryOpen(true)}
           whileHover={{ y: -1 }} whileTap={{ scale: 0.95 }}
@@ -7214,35 +7210,9 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: 14 }} className="btl-scroll">
-        {/* active-filter indicator strip */}
-        <AnimatePresence>
-          {filterActive && (
-            <motion.div
-              initial={{ opacity: 0, height: 0, marginBottom: 0 }} animate={{ opacity: 1, height: "auto", marginBottom: 12 }} exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-              style={{ overflow: "hidden" }}
-            >
-              <div style={{
-                display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 12px", borderRadius: 10,
-                background: `${C.accent}14`, border: `1px solid ${C.accent}45`,
-              }}>
-                <Filter size={12} color={C.accent} />
-                <span style={{ fontSize: 10, fontWeight: 800, color: C.dark }}>Filtered view</span>
-                <span style={{ fontSize: 9.5, color: "#8a8579" }}>
-                  {filters.types.length === 1 ? (filters.types[0] === "earn" ? "Earn only" : "Spend only") : "Earn + Spend"}
-                  {filters.categories.length > 0 ? ` · ${filters.categories.length} categor${filters.categories.length > 1 ? "ies" : "y"}` : ""}
-                  {filters.dateRange !== "all" ? ` · ${DATE_PRESETS.find((p) => p.key === filters.dateRange)?.label}` : ""}
-                  {` · ${displayCount} match${displayCount === 1 ? "" : "es"}`}
-                </span>
-                <div style={{ marginLeft: "auto" }} />
-                <motion.div
-                  whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
-                  onClick={() => setFilters(DEFAULT_MONEY_FILTERS)}
-                  style={{ display: "flex", alignItems: "center", gap: 3, cursor: "pointer", fontSize: 9.5, fontWeight: 800, color: "#c0392b" }}
-                ><X size={11} /> Clear</motion.div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Active-filter indicator strip removed from this tab (this update) —
+           Filter now lives only inside the Summary popup, so `filterActive`
+           here is always false and this tab always shows lifetime totals. */}
 
         {/* summary strip */}
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
@@ -7393,16 +7363,8 @@ function MoneyManagementTab({ state, onClose, onResetData }) {
       <AnimatePresence>{deepLightbox && <MemPhotoLightbox src={deepLightbox} onClose={() => setDeepLightbox(null)} />}</AnimatePresence>
       <AnimatePresence>{summaryOpen && <MoneySummaryModal state={state} onClose={() => setSummaryOpen(false)} />}</AnimatePresence>
       <AnimatePresence>{resetOpen && <MoneyResetModal onClose={() => setResetOpen(false)} onConfirm={handleResetConfirm} />}</AnimatePresence>
-      <AnimatePresence>
-        {filterOpen && (
-          <MoneyFilterModal
-            entries={entries}
-            filters={filters}
-            onApply={(next) => setFilters(next)}
-            onClose={() => setFilterOpen(false)}
-          />
-        )}
-      </AnimatePresence>
+      {/* Filter modal removed from this tab (this update) — Filter now
+         lives only inside the Summary popup (MoneySummaryModal). */}
       <AnimatePresence>
         {resetDone && (
           <motion.div
@@ -14967,7 +14929,11 @@ function BTLDashboardInner() {
   // Mobile "Daily Goal + Time Table" quick card (this update): instead of squeezing
   // both widgets side by side, one full-width card shows at a time and this toggle
   // switches which one — tap the swap button once for Daily Goals, again for Time Table.
-  const [mobileQuickView, setMobileQuickView] = useState("dailyGoals"); // "dailyGoals" | "timeTable"
+  const [mobileQuickView, setMobileQuickView] = useState("dailyGoals"); // "dailyGoals" | "timeTable" | "focusTimer"
+  // Pro swap animation (this update): increments on every tap of the ⇄ button —
+  // drives the button's spin + expanding ripple burst, and (via key) the
+  // 3D card-flip transition on the widget content below it.
+  const [swapPulse, setSwapPulse] = useState(0);
   const isMobileView = useIsMobileView(); // this update: gates which of desktop/mobile trees actually mounts (perf)
   // Step 7 — mobile radial nav. Only "widget" kind items (Daily Goal, Entry Goals,
   // Life Big Goals, Clock & Alarm, Life Rules, Timer, Time Table, Calendar) need this:
@@ -15893,47 +15859,122 @@ function BTLDashboardInner() {
             />
           </div>
 
-          {/* ---------- DAILY GOAL + TIME TABLE (mobile) — this update ----------
+          {/* ---------- DAILY GOAL + TIME TABLE + FOCUS TIMER (mobile) — this update ----------
                Per your marked-up screenshot: this card used to show Daily Goal
                (left) / Time Table (right) squeezed side by side. Now it shows
                ONE of them at a time, full-width/full-size (add form included,
                Time Table not compacted) — a swap button top-right of the card
-               toggles `mobileQuickView` between "dailyGoals" and "timeTable":
-               tap once to see Daily Goals in full, tap again for Time Table,
-               and so on. Nothing about the desktop grid or the dial's own
-               full-screen widget panels changed. */}
+               cycles `mobileQuickView` through "dailyGoals" → "timeTable" →
+               "focusTimer" → back to "dailyGoals" (this update adds Focus
+               Timer into that same cycle, tapping the orange ⇄ button).
+               Nothing about the desktop grid or the dial's own full-screen
+               widget panels changed. */}
           <div className="btl-mobile-quickgoals">
             <div style={{ flex: 1, minWidth: 0, height: 340, borderRadius: 10, padding: 8, boxSizing: "border-box", overflow: "hidden", position: "relative", ...glassCardStyle(theme.widgets[mobileQuickView]?.bg) }}>
-              <button
-                type="button"
-                onClick={() => setMobileQuickView((v) => (v === "dailyGoals" ? "timeTable" : "dailyGoals"))}
-                title={mobileQuickView === "dailyGoals" ? "Switch to Time Table" : "Switch to Daily Goals"}
-                style={{
-                  position: "absolute", top: 8, right: 8, zIndex: 5, width: 28, height: 28, borderRadius: "50%",
-                  border: "none", background: C.accent, color: "#fff", display: "flex", alignItems: "center",
-                  justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
-                }}
-              >
-                <ArrowLeftRight size={14} />
-              </button>
-              {mobileQuickView === "dailyGoals" ? (
-                <GoalChecklist
-                  title="Daily Goals" items={state.dailyGoals}
-                  onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")}
-                  onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")}
-                  onSetStreakEnabled={setGoalStreakEnabled("dailyGoals")} listKey="daily" dailyLogs={state.dailyLogs}
-                  accent={C.accent} cardBg={theme.widgets.dailyGoals?.bg}
-                  streak={state.widgetStreaks?.dailyGoals || 0} history={state.widgetHistory?.dailyGoals || {}}
-                />
-              ) : (
-                <TimeTable
-                  items={state.timeTable || []}
-                  onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem}
-                  onReschedule={rescheduleTimeItem} onToggleRecurring={toggleTimeRecurring}
-                  accent={C.accent} cardBg={theme.widgets.timeTable?.bg}
-                  streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}}
-                />
-              )}
+              {/* ---- animated corner pill (this update) — fades/slides in the
+                   name of the view that just swapped into place, so the flip
+                   below reads as an intentional swap rather than a random
+                   content change. ---- */}
+              <div style={{ position: "absolute", top: 8, left: 8, zIndex: 5, overflow: "hidden" }}>
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={mobileQuickView}
+                    initial={{ opacity: 0, y: -10, scale: 0.9 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.9 }}
+                    transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5, padding: "4px 9px 4px 7px",
+                      borderRadius: 999, fontSize: 11, fontWeight: 700, letterSpacing: 0.2,
+                      color: "#fff", background: `${C.accent}e6`, boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                      backdropFilter: "blur(6px)", whiteSpace: "nowrap",
+                    }}
+                  >
+                    {(() => { const Ic = MOBILE_QUICKVIEW_META[mobileQuickView].icon; return <Ic size={12} />; })()}
+                    {MOBILE_QUICKVIEW_META[mobileQuickView].label}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+
+              {/* ---- swap button (this update) — spins a full 180° per tap,
+                   punches down on press, and fires an expanding ring burst
+                   from its center so the "swap" action itself feels alive,
+                   not just the content underneath it. ---- */}
+              <div style={{ position: "absolute", top: 8, right: 8, zIndex: 5, width: 28, height: 28 }}>
+                <AnimatePresence>
+                  <motion.span
+                    key={`ring-${swapPulse}`}
+                    initial={{ opacity: 0.55, scale: 0.5 }}
+                    animate={{ opacity: 0, scale: 2.6 }}
+                    transition={{ duration: 0.6, ease: "easeOut" }}
+                    style={{
+                      position: "absolute", inset: 0, borderRadius: "50%",
+                      border: `2px solid ${C.accent}`, pointerEvents: "none",
+                    }}
+                  />
+                </AnimatePresence>
+                <motion.button
+                  type="button"
+                  onClick={() => {
+                    setMobileQuickView((v) => (v === "dailyGoals" ? "timeTable" : v === "timeTable" ? "focusTimer" : "dailyGoals"));
+                    setSwapPulse((p) => p + 1);
+                  }}
+                  title={mobileQuickView === "dailyGoals" ? "Switch to Time Table" : mobileQuickView === "timeTable" ? "Switch to Focus Timer" : "Switch to Daily Goals"}
+                  animate={{ rotate: swapPulse * 180 }}
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.8, rotate: swapPulse * 180 + 25 }}
+                  transition={{ type: "spring", stiffness: 260, damping: 18 }}
+                  style={{
+                    position: "relative", width: 28, height: 28, borderRadius: "50%",
+                    border: "none", background: C.accent, color: "#fff", display: "flex", alignItems: "center",
+                    justifyContent: "center", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+                  }}
+                >
+                  <ArrowLeftRight size={14} />
+                </motion.button>
+              </div>
+
+              {/* ---- widget content — 3D card-flip swap (this update). The
+                   outgoing widget rotates away and the incoming one rotates
+                   in from the opposite face, like a physical card being
+                   flipped over, instead of an instant content swap. ---- */}
+              <div style={{ position: "absolute", inset: 8, top: 40, perspective: 1200 }}>
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={mobileQuickView}
+                    initial={{ opacity: 0, rotateY: 90, scale: 0.92 }}
+                    animate={{ opacity: 1, rotateY: 0, scale: 1 }}
+                    exit={{ opacity: 0, rotateY: -90, scale: 0.92 }}
+                    transition={{ type: "spring", stiffness: 260, damping: 26, mass: 0.9 }}
+                    style={{ position: "absolute", inset: 0, transformStyle: "preserve-3d", backfaceVisibility: "hidden" }}
+                  >
+                    {mobileQuickView === "dailyGoals" ? (
+                      <GoalChecklist
+                        title="Daily Goals" items={state.dailyGoals}
+                        onToggle={toggleGoal("dailyGoals")} onAdd={addGoal("dailyGoals")} onRemove={removeGoal("dailyGoals")}
+                        onToggleSubtask={toggleSubtask("dailyGoals")} onAddSubtask={addSubtask("dailyGoals")} onSetIcon={setGoalIcon("dailyGoals")}
+                        onSetStreakEnabled={setGoalStreakEnabled("dailyGoals")} listKey="daily" dailyLogs={state.dailyLogs}
+                        accent={C.accent} cardBg={theme.widgets.dailyGoals?.bg}
+                        streak={state.widgetStreaks?.dailyGoals || 0} history={state.widgetHistory?.dailyGoals || {}}
+                      />
+                    ) : mobileQuickView === "timeTable" ? (
+                      <TimeTable
+                        items={state.timeTable || []}
+                        onToggle={toggleTimeItem} onAdd={addTimeItem} onRemove={removeTimeItem}
+                        onReschedule={rescheduleTimeItem} onToggleRecurring={toggleTimeRecurring}
+                        accent={C.accent} cardBg={theme.widgets.timeTable?.bg}
+                        streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}}
+                      />
+                    ) : (
+                      <FocusTimerWidget
+                        focusTimer={normalizeFocusTimer(state.focusTimer)}
+                        onToggle={toggleFocusTimer} onAddCategory={addFocusCategory} onRemoveCategory={removeFocusCategory}
+                        accent={C.accent} cardBg={theme.widgets.focusTimer?.bg}
+                      />
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
             </div>
           </div>
           </>

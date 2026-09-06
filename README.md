@@ -1,5 +1,34 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## 🔄 Pro swap animation on the mobile Daily Goal / Time Table / Focus Timer card (this update)
+Per your screenshot markup: tapping the orange ⇄ button on the mobile quick
+card (`btl-mobile-quickgoals`, `components/BTLDashboard.jsx`) no longer
+instant-swaps the content — it's now a proper animated transition, built
+entirely with `framer-motion` (already a dependency):
+
+- **3D card-flip** — the outgoing widget (Daily Goals / Time Table / Focus
+  Timer) rotates away on the Y-axis and fades/scales down while the
+  incoming one rotates in from the opposite face, like a physical card
+  being flipped — not a hard content swap. Spring physics
+  (`stiffness: 260, damping: 26`), so it settles with a touch of bounce
+  rather than a linear ease.
+- **Spinning swap button** — the ⇄ button itself does a full 180° spring
+  rotation every tap (cumulative, so two taps = 360°, etc.), plus a quick
+  press-down `scale: 0.8` on tap and a slight hover lift.
+- **Expanding ring burst** — every tap also fires a thin accent-colored
+  ring from the button's center that expands and fades out, like a
+  ripple/sonar ping, reinforcing that the swap was registered.
+- **Animated corner label** — a small pill (icon + name — Daily Goals /
+  Time Table / Focus Timer) fades and slides in at the top-left each time
+  the view changes, so it's immediately clear what you just swapped into,
+  independent of the flip animation.
+
+All four are pure `framer-motion` (`motion.div`/`motion.button`,
+`AnimatePresence`) — no new dependency, and none of `mobileQuickView`'s
+underlying state/cycle logic changed (still Daily Goals → Time Table →
+Focus Timer → back to Daily Goals). Desktop grid and the radial dial's
+widget panels are untouched.
+
 ## 🔥 "Start Streak" per-goal option in Daily/Extra Goals (this update)
 Per your screenshots: Daily Goals (and Extra Goals, same widget component)
 now has an opt-in per-goal streak, right in the widget itself — not just
