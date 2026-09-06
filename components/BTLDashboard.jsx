@@ -665,12 +665,12 @@ function ensureLayoutDefaults(s) {
 
 /* ---------------- GOAL MANAGEMENT: categories & priorities ---------------- */
 const CATEGORIES = [
-  { key: "health", label: "Health", color: "#4a7c59" },
-  { key: "money", label: "Money", color: C.accent },
-  { key: "career", label: "Career", color: C.blue },
-  { key: "relationships", label: "Relations", color: "#e07a5f" },
-  { key: "personal", label: "Personal", color: "#f4d35e" },
-  { key: "other", label: "Other", color: "#b3ac99" },
+  { key: "health", label: "Health", emoji: "💪", color: "#4a7c59" },
+  { key: "money", label: "Money", emoji: "💰", color: C.accent },
+  { key: "career", label: "Career", emoji: "💼", color: C.blue },
+  { key: "relationships", label: "Relations", emoji: "❤️", color: "#e07a5f" },
+  { key: "personal", label: "Personal", emoji: "🧑", color: "#f4d35e" },
+  { key: "other", label: "Other", emoji: "🔖", color: "#b3ac99" },
 ];
 const catInfo = (key) => CATEGORIES.find((c) => c.key === key) || CATEGORIES[CATEGORIES.length - 1];
 
@@ -691,9 +691,9 @@ const SPEND_CATEGORIES = [
 const spendCatInfo = (key) => SPEND_CATEGORIES.find((c) => c.key === key) || SPEND_CATEGORIES[SPEND_CATEGORIES.length - 1];
 
 const PRIORITIES = [
-  { key: "high", label: "High", color: "#e07a5f" },
-  { key: "medium", label: "Medium", color: C.accent },
-  { key: "low", label: "Low", color: C.blue },
+  { key: "high", label: "High", emoji: "🔴", color: "#e07a5f" },
+  { key: "medium", label: "Medium", emoji: "🟠", color: C.accent },
+  { key: "low", label: "Low", emoji: "🟢", color: C.blue },
 ];
 const prioInfo = (key) => PRIORITIES.find((p) => p.key === key) || PRIORITIES[1];
 
@@ -720,6 +720,35 @@ function ensureGoalDefaults(g) {
     streakEnabled: !!g.streakEnabled,
   };
 }
+
+/* ---------------- ACTIVE STREAKS — header-level summary (this update) ----------------
+   Counts how many goals (across Daily + Extry) currently have "Start
+   Streak" switched on AND are actually mid-streak (>=1 day running) —
+   same "walk dailyLogs backward from today" logic GoalChecklist's own
+   per-goal goalStreakCounts already uses, just combined across both
+   lists so the header can show one number. Written as a plain helper
+   (not a hook) since it's read from BTLDashboardInner's render body
+   after an early `if (!state) return` — same reason dailyPct/extryPct
+   right next to it are plain consts, not useMemo. */
+function countActiveStreakGoals(dailyGoals, extryGoals, dailyLogs) {
+  const logs = dailyLogs || {};
+  const recordedDates = Object.keys(logs).filter((d) => logs[d]?.completedGoals).sort().reverse();
+  const countFor = (items, listKey) => {
+    let n = 0;
+    (items || []).forEach((g) => {
+      if (!g.streakEnabled) return;
+      let streak = 0;
+      for (const iso of recordedDates) {
+        const present = (logs[iso]?.completedGoals?.[listKey] || []).some((x) => x.id === g.id);
+        if (present) streak++; else break;
+      }
+      if (streak > 0) n++;
+    });
+    return n;
+  };
+  return countFor(dailyGoals, "daily") + countFor(extryGoals, "extry");
+}
+
 
 /* ---------------- TIME TABLE: item shape ----------------
    Simple time-of-day checklist rows: { time: "HH:MM" (24h, sorts and
@@ -1497,6 +1526,99 @@ function DayStreakBadge({ streak, accent = C.accent, dark = C.dark }) {
         </motion.div>
       </div>
       <div style={{ fontSize: 8, fontWeight: 700, color: dark, opacity: 0.65, letterSpacing: 0.3 }}>Streak</div>
+    </div>
+  );
+}
+
+/* ---------------- ACTIVE STREAKS BADGE (this update) ----------------
+   New header-level indicator, separate from DayStreakBadge above (which
+   tracks the overall "days in a row everything got done" streak). This
+   one answers a different question: "how many individual goals right
+   now have Start Streak switched on and are actually mid-streak?" —
+   count comes from countActiveStreakGoals() combining Daily + Extry.
+   Built to read as a genuine "fire" the moment that count is > 0: a
+   soft radial ember-glow breathing behind it, embers drifting upward
+   and fading, and the flame glyph itself flickering (scale + skew +
+   slight rotation jitter) rather than sitting static like the small
+   per-row flame in GoalChecklist. At 0 it settles to a calm, static,
+   desaturated flame so the "something is burning" read stays honest —
+   the effect only performs when there's a real streak behind it. Same
+   framer-motion + CSS approach as every other animation in this file,
+   no new dependencies. */
+function ActiveStreaksBadge({ count = 0, dark = C.dark }) {
+  const active = count > 0;
+  const embers = useMemo(
+    () => Array.from({ length: 5 }, (_, i) => ({ id: i, delay: i * 0.34, x: (i - 2) * 4.5 })),
+    []
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+      <div
+        title={active ? `${count} goal streak${count === 1 ? "" : "s"} currently burning` : "No active goal streaks yet"}
+        style={{ position: "relative", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center" }}
+      >
+        {/* Breathing ember glow behind the flame */}
+        {active && (
+          <motion.span
+            aria-hidden
+            animate={{ opacity: [0.18, 0.5, 0.18], scale: [0.85, 1.2, 0.85] }}
+            transition={{ duration: 1.7, repeat: Infinity, ease: "easeInOut" }}
+            style={{
+              position: "absolute", inset: -7, borderRadius: "50%",
+              background: "radial-gradient(circle, #ff8a3d80, transparent 72%)",
+              filter: "blur(2px)", pointerEvents: "none",
+            }}
+          />
+        )}
+
+        {/* Embers drifting upward and fading */}
+        {active && embers.map((e) => (
+          <motion.span
+            key={e.id}
+            aria-hidden
+            initial={{ opacity: 0, y: 8, x: e.x }}
+            animate={{ opacity: [0, 1, 0], y: [8, -20 - (e.id % 2) * 4], x: [e.x, e.x + (e.id % 2 ? 3 : -3)] }}
+            transition={{ duration: 1.9, repeat: Infinity, delay: e.delay, ease: "easeOut" }}
+            style={{
+              position: "absolute", bottom: 8, width: 2.5, height: 2.5, borderRadius: "50%",
+              background: e.id % 2 ? "#ffb347" : "#ff7a45", pointerEvents: "none",
+            }}
+          />
+        ))}
+
+        {/* Flickering flame glyph */}
+        <motion.div
+          aria-hidden
+          animate={active
+            ? { scale: [1, 1.14, 0.95, 1.08, 1], rotate: [-4, 3, -2, 4, 0], skewX: [0, 3, -2, 2, 0] }
+            : { scale: 1, rotate: 0, skewX: 0 }}
+          transition={{ duration: 1.15, repeat: active ? Infinity : 0, ease: "easeInOut" }}
+          style={{ position: "relative", color: active ? "#e07a5f" : "#d8d2bf", filter: active ? "drop-shadow(0 0 4px #ff8a3d80)" : "none" }}
+        >
+          <Flame size={21} fill={active ? "#ffb347" : "none"} />
+        </motion.div>
+
+        {/* Count pill, pops with a spring whenever it changes */}
+        <AnimatePresence mode="popLayout" initial={false}>
+          <motion.div
+            key={count}
+            initial={{ scale: 0.4, opacity: 0, y: 4 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.4, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 420, damping: 18 }}
+            style={{
+              position: "absolute", bottom: -2, right: -5, minWidth: 15, height: 15, padding: "0 3px",
+              borderRadius: 8, background: active ? "#e07a5f" : "#b3ac99", color: "#fff",
+              fontSize: 9, fontWeight: 900, display: "flex", alignItems: "center", justifyContent: "center",
+              border: "1.5px solid #fff", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+            }}
+          >
+            {count}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      <div style={{ fontSize: 8, fontWeight: 700, color: dark, opacity: 0.65, letterSpacing: 0.3, whiteSpace: "nowrap" }}>Active Streaks</div>
     </div>
   );
 }
@@ -2381,12 +2503,8 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
           </div>
           {showOptions && (
             <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap", alignItems: "center" }}>
-              <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ fontSize: 9, padding: "3px 4px", borderRadius: 5, border: "1px solid #ddd6c4" }}>
-                {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-              </select>
-              <select value={priority} onChange={(e) => setPriority(e.target.value)} style={{ fontSize: 9, padding: "3px 4px", borderRadius: 5, border: "1px solid #ddd6c4" }}>
-                {PRIORITIES.map((p) => <option key={p.key} value={p.key}>{p.label} priority</option>)}
-              </select>
+              <CategoryDropdown value={category} onChange={setCategory} categories={CATEGORIES} accent={accent} />
+              <CategoryDropdown value={priority} onChange={setPriority} categories={PRIORITIES} accent={accent} />
               <label style={{ fontSize: 9, display: "flex", alignItems: "center", gap: 3, cursor: "pointer" }}>
                 <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} style={{ width: 11, height: 11 }} />
                 Recurring
@@ -15104,6 +15222,7 @@ function BTLDashboardInner() {
   const extryPct = state.extryGoals.length ? (state.extryGoals.filter((g) => g.done).length / state.extryGoals.length) * 100 : 0;
   const overallPct = (dailyPct + extryPct) / 2;
   const timeTablePct = (state.timeTable || []).length ? ((state.timeTable || []).filter((t) => t.done).length / (state.timeTable || []).length) * 100 : 0;
+  const activeStreakCount = countActiveStreakGoals(state.dailyGoals, state.extryGoals, state.dailyLogs);
   const headerLifeScore = computeLifeScore(state);
 
   const MILESTONES = [3, 7, 14, 21, 30, 50, 75, 100];
@@ -15878,6 +15997,9 @@ function BTLDashboardInner() {
               <button type="button" className="btl-mobile-quicknav-btn" aria-label="Share Journal" onClick={() => setShowShare(true)}>
                 <Sparkles size={17} />
               </button>
+              <button type="button" className="btl-mobile-quicknav-btn" aria-label="Fitness" onClick={() => setTab("fitness")}>
+                <Dumbbell size={17} />
+              </button>
             </div>
             <div style={{ position: "relative" }}>
               <ProfileButton user={fbUser} open={profileOpen} onToggle={() => setProfileOpen((v) => !v)} />
@@ -15897,6 +16019,7 @@ function BTLDashboardInner() {
           <div className="btl-mobile-statsrow">
             <SaveStatus status={saveStatus} />
             <DayStreakBadge streak={state.streak} accent={C.accent} dark={theme.analyticsSummaryColors.streak || C.dark} />
+            <ActiveStreaksBadge count={activeStreakCount} dark={theme.analyticsSummaryColors.streak || C.dark} />
             <RingStat size={44} pct={dailyPct} label="Daily" color={theme.analyticsSummaryColors.daily || C.accent} textColor={theme.analyticsSummaryColors.text || undefined} />
             <RingStat size={44} pct={extryPct} label="Entry" color={theme.analyticsSummaryColors.extry || C.blue} textColor={theme.analyticsSummaryColors.text || undefined} />
             <RingStat size={44} pct={overallPct} label="Goal" color={theme.analyticsSummaryColors.overall || dashTheme.text || C.dark} textColor={theme.analyticsSummaryColors.text || undefined} />
@@ -16110,6 +16233,7 @@ function BTLDashboardInner() {
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <SaveStatus status={saveStatus} />
               <DayStreakBadge streak={state.streak} accent={C.accent} dark={theme.analyticsSummaryColors.streak || C.dark} />
+              <ActiveStreaksBadge count={activeStreakCount} dark={theme.analyticsSummaryColors.streak || C.dark} />
               <RingStat pct={dailyPct} label="Daily Goal" sub="Staytus" color={theme.analyticsSummaryColors.daily || C.accent} textColor={theme.analyticsSummaryColors.text || undefined} />
               <RingStat pct={extryPct} label="Extry Goal" sub="Staytus" color={theme.analyticsSummaryColors.extry || C.blue} textColor={theme.analyticsSummaryColors.text || undefined} />
               <RingStat pct={overallPct} label="Goal" color={theme.analyticsSummaryColors.overall || dashTheme.text || C.dark} textColor={theme.analyticsSummaryColors.text || undefined} />

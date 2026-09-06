@@ -1,6 +1,68 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🛡️ Popover-scoped error boundary for Category/Time/Emoji pickers (this update)
+# BTL — Real Google OAuth (Firebase) + Vercel hosting
+
+# BTL — Real Google OAuth (Firebase) + Vercel hosting
+
+## 🔥 New "Active Streaks" header badge (this update)
+Added a brand-new indicator to the header stat cluster (mobile stats row
++ desktop header, right where the existing Day Streak / Daily Goal /
+Extry Goal / Goal / Time Table badges live) — separate from the
+existing "Day Streak" badge (which tracks the overall "everything got
+done N days running" streak). This new one answers a different
+question: **how many individual goals right now have "Start Streak"
+switched on and are actually mid-streak** (running ≥1 day)?
+
+- `countActiveStreakGoals()` — a plain helper (not a hook, since it's
+  read after `BTLDashboardInner`'s early `if (!state) return`, same as
+  `dailyPct`/`extryPct` next to it) that combines the exact
+  day-walking-backward logic GoalChecklist's own per-goal streak counts
+  already use, across both Daily Goals and Extry Goals.
+- `ActiveStreaksBadge` — new component next to `DayStreakBadge`. At 0
+  it's a calm, static, desaturated flame (so it never fakes a fire that
+  isn't there). The moment the count is > 0 it comes alive: a breathing
+  radial ember-glow behind it, 5 embers drifting upward and fading on
+  staggered loops, the flame glyph itself flickering (scale + rotate +
+  skew jitter, not just a static icon), and a count pill that
+  spring-pops whenever the number changes.
+- Pure framer-motion + CSS, same as every other animation in this file
+  — no new dependencies, no WebGL.
+
+## 🏋️ Fitness shortcut added to the mobile top quicknav row (earlier update)
+The mobile top bar's round icon row (Time Table / Analytics / Friend
+Celebration / Share Journal) was missing a way to jump straight to the
+Fitness tab — you had to go through the desktop-only QuickNavFab instead.
+
+- Added a 5th `Dumbbell` icon button to `.btl-mobile-quicknav`, same
+  36px round dark pill style as the other four, calling `setTab("fitness")`
+  — the exact same tab the desktop QuickNavFab's "Fitness" shortcut
+  already opens, so no new screen/route was built, just a faster way in.
+
+## 🎨 Proper custom UI for the goal Category/Priority dropdowns (earlier update)
+The "Add item" options row on a goal checklist card (Category + Priority)
+was still using raw HTML `<select>` elements — plain OS-chrome dropdowns
+(the flat grey "Other ⌄" / "Medium priority ⌄" boxes) that didn't match
+the rest of the app's glassy, animated popover style, unlike Time Table's
+category picker which already got the custom-popover treatment earlier.
+
+- Both dropdowns on the goal add-item row now reuse the same
+  `CategoryDropdown` + `CategoryPickerPanel` component Time Table already
+  uses — a pill button with an emoji + chevron that opens a glass
+  blur-backdrop popover (spring-animated, viewport-aware so it flips
+  above the button near the bottom of the screen, closes on outside
+  click/scroll/resize), with a colored highlight + checkmark on the
+  selected row. This is the same generic component, just pointed at a
+  different list — no new popover code needed.
+- `CATEGORIES` (Health/Money/Career/Relations/Personal/Other) got emoji
+  added (💪💰💼❤️🧑🔖) so they render the same as Time Table's categories.
+- `PRIORITIES` (High/Medium/Low) got a small traffic-light dot emoji each
+  (🔴🟠🟢) instead of no icon, so priority is readable at a glance in the
+  closed pill, not just from the text.
+- Both dropdowns are already wrapped in the `PopoverErrorBoundary` added
+  above (they render through the same `CategoryDropdown` component), so
+  this doesn't reopen the "one crash blanks the whole dashboard" issue.
+
+## 🛡️ Popover-scoped error boundary for Category/Time/Emoji pickers (earlier update)
 Reported crash: tapping the Time Table add-row's ⏰ button threw
 `ReferenceError: PANEL_W is not defined`, which crashed the **entire**
 dashboard behind the "Something went wrong — Reload dashboard" screen —
