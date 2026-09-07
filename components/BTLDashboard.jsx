@@ -2682,7 +2682,7 @@ function GoalChecklist({ title, items, onToggle, onAdd, onRemove, onToggleSubtas
    / celebration language of GoalChecklist for visual consistency, plus
    its own small check-burst (hand-built with framer-motion — SVG ring
    draw + radiating dots — so it needs no extra runtime asset). */
-function formatTime12(hhmm) {
+export function formatTime12(hhmm) {
   if (typeof hhmm !== "string" || !hhmm.includes(":")) return hhmm || "";
   const [hStr, mStr] = hhmm.split(":");
   let h = parseInt(hStr, 10);

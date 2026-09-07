@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useMemo, createContext, useContext } from 
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, UserPlus, MessageCircle, Send, Check, ArrowLeft, Handshake, Zap,
-  BookOpen, CheckCircle2, Circle, Loader2, Users, Settings,
+  BookOpen, CheckCircle2, Circle, Loader2, Users, Settings, Clock, Target, ShieldCheck,
 } from "lucide-react";
 import {
   friendshipId, sendFriendRequestByEmail, sendFriendRequestToUid, listAllUsers,
@@ -11,7 +11,7 @@ import {
   acceptFriendRequest, declineFriendRequest, cancelFriendRequest, listenFriendships,
   listenFriendState, listenChatMessages, sendChatMessage,
 } from "@/lib/friendsStorage";
-import { MemoriesModal, normalizeScopeTheme, fontStackFor } from "@/components/BTLDashboard";
+import { MemoriesModal, normalizeScopeTheme, fontStackFor, formatTime12 } from "@/components/BTLDashboard";
 
 /* ---- Friend Celebration theme (Settings -> Theme -> Friend Celebration) ----
    Same {bg,text,font,bold,scale} shape as the app's other theme scopes
@@ -452,6 +452,35 @@ function FriendHubView({ user, friendships, incoming, outgoing, onSelectFriend, 
 
 /* ---------------- VS split-screen dashboard ---------------- */
 
+/* ---------------- animated done-check (this update) ----------------
+   Shared by GoalMiniList and TimeTableMiniList. A plain icon-swap used
+   to just flip Circle -> CheckCircle2 with no feedback at all — the
+   moment you (or your friend) actually finish something now gets a
+   proper "landed" moment: the check springs in with a soft green burst
+   ring expanding and fading behind it, instead of silently appearing. */
+function DoneCheck({ done, size = 12 }) {
+  const ft = useFriendTheme();
+  return (
+    <span style={{ position: "relative", width: size, height: size, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+      <AnimatePresence mode="wait" initial={false}>
+        {done ? (
+          <motion.span key="done" style={{ position: "relative", display: "flex" }}
+            initial={{ scale: 0.3, rotate: -90, opacity: 0 }} animate={{ scale: 1, rotate: 0, opacity: 1 }} exit={{ scale: 0.3, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 520, damping: 20 }}>
+            <motion.span aria-hidden initial={{ scale: 0.5, opacity: 0.75 }} animate={{ scale: 2.4, opacity: 0 }} transition={{ duration: 0.6, ease: "easeOut" }}
+              style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "#2e7d3260", pointerEvents: "none" }} />
+            <CheckCircle2 size={size} color="#2e7d32" fill="#c8f5d4" style={{ position: "relative" }} />
+          </motion.span>
+        ) : (
+          <motion.span key="undone" style={{ display: "flex" }} initial={{ scale: 0.7, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.7, opacity: 0 }}>
+            <Circle size={size} color={ft.glassic ? "rgba(28,28,30,0.3)" : "rgba(255,255,255,0.35)"} />
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </span>
+  );
+}
+
 function GoalMiniList({ title, items }) {
   const ft = useFriendTheme();
   const done = items.filter((g) => g.done).length;
@@ -461,21 +490,126 @@ function GoalMiniList({ title, items }) {
         <span>{title}</span><span>{done}/{items.length}</span>
       </div>
       {items.length === 0 && <div style={{ fontSize: Math.round(10 * ft.scale), color: ft.text, opacity: ft.glassic ? 0.5 : 0.3 }}>No goals yet.</div>}
-      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         {items.map((g) => (
-          <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: Math.round(10.5 * ft.scale), fontWeight: ft.bold ? 700 : 400, color: g.done ? ft.text : ft.text, opacity: g.done ? 0.4 : 1, textDecoration: g.done ? "line-through" : "none" }}>
-            {g.done ? <CheckCircle2 size={12} color="#2e7d32" /> : <Circle size={12} color={ft.glassic ? "rgba(28,28,30,0.3)" : "rgba(255,255,255,0.35)"} />}
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.text || "Goal"}</span>
-          </div>
+          <motion.div key={g.id} layout
+            animate={{ background: g.done ? (ft.glassic ? "rgba(46,125,50,0.12)" : "rgba(46,125,50,0.16)") : "rgba(0,0,0,0)" }}
+            transition={{ duration: 0.35 }}
+            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: Math.round(10.5 * ft.scale), fontWeight: ft.bold ? 700 : 400, color: ft.text, opacity: g.done ? 0.55 : 1, borderRadius: 6, padding: "2px 4px" }}>
+            <DoneCheck done={g.done} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: g.done ? "line-through" : "none" }}>{g.text || "Goal"}</span>
+          </motion.div>
         ))}
       </div>
     </div>
   );
 }
 
-function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dailyGoals, extryGoals, loading, onOpenMemory }) {
+/* ---------------- friend's Time Table (this update) ----------------
+   Same card language as GoalMiniList, so it drops into the VS column
+   as a third checklist alongside Daily/Extry Goals rather than looking
+   bolted on — but with the item's scheduled time shown first (same
+   12h format as the main dashboard's Time Table widget) since that's
+   the whole point of this list. */
+function TimeTableMiniList({ items }) {
+  const ft = useFriendTheme();
+  const list = items || [];
+  const done = list.filter((t) => t.done).length;
+  return (
+    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flex: 1, minHeight: 70, overflowY: "auto" }} className="btl-scroll">
+      <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: 0.6, marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={10} /> Time Table</span><span>{done}/{list.length}</span>
+      </div>
+      {list.length === 0 && <div style={{ fontSize: Math.round(10 * ft.scale), color: ft.text, opacity: ft.glassic ? 0.5 : 0.3 }}>Nothing scheduled yet.</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        {list.map((t) => (
+          <motion.div key={t.id || t.time + t.text} layout
+            animate={{ background: t.done ? (ft.glassic ? "rgba(46,125,50,0.12)" : "rgba(46,125,50,0.16)") : "rgba(0,0,0,0)" }}
+            transition={{ duration: 0.35 }}
+            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: Math.round(10 * ft.scale), fontWeight: ft.bold ? 700 : 400, color: ft.text, opacity: t.done ? 0.55 : 1, borderRadius: 6, padding: "2px 4px" }}>
+            <span style={{ fontSize: Math.round(8.5 * ft.scale), fontWeight: 800, opacity: 0.55, minWidth: 44, flexShrink: 0 }}>{formatTime12(t.time)}</span>
+            <DoneCheck done={t.done} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: t.done ? "line-through" : "none" }}>{t.text || "Item"}</span>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- friend's Life Rules / Life Big Goals (this update) ----------------
+   Plain-text reference lists (same shape as the main dashboard's
+   TextList — an array of strings, no done state) — so unlike the
+   checklists above there's nothing to tick, just their own words
+   read back. Reused for both tabs; only the icon + empty-state copy
+   differ. */
+function TextMiniList({ items, icon: Icon, emptyLabel }) {
+  const ft = useFriendTheme();
+  const list = items || [];
+  return (
+    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flex: 1, minHeight: 70, overflowY: "auto" }} className="btl-scroll">
+      {list.length === 0 && <div style={{ fontSize: Math.round(10 * ft.scale), color: ft.text, opacity: ft.glassic ? 0.5 : 0.3 }}>{emptyLabel}</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        {list.map((t, i) => (
+          <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}
+            style={{ display: "flex", alignItems: "flex-start", gap: 7, fontSize: Math.round(11 * ft.scale), fontWeight: ft.bold ? 800 : 700, color: ft.text }}>
+            <Icon size={12} color={C.accent} style={{ marginTop: 1.5, flexShrink: 0 }} />
+            <span>{t}</span>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- per-column view switcher (this update) ----------------
+   Per your markup: two extra options — Life Rules and Big Goals — so
+   either side of the VS screen can be flipped over to show that
+   person's own words instead of just their checklists. A small sliding-
+   pill segmented control right above the lists; "Goals" (the default)
+   is Daily + Extry + Time Table together, same as before this update,
+   just relabeled as one tab now that there's something to switch away
+   to. Each PlayerColumn keeps its own tab state, so you can look at
+   your Goals while checking your friend's Life Rules side by side. */
+const VS_VIEW_TABS = [
+  { id: "goals", label: "Goals", icon: CheckCircle2 },
+  { id: "rules", label: "Life Rules", icon: ShieldCheck },
+  { id: "big", label: "Big Goals", icon: Target },
+];
+function ViewTabs({ value, onChange, accent }) {
+  const ft = useFriendTheme();
+  return (
+    <div style={{
+      display: "flex", gap: 2, padding: 3, borderRadius: 999, flexShrink: 0,
+      background: ft.glassic ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)",
+    }}>
+      {VS_VIEW_TABS.map((t) => {
+        const active = value === t.id;
+        return (
+          <button key={t.id} onClick={() => onChange(t.id)}
+            style={{
+              position: "relative", flex: 1, border: "none", background: "transparent", cursor: "pointer",
+              padding: "6px 4px", borderRadius: 999, display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+              fontSize: 9, fontWeight: 800, color: active ? "#fff" : (ft.glassic ? GLASSIC_TOKENS.muted : "rgba(255,255,255,0.55)"),
+              zIndex: 1,
+            }}>
+            {active && (
+              <motion.span layoutId={`vsTabPill-${accent}`} transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                style={{ position: "absolute", inset: 0, borderRadius: 999, background: accent, zIndex: -1 }} />
+            )}
+            <t.icon size={11} />
+            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dailyGoals, extryGoals, timeTable, lifeRules, bigGoals, loading, onOpenMemory }) {
   const ft = useFriendTheme();
   const accent = side === "me" ? C.accent : "#e63946";
+  const [view, setView] = useState("goals");
   return (
     <motion.div
       initial={{ opacity: 0, x: side === "me" ? -20 : 20 }} animate={{ opacity: 1, x: 0 }}
@@ -524,8 +658,31 @@ function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dail
             <MiniRing pct={Math.min(100, ((stats?.streak || 0) / 30) * 100)} color="#e63946" label={`🔥 ${stats?.streak || 0}`} />
             <MiniRing pct={stats?.lifeScore} color="#7bd389" label="Score" />
           </div>
-          <GoalMiniList title="Daily Goals" items={dailyGoals} />
-          <GoalMiniList title="Extry Goals" items={extryGoals} />
+
+          <ViewTabs value={view} onChange={setView} accent={accent} />
+
+          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+            <AnimatePresence mode="wait" initial={false}>
+              {view === "goals" ? (
+                <motion.div key="goals" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+                  style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <GoalMiniList title="Daily Goals" items={dailyGoals} />
+                  <GoalMiniList title="Extry Goals" items={extryGoals} />
+                  <TimeTableMiniList items={timeTable} />
+                </motion.div>
+              ) : view === "rules" ? (
+                <motion.div key="rules" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+                  style={{ flex: 1, minHeight: 0, display: "flex" }}>
+                  <TextMiniList items={lifeRules} icon={ShieldCheck} emptyLabel="No life rules set yet." />
+                </motion.div>
+              ) : (
+                <motion.div key="big" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+                  style={{ flex: 1, minHeight: 0, display: "flex" }}>
+                  <TextMiniList items={bigGoals} icon={Target} emptyLabel="No big goals set yet." />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </>
       )}
     </motion.div>
@@ -580,6 +737,9 @@ function FriendVSView({ user, myState, myStats, friend, friendState, onBack, onO
           stats={myStats}
           dailyGoals={myState?.dailyGoals || []}
           extryGoals={myState?.extryGoals || []}
+          timeTable={myState?.timeTable || []}
+          lifeRules={myState?.lifeRules || []}
+          bigGoals={myState?.bigGoals || []}
         />
         <PlayerColumn
           side="friend"
@@ -590,6 +750,9 @@ function FriendVSView({ user, myState, myStats, friend, friendState, onBack, onO
           stats={friendStats}
           dailyGoals={friendState?.dailyGoals || []}
           extryGoals={friendState?.extryGoals || []}
+          timeTable={friendState?.timeTable || []}
+          lifeRules={friendState?.lifeRules || []}
+          bigGoals={friendState?.bigGoals || []}
           loading={!friendState}
           onOpenMemory={onOpenMemory}
         />

@@ -1,10 +1,34 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-# BTL — Real Google OAuth (Firebase) + Vercel hosting
+## ⚔️ Friend Celebration VS screen — Time Table, animated ticks, Life Rules/Big Goals tabs (this update)
+Per your screenshot markup on the "dev VS lakshit" split-screen: three
+changes to `components/FriendCelebration.jsx`'s `PlayerColumn`.
 
-# BTL — Real Google OAuth (Firebase) + Vercel hosting
+- **Time Table now shows on both sides.** New `TimeTableMiniList` —
+  same card language as the Daily/Extry `GoalMiniList`s already there,
+  scheduled time shown first (`formatTime12`, now exported from
+  `BTLDashboard.jsx` so this file can reuse the exact same 12h format
+  as the main dashboard's own Time Table widget).
+- **Completed items get a real "landed" moment.** New shared
+  `DoneCheck` — the plain `Circle -> CheckCircle2` icon swap is now a
+  spring pop-in with a soft green burst ring expanding and fading
+  behind the check, plus the row itself washes to a light green tint.
+  Used by both `GoalMiniList` and `TimeTableMiniList`, so this applies
+  to Daily Goals, Extry Goals, and Time Table alike, on both sides.
+- **Two new tabs — Life Rules and Big Goals — where you circled above
+  the lists.** New `ViewTabs`, a small sliding-pill segmented control
+  ("Goals" / "Life Rules" / "Big Goals") sitting right under each
+  side's ring stats. "Goals" (the default) is the Daily + Extry + Time
+  Table set above; the other two flip that side over to a new
+  `TextMiniList` reading back that person's own `lifeRules` /
+  `bigGoals` arrays (same plain-string data the main dashboard's
+  `TextList` widget shows, read-only here). Each `PlayerColumn` keeps
+  its own tab state, so you can sit on your own Goals tab while
+  checking your friend's Life Rules, or vice versa.
+- Pure `framer-motion` + CSS, same as the rest of the file — no new
+  dependencies.
 
-## 🔥 Active Streak goal names in a top-right corner ticker (this update)
+## 🔥 Active Streak goal names in a top-right corner ticker (earlier update)
 Per your screenshot markup (the arrow pointing at the empty space above
 the header stat row, top-right of the whole dashboard): the existing
 "Active Streaks" badge below only ever showed a *count* — you could see
