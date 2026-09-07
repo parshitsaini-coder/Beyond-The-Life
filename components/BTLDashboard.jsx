@@ -4217,6 +4217,7 @@ function TimeTableRow({ t, isUpcoming, isOverdue, isCelebrating, isFirst, isLast
       dragListener={false}
       dragControls={dragControls}
       layout
+      className="btl-goal-row"
       initial={{ opacity: 0, y: -10, height: 0 }}
       animate={{
         opacity: 1, y: 0, height: "auto",
@@ -15972,9 +15973,13 @@ function BTLDashboardInner() {
         }
         .btl-widget-card:hover::before { opacity: 1; }
         /* ---- goal / list row hover — used by Life Big Goals, Life Rules,
-           Daily Goals and Extry Goals rows for a subtle "alive" nudge. */
-        .btl-goal-row { transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease; }
-        .btl-goal-row:hover { background: rgba(252,163,17,0.09); transform: translateX(3px); }
+           Daily Goals, Extry Goals and Time Table rows: a "word bubble"
+           pop — the row springs up into a soft rounded pill with a glow,
+           same feel as the Friend Celebration VS screen's hover bubble,
+           done here in pure CSS (elastic easing) since these rows are
+           deeply nested motion/drag components already. */
+        .btl-goal-row { transition: background 220ms cubic-bezier(.34,1.56,.64,1), transform 220ms cubic-bezier(.34,1.56,.64,1), box-shadow 220ms cubic-bezier(.34,1.56,.64,1), border-radius 220ms ease; }
+        .btl-goal-row:hover { background: rgba(252,163,17,0.14); transform: translateX(3px) scale(1.02); box-shadow: 0 4px 14px rgba(252,163,17,0.35); border-radius: 10px; }
         @keyframes btlShineLeft {
           0% { transform: translateX(-100%); opacity: 0; }
           15% { opacity: 1; }
