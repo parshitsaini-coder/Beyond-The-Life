@@ -481,11 +481,11 @@ function DoneCheck({ done, size = 12 }) {
   );
 }
 
-function GoalMiniList({ title, items }) {
+function GoalMiniList({ title, items, accent }) {
   const ft = useFriendTheme();
   const done = items.filter((g) => g.done).length;
   return (
-    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flexShrink: 0, maxHeight: 180, overflowY: "auto" }} className="btl-scroll">
+    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flexShrink: 0, maxHeight: 180, overflowY: "auto", border: `1.5px solid ${accent || C.accent}66` }} className="btl-scroll">
       <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: 0.6, marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
         <span>{title}</span><span>{done}/{items.length}</span>
       </div>
@@ -511,12 +511,12 @@ function GoalMiniList({ title, items }) {
    bolted on — but with the item's scheduled time shown first (same
    12h format as the main dashboard's Time Table widget) since that's
    the whole point of this list. */
-function TimeTableMiniList({ items }) {
+function TimeTableMiniList({ items, accent }) {
   const ft = useFriendTheme();
   const list = items || [];
   const done = list.filter((t) => t.done).length;
   return (
-    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flexShrink: 0, maxHeight: 180, overflowY: "auto" }} className="btl-scroll">
+    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flexShrink: 0, maxHeight: 180, overflowY: "auto", border: `1.5px solid ${accent || C.accent}66` }} className="btl-scroll">
       <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: 0.6, marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={10} /> Time Table</span><span>{done}/{list.length}</span>
       </div>
@@ -666,9 +666,9 @@ function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dail
               {view === "goals" ? (
                 <motion.div key="goals" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
                   style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <GoalMiniList title="Daily Goals" items={dailyGoals} />
-                  <GoalMiniList title="Extry Goals" items={extryGoals} />
-                  <TimeTableMiniList items={timeTable} />
+                  <GoalMiniList title="Daily Goals" items={dailyGoals} accent={accent} />
+                  <GoalMiniList title="Extry Goals" items={extryGoals} accent={accent} />
+                  <TimeTableMiniList items={timeTable} accent={accent} />
                 </motion.div>
               ) : view === "rules" ? (
                 <motion.div key="rules" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
