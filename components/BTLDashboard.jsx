@@ -749,6 +749,33 @@ function countActiveStreakGoals(dailyGoals, extryGoals, dailyLogs) {
   return countFor(dailyGoals, "daily") + countFor(extryGoals, "extry");
 }
 
+/* ---------------- ACTIVE STREAK GOALS — named list for the corner ticker (this update) ----------------
+   Same walk-dailyLogs-backward logic as countActiveStreakGoals() just
+   above, except this one keeps the actual goal (id/text/icon/listKey)
+   and its live streak number instead of collapsing everything down to
+   a single count — it's what powers ActiveStreakGoalsCorner, which
+   needs the goal *names* on screen, not just a tally. Sorted longest
+   streak first so the goal that's been running the longest leads the
+   strip. */
+function getActiveStreakGoals(dailyGoals, extryGoals, dailyLogs) {
+  const logs = dailyLogs || {};
+  const recordedDates = Object.keys(logs).filter((d) => logs[d]?.completedGoals).sort().reverse();
+  const listFor = (items, listKey) => {
+    const out = [];
+    (items || []).forEach((g) => {
+      if (!g.streakEnabled) return;
+      let streak = 0;
+      for (const iso of recordedDates) {
+        const present = (logs[iso]?.completedGoals?.[listKey] || []).some((x) => x.id === g.id);
+        if (present) streak++; else break;
+      }
+      if (streak > 0) out.push({ id: `${listKey}-${g.id}`, text: g.text, icon: g.icon || "", streak, listKey });
+    });
+    return out;
+  };
+  return [...listFor(dailyGoals, "daily"), ...listFor(extryGoals, "extry")].sort((a, b) => b.streak - a.streak);
+}
+
 
 /* ---------------- TIME TABLE: item shape ----------------
    Simple time-of-day checklist rows: { time: "HH:MM" (24h, sorts and
@@ -1619,6 +1646,132 @@ function ActiveStreaksBadge({ count = 0, dark = C.dark }) {
         </AnimatePresence>
       </div>
       <div style={{ fontSize: 8, fontWeight: 700, color: dark, opacity: 0.65, letterSpacing: 0.3, whiteSpace: "nowrap" }}>Active Streaks</div>
+    </div>
+  );
+}
+
+/* ---------------- ACTIVE STREAK GOALS — corner ticker (this update) ----------------
+   Per feedback on the ActiveStreaksBadge count pill: it tells you HOW
+   MANY goals are mid-streak but not WHICH ones, and that's the thing
+   you actually want to see at a glance. This sits pinned to the very
+   top-right corner of the dashboard panel itself (above the whole
+   header stat row — DayStreakBadge / ActiveStreaksBadge / the Ring-
+   Stat cluster), so it's the first thing your eye lands on, not just
+   another badge lost in that row.
+
+   Each goal that currently has "Start Streak" on and is mid-streak
+   (getActiveStreakGoals() — same walk-back logic as the count badge)
+   gets its own floating pill: name + a small live flame + streak
+   number, with the same "genuine fire" treatment as ActiveStreaksBadge
+   scaled down per-pill — breathing ember glow, drifting embers, a
+   flickering flame glyph — plus a spring pop-in/pop-out via
+   AnimatePresence whenever a goal starts or drops its streak, and a
+   slow ambient bob so the strip never sits dead still. Renders nothing
+   when there are no active streaks, so an empty state doesn't clutter
+   the corner. Pure framer-motion + CSS, no new dependencies — same
+   approach as every other animation in this file. */
+function StreakGoalPill({ goal, dark }) {
+  const embers = useMemo(
+    () => Array.from({ length: 3 }, (_, i) => ({ id: i, delay: i * 0.3, x: (i - 1) * 3.5 })),
+    []
+  );
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, x: 26, scale: 0.85 }}
+      animate={{ opacity: 1, x: 0, scale: 1, y: [0, -1.5, 0] }}
+      exit={{ opacity: 0, x: 26, scale: 0.85 }}
+      transition={{
+        opacity: { duration: 0.28 }, x: { type: "spring", stiffness: 340, damping: 22 }, scale: { type: "spring", stiffness: 340, damping: 22 },
+        y: { duration: 2.2 + (goal.streak % 3) * 0.3, repeat: Infinity, ease: "easeInOut", delay: (goal.streak % 4) * 0.15 },
+      }}
+      whileHover={{ scale: 1.06 }}
+      title={`${goal.text} — ${goal.streak} day streak`}
+      style={{
+        position: "relative", display: "flex", alignItems: "center", gap: 5,
+        padding: "4px 9px 4px 6px", borderRadius: 999,
+        background: "linear-gradient(135deg, #2a2118f0, #1c150fef)",
+        border: "1px solid #ff8a3d55", boxShadow: "0 2px 8px rgba(0,0,0,0.28), 0 0 10px #ff8a3d22",
+        maxWidth: 168, cursor: "default", overflow: "hidden",
+      }}
+    >
+      {/* Breathing ember glow behind the pill */}
+      <motion.span
+        aria-hidden
+        animate={{ opacity: [0.15, 0.4, 0.15] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        style={{
+          position: "absolute", inset: -6, borderRadius: 999,
+          background: "radial-gradient(circle at 15% 50%, #ff8a3d70, transparent 65%)",
+          filter: "blur(3px)", pointerEvents: "none",
+        }}
+      />
+      {/* Drifting embers */}
+      {embers.map((e) => (
+        <motion.span
+          key={e.id}
+          aria-hidden
+          initial={{ opacity: 0, y: 6, x: e.x }}
+          animate={{ opacity: [0, 1, 0], y: [6, -12 - (e.id % 2) * 3], x: [e.x, e.x + (e.id % 2 ? 2 : -2)] }}
+          transition={{ duration: 1.7, repeat: Infinity, delay: e.delay, ease: "easeOut" }}
+          style={{
+            position: "absolute", left: 12, bottom: 6, width: 2, height: 2, borderRadius: "50%",
+            background: e.id % 2 ? "#ffb347" : "#ff7a45", pointerEvents: "none",
+          }}
+        />
+      ))}
+      {/* Flickering flame glyph */}
+      <motion.span
+        aria-hidden
+        animate={{ scale: [1, 1.16, 0.94, 1.08, 1], rotate: [-5, 3, -3, 4, 0] }}
+        transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+        style={{ position: "relative", display: "flex", color: "#ffb347", filter: "drop-shadow(0 0 3px #ff8a3d90)", flexShrink: 0 }}
+      >
+        <Flame size={12} fill="#ff8a3d" />
+      </motion.span>
+      {goal.icon ? <span style={{ position: "relative", fontSize: 10, flexShrink: 0 }}>{goal.icon}</span> : null}
+      <span style={{
+        position: "relative", fontSize: 9.5, fontWeight: 700, color: "#fff2e2", letterSpacing: 0.1,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
+        {goal.text}
+      </span>
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.span
+          key={goal.streak}
+          initial={{ scale: 0.4, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.4, opacity: 0 }}
+          transition={{ type: "spring", stiffness: 420, damping: 18 }}
+          style={{
+            position: "relative", flexShrink: 0, minWidth: 14, height: 14, padding: "0 3px", borderRadius: 7,
+            background: "#ff8a3d", color: "#1c150f", fontSize: 8.5, fontWeight: 900,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+        >
+          {goal.streak}
+        </motion.span>
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+function ActiveStreakGoalsCorner({ goals }) {
+  if (!goals || goals.length === 0) return null;
+  return (
+    <div
+      aria-hidden={false}
+      style={{
+        position: "absolute", top: 8, right: 10, zIndex: 40,
+        display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5,
+        pointerEvents: "none", maxWidth: "min(60%, 560px)",
+      }}
+    >
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 5, pointerEvents: "auto" }}>
+        <AnimatePresence initial={false}>
+          {goals.map((g) => (
+            <StreakGoalPill key={g.id} goal={g} />
+          ))}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -15223,6 +15376,7 @@ function BTLDashboardInner() {
   const overallPct = (dailyPct + extryPct) / 2;
   const timeTablePct = (state.timeTable || []).length ? ((state.timeTable || []).filter((t) => t.done).length / (state.timeTable || []).length) * 100 : 0;
   const activeStreakCount = countActiveStreakGoals(state.dailyGoals, state.extryGoals, state.dailyLogs);
+  const activeStreakGoalsList = getActiveStreakGoals(state.dailyGoals, state.extryGoals, state.dailyLogs);
   const headerLifeScore = computeLifeScore(state);
 
   const MILESTONES = [3, 7, 14, 21, 30, 50, 75, 100];
@@ -15759,6 +15913,12 @@ function BTLDashboardInner() {
           speed={state.liquidBg?.speed}
         />
       )}
+      {/* Pinned to the panel's own top-right corner, above the whole header
+          stat row (see ActiveStreakGoalsCorner comment) — lives here, right
+          on .btl-app-root, so "position: absolute" measures against the
+          whole dashboard panel rather than getting scoped to just the
+          header row. */}
+      <ActiveStreakGoalsCorner goals={activeStreakGoalsList} />
       <style>{`
         /* ---- Perf pass (this update) — mobile smoothness ----
            1) "contain" on each widget card scopes its layout/paint/style

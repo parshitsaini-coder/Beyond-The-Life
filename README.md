@@ -4,7 +4,34 @@
 
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## 🔥 New "Active Streaks" header badge (this update)
+## 🔥 Active Streak goal names in a top-right corner ticker (this update)
+Per your screenshot markup (the arrow pointing at the empty space above
+the header stat row, top-right of the whole dashboard): the existing
+"Active Streaks" badge below only ever showed a *count* — you could see
+"3" but not which 3 goals. This adds the missing piece right where you
+marked it.
+
+- `getActiveStreakGoals()` — same day-walking-backward logic
+  `countActiveStreakGoals()` already uses, except it keeps each goal's
+  id/text/icon/streak instead of collapsing to a number, combined
+  across Daily + Extry Goals and sorted longest streak first.
+- `ActiveStreakGoalsCorner` — new, pinned to `.btl-app-root`'s own
+  top-right corner (`position: absolute`, above the entire header row,
+  not just tucked into it), rendering one animated pill per
+  currently-streaking goal: flame + optional goal emoji + name +
+  live streak count. Renders nothing when no streaks are active, so it
+  never clutters the corner on a quiet day.
+- Each pill gets the same "genuine fire" treatment as the
+  `ActiveStreaksBadge` flame, scaled down: a breathing ember-glow behind
+  it, 3 embers drifting up and fading, the flame glyph itself flickering
+  (scale/rotate jitter), a slow ambient bob so the strip never sits
+  dead-still, a spring pop-in/out via `AnimatePresence` whenever a goal
+  starts or drops its streak, and a spring pop on the streak number
+  itself when it ticks up.
+- Pure `framer-motion` + CSS, same as every other animation in this
+  file — no new dependencies pulled in for this.
+
+## 🔥 New "Active Streaks" header badge (earlier update)
 Added a brand-new indicator to the header stat cluster (mobile stats row
 + desktop header, right where the existing Day Streak / Daily Goal /
 Extry Goal / Goal / Time Table badges live) — separate from the
