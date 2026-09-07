@@ -481,12 +481,18 @@ function DoneCheck({ done, size = 12 }) {
   );
 }
 
-function GoalMiniList({ title, items, accent }) {
+function GoalMiniList({ title, items, accent, row }) {
   const ft = useFriendTheme();
   const done = items.filter((g) => g.done).length;
   return (
-    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flexShrink: 0, maxHeight: 180, overflowY: "auto", border: `1.5px solid ${accent || C.accent}66` }} className="btl-scroll">
-      <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: 0.6, marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
+    <div style={{
+      background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)",
+      borderRadius: row ? 0 : 12, padding: 10, flexShrink: row ? undefined : 0,
+      flex: row ? 1 : undefined, minWidth: row ? 0 : undefined,
+      maxHeight: row ? 220 : 180, overflowY: "auto",
+      border: `1.5px solid ${accent || C.accent}66`, marginLeft: row ? -1.5 : 0,
+    }} className="btl-scroll">
+      <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: row ? 1 : 0.6, marginBottom: 6, display: "flex", flexDirection: row ? "column" : "row", alignItems: row ? "center" : "stretch", gap: row ? 2 : 0, justifyContent: "space-between", textAlign: row ? "center" : "left", paddingBottom: row ? 6 : 0, borderBottom: row ? `1px solid ${accent || C.accent}44` : "none" }}>
         <span>{title}</span><span>{done}/{items.length}</span>
       </div>
       {items.length === 0 && <div style={{ fontSize: Math.round(10 * ft.scale), color: ft.text, opacity: ft.glassic ? 0.5 : 0.3 }}>No goals yet.</div>}
@@ -511,13 +517,19 @@ function GoalMiniList({ title, items, accent }) {
    bolted on — but with the item's scheduled time shown first (same
    12h format as the main dashboard's Time Table widget) since that's
    the whole point of this list. */
-function TimeTableMiniList({ items, accent }) {
+function TimeTableMiniList({ items, accent, row }) {
   const ft = useFriendTheme();
   const list = items || [];
   const done = list.filter((t) => t.done).length;
   return (
-    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flexShrink: 0, maxHeight: 180, overflowY: "auto", border: `1.5px solid ${accent || C.accent}66` }} className="btl-scroll">
-      <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: 0.6, marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+    <div style={{
+      background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)",
+      borderRadius: row ? 0 : 12, padding: 10, flexShrink: row ? undefined : 0,
+      flex: row ? 1 : undefined, minWidth: row ? 0 : undefined,
+      maxHeight: row ? 220 : 180, overflowY: "auto",
+      border: `1.5px solid ${accent || C.accent}66`, marginLeft: row ? -1.5 : 0,
+    }} className="btl-scroll">
+      <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: row ? 1 : 0.6, marginBottom: 6, display: "flex", flexDirection: row ? "column" : "row", alignItems: "center", gap: row ? 2 : 0, justifyContent: "space-between", textAlign: row ? "center" : "left", paddingBottom: row ? 6 : 0, borderBottom: row ? `1px solid ${accent || C.accent}44` : "none" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={10} /> Time Table</span><span>{done}/{list.length}</span>
       </div>
       {list.length === 0 && <div style={{ fontSize: Math.round(10 * ft.scale), color: ft.text, opacity: ft.glassic ? 0.5 : 0.3 }}>Nothing scheduled yet.</div>}
@@ -654,7 +666,7 @@ function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dail
           <div style={{ display: "flex", justifyContent: "space-around", padding: "4px 0" }}>
             <MiniRing pct={stats?.dailyPct} color={C.accent} label="Daily" />
             <MiniRing pct={stats?.extryPct} color={C.blue} label="Extry" />
-            <MiniRing pct={stats?.overallPct} color="#fff" label="Overall" />
+            <MiniRing pct={stats?.overallPct} color="#7209b7" label="Overall" />
             <MiniRing pct={Math.min(100, ((stats?.streak || 0) / 30) * 100)} color="#e63946" label={`🔥 ${stats?.streak || 0}`} />
             <MiniRing pct={stats?.lifeScore} color="#7bd389" label="Score" />
           </div>
@@ -665,10 +677,10 @@ function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dail
             <AnimatePresence mode="wait" initial={false}>
               {view === "goals" ? (
                 <motion.div key="goals" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
-                  style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <GoalMiniList title="Daily Goals" items={dailyGoals} accent={accent} />
-                  <GoalMiniList title="Extry Goals" items={extryGoals} accent={accent} />
-                  <TimeTableMiniList items={timeTable} accent={accent} />
+                  style={{ display: "flex", flexDirection: "row", alignItems: "stretch", gap: 0 }}>
+                  <GoalMiniList title="Daily Goals" items={dailyGoals} accent={accent} row />
+                  <GoalMiniList title="Extry Goals" items={extryGoals} accent={accent} row />
+                  <TimeTableMiniList items={timeTable} accent={accent} row />
                 </motion.div>
               ) : view === "rules" ? (
                 <motion.div key="rules" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
