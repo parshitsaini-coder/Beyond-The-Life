@@ -481,28 +481,24 @@ function DoneCheck({ done, size = 12 }) {
   );
 }
 
-/* ---------------- animated gradient border (this update) ----------------
-   Per your markup: the three Goals-tab list boxes should (a) stretch all
-   the way to the bottom of the card instead of stopping short and
-   leaving dead space below, and (b) get a proper animated border instead
-   of a flat static line. This wraps a box in a slowly-sliding conic/linear
-   gradient ring (via framer-motion, already the project's animation
-   library — no new dependency) with a soft breathing glow behind it. */
-function AnimatedBorderBox({ accent = C.accent, radius = 0, style, children }) {
+/* ---------------- hover "word bubble" pop (this update) ----------------
+   Per feedback: the animated gradient border/fill was too much — reverted
+   to a plain static border. Instead, each goal/time-table row now gets a
+   speech-bubble style pop when the mouse hovers over it: a soft rounded
+   pill background springs in behind the text (scale 0 -> 1, like a chat
+   bubble appearing) and the row lifts slightly, purely via framer-motion's
+   whileHover (no extra state, no new dependency). */
+function BubbleRow({ children, accent, style, onClick }) {
   return (
     <motion.div
-      style={{
-        position: "relative", borderRadius: radius, padding: 1.6,
-        background: `linear-gradient(115deg, ${accent}00 0%, ${accent}ff 22%, ${accent}00 45%, ${accent}dd 68%, ${accent}00 92%)`,
-        backgroundSize: "280% 280%",
-        display: "flex", flexDirection: "column",
-        ...style,
+      onClick={onClick}
+      whileHover={{
+        scale: 1.045,
+        backgroundColor: `${accent || C.accent}22`,
+        boxShadow: `0 3px 10px ${accent || C.accent}40`,
       }}
-      animate={{
-        backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"],
-        boxShadow: [`0 0 0px ${accent}00`, `0 0 12px ${accent}55`, `0 0 0px ${accent}00`],
-      }}
-      transition={{ duration: 5, repeat: Infinity, ease: "linear" }}
+      transition={{ type: "spring", stiffness: 420, damping: 22 }}
+      style={{ borderRadius: 999, cursor: "default", transformOrigin: "left center", ...style }}
     >
       {children}
     </motion.div>
@@ -513,14 +509,15 @@ function GoalMiniList({ title, items, accent, row }) {
   const ft = useFriendTheme();
   const done = items.filter((g) => g.done).length;
   const acc = accent || C.accent;
-  const inner = (
+  return (
     <div style={{
       background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)",
       borderRadius: row ? 6.5 : 12, padding: 10, flexShrink: row ? undefined : 0,
       flex: row ? 1 : undefined, minHeight: 0, minWidth: row ? 0 : undefined,
       maxHeight: row ? undefined : 180, overflowY: row ? "hidden" : "auto",
       display: "flex", flexDirection: "column",
-      border: row ? "none" : `1.5px solid ${acc}66`,
+      border: `1.5px solid ${acc}66`, marginLeft: row ? -1.5 : 0,
+      height: row ? "100%" : undefined,
     }} className={row ? undefined : "btl-scroll"}>
       <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: row ? 1 : 0.6, marginBottom: 6, flexShrink: 0, display: "flex", flexDirection: row ? "column" : "row", alignItems: row ? "center" : "stretch", gap: row ? 2 : 0, justifyContent: "space-between", textAlign: row ? "center" : "left", paddingBottom: row ? 6 : 0, borderBottom: row ? `1px solid ${acc}44` : "none" }}>
         <span>{title}</span><span>{done}/{items.length}</span>
@@ -528,22 +525,18 @@ function GoalMiniList({ title, items, accent, row }) {
       {items.length === 0 && <div style={{ fontSize: Math.round(10 * ft.scale), color: ft.text, opacity: ft.glassic ? 0.5 : 0.3 }}>No goals yet.</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 3, ...(row ? { flex: 1, minHeight: 0, overflowY: "auto" } : {}) }} className={row ? "btl-scroll" : undefined}>
         {items.map((g) => (
-          <motion.div key={g.id} layout
-            animate={{ background: g.done ? (ft.glassic ? "rgba(46,125,50,0.12)" : "rgba(46,125,50,0.16)") : "rgba(0,0,0,0)" }}
-            transition={{ duration: 0.35 }}
-            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: Math.round(10.5 * ft.scale), fontWeight: ft.bold ? 700 : 400, color: ft.text, opacity: g.done ? 0.55 : 1, borderRadius: 6, padding: "2px 4px" }}>
-            <DoneCheck done={g.done} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: g.done ? "line-through" : "none" }}>{g.text || "Goal"}</span>
-          </motion.div>
+          <BubbleRow key={g.id} accent={acc}>
+            <motion.div layout
+              animate={{ background: g.done ? (ft.glassic ? "rgba(46,125,50,0.12)" : "rgba(46,125,50,0.16)") : "rgba(0,0,0,0)" }}
+              transition={{ duration: 0.35 }}
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: Math.round(10.5 * ft.scale), fontWeight: ft.bold ? 700 : 400, color: ft.text, opacity: g.done ? 0.55 : 1, borderRadius: 6, padding: "2px 4px" }}>
+              <DoneCheck done={g.done} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: g.done ? "line-through" : "none" }}>{g.text || "Goal"}</span>
+            </motion.div>
+          </BubbleRow>
         ))}
       </div>
     </div>
-  );
-  if (!row) return inner;
-  return (
-    <AnimatedBorderBox accent={acc} radius={0} style={{ flex: 1, minWidth: 0, minHeight: 0, height: "100%", marginLeft: -1.6 }}>
-      {inner}
-    </AnimatedBorderBox>
   );
 }
 
@@ -558,14 +551,15 @@ function TimeTableMiniList({ items, accent, row }) {
   const list = items || [];
   const done = list.filter((t) => t.done).length;
   const acc = accent || C.accent;
-  const inner = (
+  return (
     <div style={{
       background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)",
       borderRadius: row ? 6.5 : 12, padding: 10, flexShrink: row ? undefined : 0,
       flex: row ? 1 : undefined, minHeight: 0, minWidth: row ? 0 : undefined,
       maxHeight: row ? undefined : 180, overflowY: row ? "hidden" : "auto",
       display: "flex", flexDirection: "column",
-      border: row ? "none" : `1.5px solid ${acc}66`,
+      border: `1.5px solid ${acc}66`, marginLeft: row ? -1.5 : 0,
+      height: row ? "100%" : undefined,
     }} className={row ? undefined : "btl-scroll"}>
       <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: row ? 1 : 0.6, marginBottom: 6, flexShrink: 0, display: "flex", flexDirection: row ? "column" : "row", alignItems: "center", gap: row ? 2 : 0, justifyContent: "space-between", textAlign: row ? "center" : "left", paddingBottom: row ? 6 : 0, borderBottom: row ? `1px solid ${acc}44` : "none" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={10} /> Time Table</span><span>{done}/{list.length}</span>
@@ -573,23 +567,19 @@ function TimeTableMiniList({ items, accent, row }) {
       {list.length === 0 && <div style={{ fontSize: Math.round(10 * ft.scale), color: ft.text, opacity: ft.glassic ? 0.5 : 0.3 }}>Nothing scheduled yet.</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 3, ...(row ? { flex: 1, minHeight: 0, overflowY: "auto" } : {}) }} className={row ? "btl-scroll" : undefined}>
         {list.map((t) => (
-          <motion.div key={t.id || t.time + t.text} layout
-            animate={{ background: t.done ? (ft.glassic ? "rgba(46,125,50,0.12)" : "rgba(46,125,50,0.16)") : "rgba(0,0,0,0)" }}
-            transition={{ duration: 0.35 }}
-            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: Math.round(10 * ft.scale), fontWeight: ft.bold ? 700 : 400, color: ft.text, opacity: t.done ? 0.55 : 1, borderRadius: 6, padding: "2px 4px" }}>
-            <span style={{ fontSize: Math.round(8.5 * ft.scale), fontWeight: 800, opacity: 0.55, minWidth: 44, flexShrink: 0 }}>{formatTime12(t.time)}</span>
-            <DoneCheck done={t.done} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: t.done ? "line-through" : "none" }}>{t.text || "Item"}</span>
-          </motion.div>
+          <BubbleRow key={t.id || t.time + t.text} accent={acc}>
+            <motion.div layout
+              animate={{ background: t.done ? (ft.glassic ? "rgba(46,125,50,0.12)" : "rgba(46,125,50,0.16)") : "rgba(0,0,0,0)" }}
+              transition={{ duration: 0.35 }}
+              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: Math.round(10 * ft.scale), fontWeight: ft.bold ? 700 : 400, color: ft.text, opacity: t.done ? 0.55 : 1, borderRadius: 6, padding: "2px 4px" }}>
+              <span style={{ fontSize: Math.round(8.5 * ft.scale), fontWeight: 800, opacity: 0.55, minWidth: 44, flexShrink: 0 }}>{formatTime12(t.time)}</span>
+              <DoneCheck done={t.done} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: t.done ? "line-through" : "none" }}>{t.text || "Item"}</span>
+            </motion.div>
+          </BubbleRow>
         ))}
       </div>
     </div>
-  );
-  if (!row) return inner;
-  return (
-    <AnimatedBorderBox accent={acc} radius={0} style={{ flex: 1, minWidth: 0, minHeight: 0, height: "100%", marginLeft: -1.6 }}>
-      {inner}
-    </AnimatedBorderBox>
   );
 }
 
