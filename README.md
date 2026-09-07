@@ -1,6 +1,23 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
-## ⚔️ Friend Celebration VS screen — Time Table, animated ticks, Life Rules/Big Goals tabs (this update)
+## 📐 Fix: Daily Goals / Extry Goals / Time Table stretching with dead space (this update)
+Per your screenshot markup — on the friend's (lighter-content) side
+especially, each of the three list cards under the "Goals" tab was
+force-stretching (`flex: 1`) to equally split whatever vertical room
+was left in the column, so a short list like "Extry Goals — No goals
+yet." ballooned into a huge mostly-empty box instead of just sitting
+compact. That's why dev's side (more items) looked fine while
+lakshit's side had big gaps between each block.
+
+- `GoalMiniList`, `TimeTableMiniList`, and `TextMiniList` (Life Rules /
+  Big Goals) now size to their own content (`flexShrink: 0`, a
+  `maxHeight` cap with its own scroll only if a single list genuinely
+  runs long) instead of stretching to fill the column.
+- The three now simply stack vertically, tight against each other —
+  exactly where you circled — and the column around them scrolls as
+  one unit if the total content is taller than the card.
+
+## ⚔️ Friend Celebration VS screen — Time Table, animated ticks, Life Rules/Big Goals tabs (earlier update)
 Per your screenshot markup on the "dev VS lakshit" split-screen: three
 changes to `components/FriendCelebration.jsx`'s `PlayerColumn`.
 

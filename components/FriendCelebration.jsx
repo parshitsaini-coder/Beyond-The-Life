@@ -485,7 +485,7 @@ function GoalMiniList({ title, items }) {
   const ft = useFriendTheme();
   const done = items.filter((g) => g.done).length;
   return (
-    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flex: 1, minHeight: 70, overflowY: "auto" }} className="btl-scroll">
+    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flexShrink: 0, maxHeight: 180, overflowY: "auto" }} className="btl-scroll">
       <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: 0.6, marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
         <span>{title}</span><span>{done}/{items.length}</span>
       </div>
@@ -516,7 +516,7 @@ function TimeTableMiniList({ items }) {
   const list = items || [];
   const done = list.filter((t) => t.done).length;
   return (
-    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flex: 1, minHeight: 70, overflowY: "auto" }} className="btl-scroll">
+    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flexShrink: 0, maxHeight: 180, overflowY: "auto" }} className="btl-scroll">
       <div style={{ fontSize: Math.round(9.5 * ft.scale), fontWeight: ft.bold ? 900 : 900, color: ft.text, opacity: 0.6, marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={10} /> Time Table</span><span>{done}/{list.length}</span>
       </div>
@@ -547,7 +547,7 @@ function TextMiniList({ items, icon: Icon, emptyLabel }) {
   const ft = useFriendTheme();
   const list = items || [];
   return (
-    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flex: 1, minHeight: 70, overflowY: "auto" }} className="btl-scroll">
+    <div style={{ background: ft.glassic ? GLASSIC_TOKENS.innerBg : "rgba(255,255,255,0.05)", borderRadius: 12, padding: 10, flexShrink: 0, maxHeight: 260, overflowY: "auto" }} className="btl-scroll">
       {list.length === 0 && <div style={{ fontSize: Math.round(10 * ft.scale), color: ft.text, opacity: ft.glassic ? 0.5 : 0.3 }}>{emptyLabel}</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
         {list.map((t, i) => (
@@ -661,23 +661,23 @@ function PlayerColumn({ side, name, photoURL, totalEarn, totalSpend, stats, dail
 
           <ViewTabs value={view} onChange={setView} accent={accent} />
 
-          <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }} className="btl-scroll">
             <AnimatePresence mode="wait" initial={false}>
               {view === "goals" ? (
                 <motion.div key="goals" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
-                  style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                  style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <GoalMiniList title="Daily Goals" items={dailyGoals} />
                   <GoalMiniList title="Extry Goals" items={extryGoals} />
                   <TimeTableMiniList items={timeTable} />
                 </motion.div>
               ) : view === "rules" ? (
                 <motion.div key="rules" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
-                  style={{ flex: 1, minHeight: 0, display: "flex" }}>
+                  style={{ display: "flex" }}>
                   <TextMiniList items={lifeRules} icon={ShieldCheck} emptyLabel="No life rules set yet." />
                 </motion.div>
               ) : (
                 <motion.div key="big" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
-                  style={{ flex: 1, minHeight: 0, display: "flex" }}>
+                  style={{ display: "flex" }}>
                   <TextMiniList items={bigGoals} icon={Target} emptyLabel="No big goals set yet." />
                 </motion.div>
               )}
