@@ -1,5 +1,27 @@
 # BTL — Real Google OAuth (Firebase) + Vercel hosting
 
+## 🎉 Ribbon celebration when Daily Goals + Time Table both hit 100% (this update)
+Per your screenshot markup (circles around Daily Goals and the Time Table
+widget, with arrows sweeping up from the left and right): finishing every
+item in **both** the Daily Goals list and the Time Table now triggers a
+dedicated celebration — separate from the existing Daily+Extry streak
+confetti, since Time Table isn't part of that pair.
+
+- New `RibbonCelebration` component — two ribbon streams launch from the
+  bottom-left and bottom-right corners of the dashboard and sweep upward,
+  drifting inward toward the top-center as they rise and fade (left ribbons
+  drift right, right ribbons drift left, so the two streams lean toward each
+  other rather than just going straight up).
+- New `checkDailyTimeTableCelebration()` — checked on every Daily Goals
+  toggle and every Time Table toggle; fires once the moment both lists are
+  fully checked off, and won't re-fire again the same day (tracked via
+  `state.lastRibbonCelebrated`, same pattern as the existing streak's
+  `lastCompletedDate`) even if you keep re-toggling items after both are
+  already done.
+- Pure CSS keyframes (per-ribbon drift/rotation passed in as CSS custom
+  properties), same lightweight approach as the existing Confetti piece —
+  no new dependencies.
+
 ## 📐 Fix: Daily Goals / Extry Goals / Time Table stretching with dead space (this update)
 Per your screenshot markup — on the friend's (lighter-content) side
 especially, each of the three list cards under the "Goals" tab was

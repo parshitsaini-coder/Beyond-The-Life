@@ -1822,6 +1822,57 @@ function Confetti({ active }) {
   );
 }
 
+/* ---------------- RIBBON CELEBRATION — Daily Goal + Time Table both 100% (this update) ----------------
+   Separate from the Confetti/milestone-streak banner above (that one is reserved for the
+   combined Daily+Extry streak). This fires specifically when BOTH the Daily Goals list and
+   the Time Table hit 100% for the day — see checkDailyTimeTableCelebration below — and reads
+   as two ribbon streams launching from the bottom-left and bottom-right corners of the
+   dashboard, sweeping upward and drifting inward toward the top-center as they rise and fade,
+   rather than confetti raining down. Pure CSS keyframes (per-piece drift/rotation passed in as
+   CSS custom properties) so this doesn't need its own animation library. */
+const RIBBON_COLORS = [C.accent, "#f4d35e", "#e07a5f", C.blue, "#6fcf97", "#bb86fc"];
+function RibbonCelebration({ active }) {
+  if (!active) return null;
+  const makeSide = (side, count) => Array.from({ length: count }, (_, i) => {
+    const edgeOffset = 2 + Math.random() * 20; // % from that edge
+    const delay = Math.random() * 0.5;
+    const duration = 1.8 + Math.random() * 1.1;
+    const width = 6 + Math.random() * 6;
+    const height = 34 + Math.random() * 30;
+    const color = RIBBON_COLORS[(i + (side === "right" ? 3 : 0)) % RIBBON_COLORS.length];
+    // Left ribbons drift rightward (positive) as they climb, right ribbons drift leftward
+    // (negative) — both streams lean in toward the top-center, meeting where the eye lands.
+    const driftMag = 60 + Math.random() * 90;
+    const driftX = side === "left" ? driftMag : -driftMag;
+    const rot0 = (Math.random() * 16 - 8);
+    const rot1 = rot0 + (side === "left" ? 1 : -1) * (20 + Math.random() * 20);
+    const rot2 = rot1 + (side === "left" ? 1 : -1) * (20 + Math.random() * 20);
+    return { id: `${side}-${i}`, side, edgeOffset, delay, duration, width, height, color, driftX, rot0, rot1, rot2 };
+  });
+  const pieces = [...makeSide("left", 14), ...makeSide("right", 14)];
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none", zIndex: 70 }}>
+      {pieces.map((p) => (
+        <span
+          key={p.id}
+          className="btl-ribbon-piece"
+          style={{
+            [p.side]: `${p.edgeOffset}%`,
+            width: p.width, height: p.height,
+            background: `linear-gradient(180deg, ${p.color}, ${p.color}cc)`,
+            animationDelay: `${p.delay}s`,
+            animationDuration: `${p.duration}s`,
+            "--driftX": `${p.driftX}px`,
+            "--rot0": `${p.rot0}deg`,
+            "--rot1": `${p.rot1}deg`,
+            "--rot2": `${p.rot2}deg`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function MilestoneBanner({ streak, visible }) {
   if (!visible) return null;
   return (
@@ -15249,6 +15300,9 @@ function BTLDashboardInner() {
   const [shine, setShine] = useState(false);
   const [confetti, setConfetti] = useState(false);
   const [milestoneStreak, setMilestoneStreak] = useState(null);
+  // Daily Goal + Time Table combined 100% ribbon celebration (this update) — see
+  // RibbonCelebration + checkDailyTimeTableCelebration below.
+  const [ribbonCelebrate, setRibbonCelebrate] = useState(false);
   const [memOpen, setMemOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // What the Setting modal should land on when it opens — normally null/dashboard
@@ -15399,6 +15453,22 @@ function BTLDashboardInner() {
     return next;
   }
 
+  // Fires the left/right ribbon burst (RibbonCelebration) the moment BOTH Daily Goals
+  // and Time Table are fully checked off — independent of the Daily+Extry streak/confetti
+  // above, since Time Table isn't part of that pair. Gated by lastRibbonCelebrated (like
+  // lastCompletedDate) so it only fires once per calendar day, not on every extra toggle
+  // once both lists are already at 100%.
+  function checkDailyTimeTableCelebration(next) {
+    const dailyAllDone = next.dailyGoals.length > 0 && next.dailyGoals.every((g) => g.done);
+    const timeTableAllDone = (next.timeTable || []).length > 0 && next.timeTable.every((t) => t.done);
+    if (dailyAllDone && timeTableAllDone && next.lastRibbonCelebrated !== todayISO()) {
+      next.lastRibbonCelebrated = todayISO();
+      setRibbonCelebrate(true);
+      setTimeout(() => setRibbonCelebrate(false), 2600);
+    }
+    return next;
+  }
+
   // Generic per-widget version of recordCompletionHistory/checkFullCompletion
   // above — same math (today's % done, +1 streak the first time a list hits
   // 100% in a day), just keyed by widget id instead of hardcoded to the
@@ -15450,7 +15520,7 @@ function BTLDashboardInner() {
     if (!wasDone) triggerShine(); // marking something done (not un-checking) gives the nearby widgets their shine
     recordCompletionHistory(s);
     recordWidgetProgress(s, listKey, s[listKey]);
-    return checkFullCompletion(s);
+    return checkDailyTimeTableCelebration(checkFullCompletion(s));
   });
   const addGoal = (listKey) => (text, meta = {}) => update((s) => {
     s[listKey] = [...s[listKey], ensureGoalDefaults({ id: `${Date.now()}-${Math.random()}`, text, done: false, ...meta })];
@@ -15486,7 +15556,7 @@ function BTLDashboardInner() {
     s.timeTable = (s.timeTable || []).map((t) => t.id === id ? { ...t, done: !t.done } : t);
     if (!wasDone) triggerShine();
     recordWidgetProgress(s, "timeTable", s.timeTable);
-    return s;
+    return checkDailyTimeTableCelebration(s);
   });
   const addTimeItem = (time, text, category, recurring = true) => update((s) => {
     s.timeTable = [...(s.timeTable || []), ensureTimeItemDefaults({ id: `${Date.now()}-${Math.random()}`, time, text, category, recurring, done: false })];
@@ -15998,6 +16068,16 @@ function BTLDashboardInner() {
           100% { top: 105%; opacity: 0.9; }
         }
         .btl-confetti-piece { position: absolute; top: -10px; animation-name: btlConfettiFall; animation-timing-function: cubic-bezier(.25,.6,.4,1); animation-fill-mode: forwards; }
+        @keyframes btlRibbonUp {
+          0% { bottom: -60px; opacity: 0; transform: translateX(0) rotate(var(--rot0)) scaleY(0.7); }
+          10% { opacity: 1; }
+          55% { transform: translateX(calc(var(--driftX) * 0.6)) rotate(var(--rot1)) scaleY(1); }
+          100% { bottom: 115%; opacity: 0; transform: translateX(var(--driftX)) rotate(var(--rot2)) scaleY(1); }
+        }
+        .btl-ribbon-piece {
+          position: absolute; bottom: -60px; border-radius: 4px;
+          animation-name: btlRibbonUp; animation-timing-function: cubic-bezier(.2,.65,.3,1); animation-fill-mode: forwards;
+        }
         @keyframes btlMilestonePop {
           0% { opacity: 0; transform: translateX(-50%) translateY(-8px) scale(0.85); }
           15% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1.05); }
@@ -16095,6 +16175,7 @@ function BTLDashboardInner() {
 
       <ShineOverlay active={shine} />
       <Confetti active={confetti} />
+      <RibbonCelebration active={ribbonCelebrate} />
       <MilestoneBanner streak={milestoneStreak} visible={!!milestoneStreak} />
       {/* Step 7: QuickNavFab is desktop-only now — RadialDialMenu (rendered further down,
           mobile-only, inside the "dashboard" tab branch) takes over its job on mobile.
