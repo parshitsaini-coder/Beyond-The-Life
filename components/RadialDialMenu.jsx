@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2, ListChecks, Trophy, AlarmClock, ShieldCheck, Timer,
   CalendarClock, CalendarDays, Camera, BookOpen, Dumbbell, Settings,
-  PartyPopper, BarChart3, Share2, Wallet,
+  PartyPopper, BarChart3, Share2, Wallet, Droplets,
 } from "lucide-react";
 import LiquidOrbButton from "@/components/LiquidOrbButton";
 
@@ -29,6 +29,7 @@ export const RADIAL_ITEMS = [
   { id: "focusTimer", label: "Timer", icon: Timer, kind: "widget" },
   { id: "timeTable", label: "Time Table", icon: CalendarClock, kind: "widget" },
   { id: "calendar", label: "Calendar", icon: CalendarDays, kind: "widget" },
+  { id: "water", label: "Drink Water", icon: Droplets, kind: "widget" },
   { id: "memory", label: "Memory", icon: Camera, kind: "modal" },
   { id: "lifeStory", label: "Life Story", icon: BookOpen, kind: "tab" },
   { id: "fitness", label: "Fitness", icon: Dumbbell, kind: "tab" },

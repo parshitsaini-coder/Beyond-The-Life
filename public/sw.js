@@ -90,3 +90,15 @@ self.addEventListener("fetch", (event) => {
   // Everything else same-origin (e.g. Next.js RSC data requests) — just
   // let it hit the network normally.
 });
+
+// Drink Water reminders (this update): tapping the notification brings the
+// app back to the front (or opens it if it was closed).
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) { if ("focus" in c) return c.focus(); }
+      if (self.clients.openWindow) return self.clients.openWindow("/dashboard");
+    })
+  );
+});

@@ -12,7 +12,7 @@ import {
   Users, Clock, PieChart as PieChartIcon, Bell, BellOff, Square,
   AlarmClock, Volume2, Play, Pause, Waves, Gauge,
   Dumbbell, Info, Timer, Flower2, Wind, KeyRound, HelpCircle, ShieldAlert, CalendarClock,
-  ArrowLeftRight,
+  ArrowLeftRight, Droplets,
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ComposedChart, Bar, Area, Legend, PieChart, Pie, Cell } from "recharts";
 import { motion, AnimatePresence, Reorder, animate, useDragControls } from "framer-motion";
@@ -25,6 +25,9 @@ import BTLLoadingScreen from "@/components/BTLLoadingScreen";
 import LiquidBackground, { LIQUID_BG_DEFAULT_COLORS } from "@/components/LiquidBackground";
 import RadialDialMenu from "@/components/RadialDialMenu";
 import RadialPanel from "@/components/RadialPanel";
+import {
+  WaterReminderWidget, WaterRingModal, normalizeWater, waterMarkDone, waterDayKey, notifyWaterDue,
+} from "@/components/WaterReminder";
 
 /* ============================================================
    BEYOND THE LIFE (BTL)  —  personal life-goals dashboard
@@ -98,6 +101,7 @@ const WIDGETS = [
   { id: "calendar", label: "Calendar" },
   { id: "clock", label: "Analog Clock & Alarm" },
   { id: "focusTimer", label: "Focus Timer" },
+  { id: "water", label: "Drink Water" },
 ];
 const GRID_COLS = 100;        // fine-grained width grid (1–100 = % of container) — free-form, continuous horizontal resize
 const OLD_GRID_COLS = 6;      // pre-update width resolution, kept only so normalizeSize can rescale old saved layouts
@@ -497,6 +501,7 @@ const MOBILE_QUICKVIEW_META = {
   dailyGoals: { label: "Daily Goals", icon: Target },
   timeTable: { label: "Time Table", icon: Clock },
   focusTimer: { label: "Focus Timer", icon: Timer },
+  water: { label: "Drink Water", icon: Droplets },
 };
 function analyticsSummaryMetricMeta(id) {
   return ANALYTICS_SUMMARY_METRICS.find((m) => m.id === id) || null;
@@ -601,6 +606,7 @@ const DEFAULT_LAYOUT = {
     earnMoney: { w: 50, h: 240 }, analyticsSummary: { w: 100, h: 260 }, calendar: { w: 50, h: 300 },
     clock: { w: 33, h: 320 },
     focusTimer: { w: 33, h: 340 },
+    water: { w: 33, h: 460 },
   },
   pinned: { analyticsSummary: false },
   hidden: {},
@@ -1179,6 +1185,8 @@ function makeDefaultState() {
     // which is what powers both the widget's own today-breakdown donut and
     // the Focus Time section in Analytics (trend + all-time breakdown).
     focusTimer: { categories: FOCUS_TIMER_DEFAULT_CATEGORIES.map((c) => ({ ...c })), active: null, history: {} },
+    // Drink Water alarm + time table (this update) — see components/WaterReminder.jsx
+    water: normalizeWater(undefined),
     // Fitness guided-workout time log (this update) — every time a guided
     // workout (Start → select → time → Apply, see FitnessWorkoutPlayer)
     // finishes or is cancelled, the seconds actually spent exercising get
@@ -1244,6 +1252,7 @@ async function loadState(user) {
     s.clockAlarms = Array.isArray(s.clockAlarms) ? s.clockAlarms : [];
     s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === s.clockRingtone) ? s.clockRingtone : "classic";
     s.focusTimer = normalizeFocusTimer(s.focusTimer);
+    s.water = normalizeWater(s.water);
     s.fitnessLog = (s.fitnessLog && typeof s.fitnessLog === "object") ? s.fitnessLog : {};
     // liquidBg sanitize — old saved states won't have this field at all,
     // and a stored color could in theory be a bad/empty string, so each of
@@ -2817,6 +2826,10 @@ function playRingtoneCycle(ctx, id) {
   if (id === "digital") {
     [0, 0.16, 0.32].forEach((start) => playAlarmTone(ctx, { freq: 1180, start, dur: 0.11, type: "square", peak: 0.1 }));
     return 700;
+  }
+  if (id === "water") { // Drink Water reminder — three soft "bloop" droplets
+    [0, 0.28, 0.56].forEach((start, i) => playAlarmTone(ctx, { freq: 620 + i * 140, start, dur: 0.22, type: "sine", peak: 0.17, glideTo: 1100 + i * 120 }));
+    return 1500;
   }
   if (id === "bell") {
     playAlarmTone(ctx, { freq: 660, start: 0, dur: 1.1, type: "sine", peak: 0.17 });
@@ -15319,7 +15332,7 @@ function BTLDashboardInner() {
   // Mobile "Daily Goal + Time Table" quick card (this update): instead of squeezing
   // both widgets side by side, one full-width card shows at a time and this toggle
   // switches which one — tap the swap button once for Daily Goals, again for Time Table.
-  const [mobileQuickView, setMobileQuickView] = useState("dailyGoals"); // "dailyGoals" | "timeTable" | "focusTimer"
+  const [mobileQuickView, setMobileQuickView] = useState("dailyGoals"); // "dailyGoals" | "timeTable" | "focusTimer" | "water"
   // Pro swap animation (this update): increments on every tap of the ⇄ button —
   // drives the button's spin + expanding ripple burst, and (via key) the
   // 3D card-flip transition on the widget content below it.
@@ -15338,6 +15351,7 @@ function BTLDashboardInner() {
   const [expandedWidgetId, setExpandedWidgetId] = useState(null);
   const [saveStatus, setSaveStatus] = useState("idle"); // "idle" | "saving" | "saved"
   const [activeAlarm, setActiveAlarm] = useState(null); // { id, time } | null — Clock & Alarm widget (this update)
+  const [activeWater, setActiveWater] = useState(null); // { id, time, ml } | null — Drink Water alarm (this update)
   const incomingFriendReqCount = useIncomingFriendRequestCount(fbUser?.uid);
   const fileRef = useRef(null);
   const loaded = useRef(false);
@@ -15409,7 +15423,68 @@ function BTLDashboardInner() {
     return () => { stopTone(); clearTimeout(t); };
   }, [activeAlarm]);
 
+  // ---- Drink Water (this update): same 1-second watcher idea as the clock
+  // alarms above. A slot fires when its time arrives (or up to 2 minutes
+  // late, which covers a throttled background tab), once per day per slot.
+  // Snoozed slots live in a ref as { id, time, ml, atMs }.
+  const waterFiredRef = useRef({});
+  const waterSnoozeRef = useRef([]);
+  const activeWaterRef = useRef(null);
+  useEffect(() => { activeWaterRef.current = activeWater; }, [activeWater]);
+  useEffect(() => {
+    const id = setInterval(() => {
+      const s = clockStateRef.current;
+      const w = s && s.water;
+      if (!w || w.enabled === false || activeWaterRef.current) return;
+      const now = new Date();
+      const day = waterDayKey(now);
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      const doneToday = (w.log && w.log[day] && w.log[day].done) || {};
+      const snoozed = waterSnoozeRef.current.find((z) => z.atMs <= now.getTime());
+      if (snoozed) {
+        waterSnoozeRef.current = waterSnoozeRef.current.filter((z) => z !== snoozed);
+        if (!doneToday[snoozed.id]) { setActiveWater(snoozed); notifyWaterDue(snoozed); return; }
+      }
+      const hit = (w.schedule || []).find((sl) => {
+        if (!sl.on || doneToday[sl.id] || waterFiredRef.current[`${day}_${sl.id}`]) return false;
+        const [h, m] = sl.time.split(":").map(Number);
+        const diff = nowMin - (h * 60 + m);
+        return diff >= 0 && diff <= 2;
+      });
+      if (hit) {
+        waterFiredRef.current[`${day}_${hit.id}`] = true;
+        setActiveWater(hit);
+        notifyWaterDue(hit);
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+  // Droplet-sound loop while the water popup is open; auto-closes after 25s.
+  useEffect(() => {
+    if (!activeWater) return;
+    const stopTone = startAlarmRingtone("water");
+    const t = setTimeout(() => setActiveWater(null), 25 * 1000);
+    return () => { stopTone(); clearTimeout(t); };
+  }, [activeWater]);
+
   const update = useCallback((fn) => setState((s) => fn({ ...s })), []);
+  const updateWater = useCallback((fn) => setState((s) => ({ ...s, water: fn(normalizeWater(s.water)) })), []);
+  const testWaterAlarm = () => {
+    const w = normalizeWater(state.water);
+    setActiveWater({ id: "test", time: `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`, ml: w.glassMl, test: true });
+  };
+  const waterDrinkFromPopup = () => {
+    const slot = activeWater;
+    setActiveWater(null);
+    if (!slot || slot.test) return;
+    updateWater((w) => waterMarkDone(w, slot.id, waterDayKey()));
+  };
+  const waterSnoozeFromPopup = () => {
+    const slot = activeWater;
+    setActiveWater(null);
+    if (!slot || slot.test) return;
+    waterSnoozeRef.current.push({ id: slot.id, time: slot.time, ml: slot.ml, atMs: Date.now() + 10 * 60 * 1000 });
+  };
   // Shared "shine" trigger — the diagonal shine sweep used to fire on every
   // single item you completed (any widget), not just the big daily+extry
   // 100% milestone. Restored here as a small shared helper so every
@@ -15918,6 +15993,7 @@ function BTLDashboardInner() {
     calendar: <CalendarWidget completionHistory={state.completionHistory} cardBg={theme.widgets.calendar?.bg} textStyle={state.layout.textStyles?.calendar} />,
     clock: <AnalogClockWidget alarms={state.clockAlarms || []} ringtoneId={state.clockRingtone} onSetAlarm={setClockAlarm} onRemoveAlarm={removeClockAlarm} accent={C.accent} cardBg={theme.widgets.clock?.bg} />,
     focusTimer: <FocusTimerWidget focusTimer={normalizeFocusTimer(state.focusTimer)} onToggle={toggleFocusTimer} onAddCategory={addFocusCategory} onRemoveCategory={removeFocusCategory} accent={C.accent} cardBg={theme.widgets.focusTimer?.bg} />,
+    water: <WaterReminderWidget water={normalizeWater(state.water)} onUpdate={updateWater} onTest={testWaterAlarm} cardStyle={glassCardStyle(theme.widgets.water?.bg)} textColor={autoTextColor(theme.widgets.water?.bg)} mutedColor={autoMutedColor(theme.widgets.water?.bg)} />,
   };
 
   // Step 7 — the one thing every radial item selection funnels through. Deliberately
@@ -16349,10 +16425,10 @@ function BTLDashboardInner() {
                 <motion.button
                   type="button"
                   onClick={() => {
-                    setMobileQuickView((v) => (v === "dailyGoals" ? "timeTable" : v === "timeTable" ? "focusTimer" : "dailyGoals"));
+                    setMobileQuickView((v) => (v === "dailyGoals" ? "timeTable" : v === "timeTable" ? "focusTimer" : v === "focusTimer" ? "water" : "dailyGoals"));
                     setSwapPulse((p) => p + 1);
                   }}
-                  title={mobileQuickView === "dailyGoals" ? "Switch to Time Table" : mobileQuickView === "timeTable" ? "Switch to Focus Timer" : "Switch to Daily Goals"}
+                  title={mobileQuickView === "dailyGoals" ? "Switch to Time Table" : mobileQuickView === "timeTable" ? "Switch to Focus Timer" : mobileQuickView === "focusTimer" ? "Switch to Drink Water" : "Switch to Daily Goals"}
                   animate={{ rotate: swapPulse * 180 }}
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.8, rotate: swapPulse * 180 + 25 }}
@@ -16398,12 +16474,14 @@ function BTLDashboardInner() {
                         accent={C.accent} cardBg={theme.widgets.timeTable?.bg}
                         streak={state.widgetStreaks?.timeTable || 0} history={state.widgetHistory?.timeTable || {}}
                       />
-                    ) : (
+                    ) : mobileQuickView === "focusTimer" ? (
                       <FocusTimerWidget
                         focusTimer={normalizeFocusTimer(state.focusTimer)}
                         onToggle={toggleFocusTimer} onAddCategory={addFocusCategory} onRemoveCategory={removeFocusCategory}
                         accent={C.accent} cardBg={theme.widgets.focusTimer?.bg}
                       />
+                    ) : (
+                      widgetsMap.water
                     )}
                   </motion.div>
                 </AnimatePresence>
@@ -16685,6 +16763,12 @@ function BTLDashboardInner() {
       </AnimatePresence>
 
       {/* ---------- ALARM RING POPUP (Clock & Alarm widget — this update) ---------- */}
+      {/* ---------- DRINK WATER RING POPUP (this update) ---------- */}
+      <AnimatePresence>
+        {activeWater && (
+          <WaterRingModal slot={activeWater} onDrink={waterDrinkFromPopup} onSnooze={waterSnoozeFromPopup} onDismiss={() => setActiveWater(null)} />
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {activeAlarm && (
           <AlarmRingModal alarm={activeAlarm} ringtoneId={state.clockRingtone} onDismiss={() => setActiveAlarm(null)} />
