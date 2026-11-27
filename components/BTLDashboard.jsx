@@ -23,6 +23,7 @@ import { ensurePublicProfile, useIncomingFriendRequestCount } from "@/lib/friend
 import FriendCelebration from "@/components/FriendCelebration";
 import BTLLoadingScreen from "@/components/BTLLoadingScreen";
 import LiquidBackground, { LIQUID_BG_DEFAULT_COLORS } from "@/components/LiquidBackground";
+import { isCustomSoundId, customSoundUrl, customSoundName, loadCustomSounds, useCustomSounds, addCustomSound, removeCustomSound, CUSTOM_SOUND_MAX_BYTES } from "@/components/customSounds";
 import RadialDialMenu from "@/components/RadialDialMenu";
 import RadialPanel from "@/components/RadialPanel";
 import {
@@ -1251,10 +1252,10 @@ async function loadState(user) {
     s.widgetHistory = { dailyGoals: {}, extryGoals: {}, timeTable: {}, ...(s.widgetHistory || {}) };
     s.widgetLastCompletedDate = s.widgetLastCompletedDate || {};
     s.clockAlarms = Array.isArray(s.clockAlarms) ? s.clockAlarms : [];
-    s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === s.clockRingtone) ? s.clockRingtone : "classic";
+    s.clockRingtone = isValidRingtoneId(s.clockRingtone) ? s.clockRingtone : "classic";
     s.focusTimer = normalizeFocusTimer(s.focusTimer);
     s.water = normalizeWater(s.water);
-    s.waterRingtone = WATER_RINGTONES.some((r) => r.id === s.waterRingtone) ? s.waterRingtone : "water";
+    s.waterRingtone = isValidRingtoneId(s.waterRingtone, true) ? s.waterRingtone : "water";
     s.fitnessLog = (s.fitnessLog && typeof s.fitnessLog === "object") ? s.fitnessLog : {};
     // liquidBg sanitize — old saved states won't have this field at all,
     // and a stored color could in theory be a bad/empty string, so each of
@@ -1788,13 +1789,48 @@ function ActiveStreakGoalsCorner({ goals }) {
 }
 
 /* ---------------- SHINE / COMPLETE ANIMATION ---------------- */
+/* The old full-screen orange/blue wipe is gone. Now a completion plays a
+   small "pop" exactly where you tapped: two soft ripple rings, a ring of
+   tiny sparkles that fly outward, and a ✓ badge that springs up and
+   floats away. Pure CSS transform/opacity keyframes (GPU-friendly, zero JS
+   per frame), and nothing at all for people who prefer reduced motion. */
+let lastTap = { x: null, y: null, t: 0 };
+if (typeof window !== "undefined") {
+  // remember where the last tap/click landed so the pop can start from it
+  window.addEventListener("pointerdown", (e) => { lastTap = { x: e.clientX, y: e.clientY, t: Date.now() }; }, true);
+}
+const POP_COLORS = ["#fca311", "#4a9d5f", "#3aa7e6", "#ffffff", "#f6c343", "#7fd0f5"];
+const POP_SPARKS = Array.from({ length: 14 }, (_, i) => {
+  const a = (i / 14) * Math.PI * 2 + (i % 2 ? 0.18 : -0.1);
+  const d = 46 + ((i * 29) % 40);
+  return { dx: Math.cos(a) * d, dy: Math.sin(a) * d - 10, size: 7 + ((i * 7) % 5), color: POP_COLORS[i % POP_COLORS.length], delay: (i % 3) * 25, round: i % 3 !== 0 };
+});
 function ShineOverlay({ active }) {
-  if (!active) return null;
+  const ref = useRef(null);
+  const [pt, setPt] = useState(null);
+  useEffect(() => {
+    if (!active) { setPt(null); return; }
+    const r = ref.current ? ref.current.getBoundingClientRect() : { left: 0, top: 0 };
+    const fresh = lastTap.x != null && Date.now() - lastTap.t < 4000;
+    const x = fresh ? lastTap.x : window.innerWidth / 2;
+    const y = fresh ? lastTap.y : window.innerHeight / 3;
+    setPt({ x: x - r.left, y: y - r.top, k: Date.now() });
+  }, [active]);
   return (
-    <>
-      <div className="btl-shine btl-shine-left" />
-      <div className="btl-shine btl-shine-right" />
-    </>
+    <div ref={ref} aria-hidden="true" style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 50, overflow: "hidden" }}>
+      {active && pt && (
+        <div key={pt.k} className="btl-pop" style={{ position: "absolute", left: pt.x, top: pt.y, width: 0, height: 0 }}>
+          <span className="btl-pop-glow" />
+          <span className="btl-pop-ring" />
+          <span className="btl-pop-ring btl-pop-ring2" />
+          {POP_SPARKS.map((sp, i) => (
+            <span key={i} className="btl-pop-spark"
+              style={{ width: sp.size, height: sp.size, borderRadius: sp.round ? "50%" : 2, background: sp.color, animationDelay: `${sp.delay}ms`, "--dx": `${sp.dx}px`, "--dy": `${sp.dy}px` }} />
+          ))}
+          <span className="btl-pop-check">✓</span>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2812,7 +2848,17 @@ const RINGTONE_FILES = Object.fromEntries(ALARM_RINGTONES.filter((r) => r.file).
 // Drink Water alarm ringtone choices (this update): its own soft droplet
 // sound first, then every clock-alarm tone. Chosen in Setting → Alarm.
 const WATER_RINGTONES = [{ id: "water", label: "Water Drops 💧" }, ...ALARM_RINGTONES];
-function ringtoneLabel(id) { return (ALARM_RINGTONES.find((r) => r.id === id) || ALARM_RINGTONES[0]).label; }
+// A ringtone id is valid if it's built in, or a "custom:" sound the person added
+// from their own files (those live per-device — see components/customSounds.js).
+function isValidRingtoneId(id, allowWater = false) {
+  return (allowWater && id === "water") || isCustomSoundId(id) || ALARM_RINGTONES.some((r) => r.id === id);
+}
+// Built-in /public sound files + the person's own uploaded ones, resolved to a playable URL.
+function ringtoneFileUrl(id) { return RINGTONE_FILES[id] || (isCustomSoundId(id) ? customSoundUrl(id) : null); }
+function ringtoneLabel(id) {
+  if (isCustomSoundId(id)) return customSoundName(id) || "Custom sound";
+  return (ALARM_RINGTONES.find((r) => r.id === id) || ALARM_RINGTONES[0]).label;
+}
 
 /* Schedules one oscillator note with a short attack/decay envelope so
    nothing clicks/pops — shared by every ringtone below. */
@@ -2867,9 +2913,9 @@ function stopFilePreview() {
 }
 function previewRingtone(id) {
   stopFilePreview();
-  if (RINGTONE_FILES[id]) {
+  if (ringtoneFileUrl(id)) {
     try {
-      const a = new Audio(RINGTONE_FILES[id]);
+      const a = new Audio(ringtoneFileUrl(id));
       previewAudioEl = a;
       a.play().catch(() => { /* blocked or missing — silently ignore */ });
       previewAudioTimer = setTimeout(stopFilePreview, PREVIEW_FILE_MS);
@@ -2890,10 +2936,10 @@ const ALARM_MAX_RING_MS = 30 * 1000; // "alarm 30 second tak" — hard ceiling e
    AlarmRingModal is on screen (see the effect in BTLDashboardInner). */
 function startAlarmRingtone(id) {
   stopFilePreview();
-  if (RINGTONE_FILES[id]) { // sound-file ringtone: loop the file until stop() (or the caller's own time limit)
+  if (ringtoneFileUrl(id)) { // sound-file ringtone: loop the file until stop() (or the caller's own time limit)
     let audio = null;
     try {
-      audio = new Audio(RINGTONE_FILES[id]);
+      audio = new Audio(ringtoneFileUrl(id));
       audio.loop = true;
       audio.play().catch(() => { /* autoplay blocked — popup + notification still show */ });
     } catch (e) { audio = null; }
@@ -4782,7 +4828,7 @@ function LiquidBgPanel({ liquidBg, onColorChange, onColorsReset, onSpeedChange, 
 
 /* Ringtone picker grid shared by the Clock and Drink Water sections of
    Setting → Alarm. Tap a tile to choose, ▶ to preview. */
-function RingtoneGrid({ list, currentId, onPick }) {
+function RingtoneGrid({ list, currentId, onPick, onRemove }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxWidth: 420 }}>
       {list.map((r) => {
@@ -4803,20 +4849,83 @@ function RingtoneGrid({ list, currentId, onPick }) {
               {selected ? <CheckCircle2 size={13} style={{ flexShrink: 0 }} /> : <Bell size={13} style={{ opacity: 0.5, flexShrink: 0 }} />}
               <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.label}>{r.label}</span>
             </span>
-            <motion.button
-              whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
-              onClick={(e) => { e.stopPropagation(); previewRingtone(r.id); }}
-              title="Preview"
-              style={{ border: "none", background: C.dark, color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
-            ><Play size={10} fill="#fff" /></motion.button>
+            <span style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+              {r.custom && onRemove && (
+                <motion.button
+                  whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+                  onClick={(e) => { e.stopPropagation(); onRemove(r.id); }}
+                  title="Remove this sound"
+                  style={{ border: "none", background: "rgba(217,83,79,0.15)", color: "#d9534f", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                ><X size={11} /></motion.button>
+              )}
+              <motion.button
+                whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+                onClick={(e) => { e.stopPropagation(); previewRingtone(r.id); }}
+                title="Preview"
+                style={{ border: "none", background: C.dark, color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+              ><Play size={10} fill="#fff" /></motion.button>
+            </span>
           </motion.div>
         );
       })}
     </div>
   );
 }
+/* "Add a sound from my files" — opens the device's file picker, saves the
+   audio on this device, then (optionally) selects it right away. */
+function AddOwnSoundButton({ onAdded }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const inputRef = useRef(null);
+  const onFile = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = ""; // allow picking the same file again later
+    if (!file) return;
+    setBusy(true); setErr("");
+    try {
+      const added = await addCustomSound(file);
+      onAdded && onAdded(added.id);
+    } catch (ex) {
+      setErr(ex && ex.message ? ex.message : "Couldn't add that sound");
+    }
+    setBusy(false);
+  };
+  return (
+    <div style={{ marginTop: 8, maxWidth: 420 }}>
+      <input ref={inputRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac" onChange={onFile} style={{ display: "none" }} />
+      <motion.button
+        whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+        onClick={() => inputRef.current && inputRef.current.click()}
+        disabled={busy}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          border: `1.5px dashed ${hexToRgba(C.accent, 0.7)}`, borderRadius: 10, padding: "9px 10px",
+          background: hexToRgba(C.accent, 0.08), color: C.accent, fontSize: 11, fontWeight: 800, cursor: busy ? "wait" : "pointer",
+        }}
+      >
+        <Plus size={13} /> {busy ? "Adding…" : "Add sound from my files"}
+      </motion.button>
+      <div style={{ fontSize: 9, color: "#8a8579", marginTop: 4 }}>
+        mp3 / wav / m4a, up to {Math.round(CUSTOM_SOUND_MAX_BYTES / 1048576)} MB. Saved on this device only.
+      </div>
+      {err && <div style={{ fontSize: 10, fontWeight: 700, color: "#d9534f", marginTop: 3 }}>{err}</div>}
+    </div>
+  );
+}
 function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onLiquidGlassOptionsChange, onLiquidGlassOptionsReset, onSetClockRingtone, onSetWaterRingtone, onLiquidBgColorChange, onLiquidBgColorsReset, onLiquidBgSpeedChange, onLiquidBgSpeedReset, onLiquidBgEnabledChange, initialMode, initialThemeSection }) {
   const [mode, setMode] = useState(initialMode || null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | "alarm" | null
+  // Sounds the person added from their own files (this device only) — shown
+  // after the built-in tones in both the Clock and Drink Water lists.
+  const ownSounds = useCustomSounds();
+  const ownTiles = ownSounds.map((x) => ({ id: x.id, label: x.name, custom: true }));
+  const clockRingtoneList = [...ALARM_RINGTONES, ...ownTiles];
+  const waterRingtoneList = [...WATER_RINGTONES, ...ownTiles];
+  const onRemoveOwnSound = async (id) => {
+    await removeCustomSound(id);
+    // if the removed sound was the one in use, fall back to the built-in default
+    if (state.clockRingtone === id) onSetClockRingtone("classic");
+    if (state.waterRingtone === id) onSetWaterRingtone("water");
+  };
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
   const [editVal, setEditVal] = useState("");
@@ -4948,7 +5057,8 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 12, maxWidth: 420 }}>
               Plays when an alarm set on the Clock & Alarm widget goes off (rings up to 30s or until dismissed). Tap ▶ to preview, then pick one.
             </div>
-            <RingtoneGrid list={ALARM_RINGTONES} currentId={state.clockRingtone || "classic"} onPick={onSetClockRingtone} />
+            <RingtoneGrid list={clockRingtoneList} currentId={state.clockRingtone || "classic"} onPick={onSetClockRingtone} onRemove={onRemoveOwnSound} />
+            <AddOwnSoundButton onAdded={onSetClockRingtone} />
 
             <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, margin: "20px 0 4px", display: "flex", alignItems: "center", gap: 5 }}>
               <Droplets size={14} /> Drink Water Ringtone
@@ -4956,7 +5066,8 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 12, maxWidth: 420 }}>
               Plays when a Drink Water reminder time arrives (rings up to 25s or until you tap "I drank it" / Snooze). Tap ▶ to preview, then pick one.
             </div>
-            <RingtoneGrid list={WATER_RINGTONES} currentId={state.waterRingtone || "water"} onPick={onSetWaterRingtone} />
+            <RingtoneGrid list={waterRingtoneList} currentId={state.waterRingtone || "water"} onPick={onSetWaterRingtone} onRemove={onRemoveOwnSound} />
+            <AddOwnSoundButton onAdded={onSetWaterRingtone} />
           </div>
         ) : mode === "background" ? (
           <LiquidBgPanel
@@ -15484,6 +15595,7 @@ function BTLDashboardInner() {
   // alarms above. A slot fires when its time arrives (or up to 2 minutes
   // late, which covers a throttled background tab), once per day per slot.
   // Snoozed slots live in a ref as { id, time, ml, atMs }.
+  useEffect(() => { loadCustomSounds(); }, []); // warm the sync cache so a custom sound can ring instantly
   const waterFiredRef = useRef({});
   const waterSnoozeRef = useRef([]);
   const activeWaterRef = useRef(null);
@@ -15764,11 +15876,11 @@ function BTLDashboardInner() {
     return s;
   });
   const setWaterRingtone = (ringtoneId) => update((s) => {
-    s.waterRingtone = WATER_RINGTONES.some((r) => r.id === ringtoneId) ? ringtoneId : "water";
+    s.waterRingtone = isValidRingtoneId(ringtoneId, true) ? ringtoneId : "water";
     return s;
   });
   const setClockRingtone = (ringtoneId) => update((s) => {
-    s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === ringtoneId) ? ringtoneId : "classic";
+    s.clockRingtone = isValidRingtoneId(ringtoneId) ? ringtoneId : "classic";
     return s;
   });
 
@@ -16187,19 +16299,18 @@ function BTLDashboardInner() {
            deeply nested motion/drag components already. */
         .btl-goal-row { transition: background 220ms cubic-bezier(.34,1.56,.64,1), transform 220ms cubic-bezier(.34,1.56,.64,1), box-shadow 220ms cubic-bezier(.34,1.56,.64,1), border-radius 220ms ease; }
         .btl-goal-row:hover { background: rgba(252,163,17,0.14); transform: translateX(3px) scale(1.02); box-shadow: 0 4px 14px rgba(252,163,17,0.35); border-radius: 10px; }
-        @keyframes btlShineLeft {
-          0% { transform: translateX(-100%); opacity: 0; }
-          15% { opacity: 1; }
-          100% { transform: translateX(120vw); opacity: 0; }
-        }
-        @keyframes btlShineRight {
-          0% { transform: translateX(100%); opacity: 0; }
-          15% { opacity: 1; }
-          100% { transform: translateX(-120vw); opacity: 0; }
-        }
-        .btl-shine { position: absolute; top: 0; bottom: 0; width: 40%; pointer-events: none; z-index: 50; }
-        .btl-shine-left { left: 0; background: linear-gradient(100deg, transparent, rgba(252,163,17,0.55), transparent); animation: btlShineLeft 1.4s ease-out; }
-        .btl-shine-right { right: 0; background: linear-gradient(260deg, transparent, rgba(152,193,217,0.55), transparent); animation: btlShineRight 1.4s ease-out; }
+        /* ---- completion pop (replaces the old full-screen shine wipe) ---- */
+        @keyframes btlPopRing { 0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0.9; } 100% { transform: translate(-50%, -50%) scale(2.8); opacity: 0; } }
+        @keyframes btlPopGlow { 0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0.85; } 100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; } }
+        @keyframes btlPopSpark { 0% { transform: translate(-50%, -50%) scale(0.3); opacity: 1; } 70% { opacity: 1; } 100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy) + 14px)) scale(0.15) rotate(160deg); opacity: 0; } }
+        @keyframes btlPopCheck { 0% { transform: translate(-50%, -50%) scale(0); opacity: 0; } 25% { transform: translate(-50%, -62%) scale(1.2); opacity: 1; } 45% { transform: translate(-50%, -60%) scale(1); } 100% { transform: translate(-50%, -150%) scale(0.9); opacity: 0; } }
+        .btl-pop span { position: absolute; left: 0; top: 0; display: block; will-change: transform, opacity; }
+        .btl-pop-glow { width: 70px; height: 70px; border-radius: 50%; background: radial-gradient(circle, rgba(252,163,17,0.55), rgba(252,163,17,0) 70%); animation: btlPopGlow 650ms ease-out forwards; }
+        .btl-pop-ring { width: 46px; height: 46px; border-radius: 50%; border: 2.5px solid #fca311; box-sizing: border-box; animation: btlPopRing 650ms cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        .btl-pop-ring2 { border-color: #4a9d5f; animation-duration: 850ms; animation-delay: 90ms; opacity: 0; animation-fill-mode: both; }
+        .btl-pop-spark { animation: btlPopSpark 720ms cubic-bezier(0.12, 0.8, 0.3, 1) forwards; box-shadow: 0 0 6px rgba(255,255,255,0.7); }
+        .btl-pop-check { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, #5bbf74, #3a8f50); color: #fff; font-size: 17px; font-weight: 900; line-height: 30px; text-align: center; box-shadow: 0 4px 12px rgba(58,143,80,0.45); animation: btlPopCheck 1000ms cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+        @media (prefers-reduced-motion: reduce) { .btl-pop { display: none; } }
         @keyframes btlConfettiFall {
           0% { top: -10px; opacity: 1; }
           100% { top: 105%; opacity: 0.9; }
@@ -16440,7 +16551,13 @@ function BTLDashboardInner() {
                Nothing about the desktop grid or the dial's own full-screen
                widget panels changed. */}
           <div className="btl-mobile-quickgoals">
-            <div style={{ flex: 1, minWidth: 0, height: 340, borderRadius: 10, padding: 8, boxSizing: "border-box", overflow: "hidden", position: "relative", ...glassCardStyle(theme.widgets[mobileQuickView]?.bg) }}>
+            <div style={{
+              flex: 1, minWidth: 0,
+              // Drink Water gets the extra room down to just above the dial orb (grows with the phone's height);
+              // the other quick views keep their usual 340px.
+              height: mobileQuickView === "water" ? "clamp(340px, calc(100dvh - 400px), 600px)" : 340,
+              transition: "height 320ms cubic-bezier(0.22, 1, 0.36, 1)",
+              borderRadius: 10, padding: 8, boxSizing: "border-box", overflow: "hidden", position: "relative", ...glassCardStyle(theme.widgets[mobileQuickView]?.bg) }}>
               {/* ---- animated corner pill (this update) — fades/slides in the
                    name of the view that just swapped into place, so the flip
                    below reads as an intentional swap rather than a random
