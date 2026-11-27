@@ -2798,7 +2798,17 @@ const ALARM_RINGTONES = [
   { id: "chime", label: "Gentle Chime" },
   { id: "digital", label: "Digital Pulse" },
   { id: "bell", label: "Bell Toll" },
+  // Sound files (this update) — stored in /public/sounds. Rename a label here
+  // and it changes everywhere (Setting → Alarm, the ring popup, the preview).
+  { id: "file-alarm-clock", label: "Alarm Clock", file: "/sounds/alarm-clock.mp3" },
+  { id: "file-simple-alarm", label: "Simple Alarm", file: "/sounds/simple-alarm.mp3" },
+  { id: "file-scratch-alarm", label: "Scratch Alarm", file: "/sounds/scratch-alarm.mp3" },
+  { id: "file-digital-buzzer", label: "Digital Clock Buzzer", file: "/sounds/digital-clock-buzzer.mp3" },
+  { id: "file-warning-buzzer", label: "Warning Alarm Buzzer", file: "/sounds/warning-alarm-buzzer.mp3" },
+  { id: "file-tf001", label: "TF001 Tone", file: "/sounds/tf001-tone.mp3" },
+  { id: "file-brazil-eas", label: "Brazil EAS Emergency Alert", file: "/sounds/brazil-eas-alert.mp3" },
 ];
+const RINGTONE_FILES = Object.fromEntries(ALARM_RINGTONES.filter((r) => r.file).map((r) => [r.id, r.file]));
 // Drink Water alarm ringtone choices (this update): its own soft droplet
 // sound first, then every clock-alarm tone. Chosen in Setting → Alarm.
 const WATER_RINGTONES = [{ id: "water", label: "Water Drops 💧" }, ...ALARM_RINGTONES];
@@ -2848,7 +2858,24 @@ function playRingtoneCycle(ctx, id) {
 }
 /* One-shot preview — used by the ▶ button in Setting → Alarm. Own
    short-lived AudioContext that closes itself once the cycle ends. */
+let previewAudioEl = null; // the one file-sound preview that may be playing right now
+let previewAudioTimer = null;
+const PREVIEW_FILE_MS = 6000; // long sounds (up to 41s) are only previewed for the first 6s
+function stopFilePreview() {
+  if (previewAudioTimer) { clearTimeout(previewAudioTimer); previewAudioTimer = null; }
+  if (previewAudioEl) { try { previewAudioEl.pause(); } catch (e) { /* already stopped */ } previewAudioEl = null; }
+}
 function previewRingtone(id) {
+  stopFilePreview();
+  if (RINGTONE_FILES[id]) {
+    try {
+      const a = new Audio(RINGTONE_FILES[id]);
+      previewAudioEl = a;
+      a.play().catch(() => { /* blocked or missing — silently ignore */ });
+      previewAudioTimer = setTimeout(stopFilePreview, PREVIEW_FILE_MS);
+    } catch (e) { /* audio not available */ }
+    return;
+  }
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
@@ -2862,6 +2889,16 @@ const ALARM_MAX_RING_MS = 30 * 1000; // "alarm 30 second tak" — hard ceiling e
    ALARM_MAX_RING_MS elapses. Returns stop(). Used while the
    AlarmRingModal is on screen (see the effect in BTLDashboardInner). */
 function startAlarmRingtone(id) {
+  stopFilePreview();
+  if (RINGTONE_FILES[id]) { // sound-file ringtone: loop the file until stop() (or the caller's own time limit)
+    let audio = null;
+    try {
+      audio = new Audio(RINGTONE_FILES[id]);
+      audio.loop = true;
+      audio.play().catch(() => { /* autoplay blocked — popup + notification still show */ });
+    } catch (e) { audio = null; }
+    return () => { if (audio) { try { audio.pause(); audio.currentTime = 0; } catch (e) { /* ignore */ } audio = null; } };
+  }
   let stopped = false, ctx = null, timer = null;
   try {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -4762,9 +4799,9 @@ function RingtoneGrid({ list, currentId, onPick }) {
               cursor: "pointer",
             }}
           >
-            <span style={{ fontSize: 11, fontWeight: 800, color: selected ? C.accent : C.text, display: "flex", alignItems: "center", gap: 6 }}>
-              {selected ? <CheckCircle2 size={13} /> : <Bell size={13} style={{ opacity: 0.5 }} />}
-              {r.label}
+            <span style={{ fontSize: 11, fontWeight: 800, color: selected ? C.accent : C.text, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+              {selected ? <CheckCircle2 size={13} style={{ flexShrink: 0 }} /> : <Bell size={13} style={{ opacity: 0.5, flexShrink: 0 }} />}
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.label}>{r.label}</span>
             </span>
             <motion.button
               whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
