@@ -4830,12 +4830,12 @@ function LiquidBgPanel({ liquidBg, onColorChange, onColorsReset, onSpeedChange, 
    Setting → Alarm. Tap a tile to choose, ▶ to preview. */
 function RingtoneGrid({ list, currentId, onPick, onRemove }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxWidth: 420 }}>
+    <div className="btl-ringtone-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxWidth: 420 }}>
       {list.map((r) => {
         const selected = currentId === r.id;
         return (
           <motion.div
-            key={r.id}
+            key={r.id} className="btl-ringtone-tile"
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
             onClick={() => onPick(r.id)}
             style={{
@@ -4891,7 +4891,7 @@ function AddOwnSoundButton({ onAdded }) {
     setBusy(false);
   };
   return (
-    <div style={{ marginTop: 8, maxWidth: 420 }}>
+    <div className="btl-ringtone-add" style={{ marginTop: 8, maxWidth: 420 }}>
       <input ref={inputRef} type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac" onChange={onFile} style={{ display: "none" }} />
       <motion.button
         whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
@@ -4966,6 +4966,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
 
   return (
     <motion.div
+      className="btl-set-modal"
       onClick={(e) => e.stopPropagation()}
       drag
       dragControls={dragControls}
@@ -5003,7 +5004,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
         borderRadius: "50%", width: 24, height: 24, background: "#e9e4d3",
         display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0,
       }}><X size={13} color={C.dark} /></motion.span>
-      <div style={{
+      <div className="btl-set-head" style={{
         display: "flex", alignItems: "center", gap: 8, padding: "8px 34px 8px 10px", flexWrap: "wrap",
         borderBottom: "1px solid rgba(64,61,57,0.15)", background: "rgba(255,252,242,0.5)",
       }}>
@@ -5015,16 +5016,22 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
           <GripVertical size={14} color="#a39c86" />
           <span style={{ fontSize: 12, fontWeight: 800, color: C.dark }}>Setting</span>
         </span>
-        <Oval onClick={() => setMode("goal")} style={{ cursor: "pointer", background: mode === "goal" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "goal" ? "#fff" : C.text }}>Add Goles</Oval>
-        <Oval onClick={() => setMode("extry")} style={{ cursor: "pointer", background: mode === "extry" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "extry" ? "#fff" : C.text }}>Add extry</Oval>
-        <Oval onClick={() => setMode("bigGoals")} style={{ cursor: "pointer", background: mode === "bigGoals" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "bigGoals" ? "#fff" : C.text }}>Add Big Goal</Oval>
-        <Oval onClick={() => setMode("lifeRules")} style={{ cursor: "pointer", background: mode === "lifeRules" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "lifeRules" ? "#fff" : C.text }}>Add Rule</Oval>
-        <Oval onClick={() => setMode(mode === "theme" ? null : "theme")} style={{ cursor: "pointer", background: mode === "theme" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "theme" ? "#fff" : C.text }}><Palette size={11} style={{ marginRight: 4 }} />Theme</Oval>
-        <Oval onClick={() => setMode(mode === "alarm" ? null : "alarm")} style={{ cursor: "pointer", background: mode === "alarm" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "alarm" ? "#fff" : C.text }}><AlarmClock size={11} style={{ marginRight: 4 }} />Alarm</Oval>
-        <Oval onClick={() => setMode(mode === "background" ? null : "background")} style={{ cursor: "pointer", background: mode === "background" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "background" ? "#fff" : C.text }}><Waves size={11} style={{ marginRight: 4 }} />Background</Oval>
+        <div className="btl-set-tabs">
+          <div className="btl-set-add">
+          <Oval className="btl-set-chip" onClick={() => setMode("goal")} style={{ cursor: "pointer", background: mode === "goal" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "goal" ? "#fff" : C.text }}>Add Goals</Oval>
+          <Oval className="btl-set-chip" onClick={() => setMode("extry")} style={{ cursor: "pointer", background: mode === "extry" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "extry" ? "#fff" : C.text }}>Add Extry</Oval>
+          <Oval className="btl-set-chip" onClick={() => setMode("bigGoals")} style={{ cursor: "pointer", background: mode === "bigGoals" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "bigGoals" ? "#fff" : C.text }}>Add Big Goal</Oval>
+          <Oval className="btl-set-chip" onClick={() => setMode("lifeRules")} style={{ cursor: "pointer", background: mode === "lifeRules" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "lifeRules" ? "#fff" : C.text }}>Add Rule</Oval>
+          </div>
+          <div className="btl-set-sys">
+          <Oval className="btl-set-chip" onClick={() => setMode(mode === "theme" ? null : "theme")} style={{ cursor: "pointer", background: mode === "theme" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "theme" ? "#fff" : C.text }}><Palette size={11} style={{ marginRight: 4 }} />Theme</Oval>
+          <Oval className="btl-set-chip" onClick={() => setMode(mode === "alarm" ? null : "alarm")} style={{ cursor: "pointer", background: mode === "alarm" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "alarm" ? "#fff" : C.text }}><AlarmClock size={11} style={{ marginRight: 4 }} />Alarm</Oval>
+          <Oval className="btl-set-chip" onClick={() => setMode(mode === "background" ? null : "background")} style={{ cursor: "pointer", background: mode === "background" ? C.accent : "rgba(255,255,255,0.6)", color: mode === "background" ? "#fff" : C.text }}><Waves size={11} style={{ marginRight: 4 }} />Background</Oval>
+          </div>
+        </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 14 }} className="btl-scroll">
+      <div style={{ flex: 1, overflowY: "auto", padding: 14 }} className="btl-scroll btl-set-body">
         {mode === "theme" ? (
           <ThemePanel
             state={state}
@@ -5054,7 +5061,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, marginBottom: 4, display: "flex", alignItems: "center", gap: 5 }}>
               <AlarmClock size={14} /> Alarm Ringtone
             </div>
-            <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 12, maxWidth: 420 }}>
+            <div className="btl-set-hint" style={{ fontSize: 10, color: "#8a8579", marginBottom: 12, maxWidth: 420 }}>
               Plays when an alarm set on the Clock & Alarm widget goes off (rings up to 30s or until dismissed). Tap ▶ to preview, then pick one.
             </div>
             <RingtoneGrid list={clockRingtoneList} currentId={state.clockRingtone || "classic"} onPick={onSetClockRingtone} onRemove={onRemoveOwnSound} />
@@ -5063,7 +5070,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, margin: "20px 0 4px", display: "flex", alignItems: "center", gap: 5 }}>
               <Droplets size={14} /> Drink Water Ringtone
             </div>
-            <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 12, maxWidth: 420 }}>
+            <div className="btl-set-hint" style={{ fontSize: 10, color: "#8a8579", marginBottom: 12, maxWidth: 420 }}>
               Plays when a Drink Water reminder time arrives (rings up to 25s or until you tap "I drank it" / Snooze). Tap ▶ to preview, then pick one.
             </div>
             <RingtoneGrid list={waterRingtoneList} currentId={state.waterRingtone || "water"} onPick={onSetWaterRingtone} onRemove={onRemoveOwnSound} />
@@ -5081,7 +5088,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
         ) : (
           <>
             {mode && (
-              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+              <div className="btl-set-addbar" style={{ display: "flex", gap: 6, marginBottom: 14 }}>
                 <input
                   autoFocus value={val} onChange={(e) => setVal(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && submit()}
@@ -5092,7 +5099,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div className="btl-set-cols" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
               {[
                 { key: "dailyGoals", label: "Daily Goals" },
                 { key: "extryGoals", label: "Extry Goals" },
@@ -5100,14 +5107,14 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
                 { key: "lifeRules", label: "Life Rules", plain: true },
               ].map((col) => (
                 <div key={col.key}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: C.dark, marginBottom: 4 }}>{col.label}</div>
-                  <div style={{ border: "1px solid rgba(64,61,57,0.15)", borderRadius: 8, maxHeight: 150, overflowY: "auto", background: "rgba(255,255,255,0.5)" }} className="btl-scroll">
+                  <div className="btl-set-label" style={{ fontSize: 10, fontWeight: 800, color: C.dark, marginBottom: 4 }}>{col.label}</div>
+                  <div style={{ border: "1px solid rgba(64,61,57,0.15)", borderRadius: 8, maxHeight: 150, overflowY: "auto", background: "rgba(255,255,255,0.5)" }} className="btl-scroll btl-set-list">
                     {(state[col.key] || []).map((item, i) => {
                       const id = col.plain ? i : item.id;
                       const text = col.plain ? item : item.text;
                       const isEditing = editing && editing.colKey === col.key && editing.id === id;
                       return (
-                        <div key={id} style={{
+                        <div key={id} className="btl-set-row" style={{
                           display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6,
                           padding: "4px 7px", fontSize: 10, borderBottom: "1px solid rgba(240,236,224,0.8)",
                         }}>
@@ -5119,9 +5126,9 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
                               style={{ flex: 1, fontSize: 10, padding: "2px 5px", borderRadius: 4, border: "1px solid #ddd6c4", outline: "none" }}
                             />
                           ) : (
-                            <span style={{ flex: 1 }}>{text}</span>
+                            <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{text}</span>
                           )}
-                          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                          <div className="btl-set-icons" style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                             {!isEditing && <Pencil size={11} style={{ cursor: "pointer", color: "#a39c86" }} onClick={() => startEdit(col.key, id, text)} />}
                             <Trash2 size={11} style={{ cursor: "pointer", color: "#d8a29a" }} onClick={() => removeItem(col.key, id)} />
                           </div>
@@ -5137,7 +5144,7 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
       </div>
 
       <div style={{ textAlign: "center", fontSize: 10, fontWeight: 700, color: "#b3ac99", padding: "6px 0", borderTop: "1px solid rgba(240,236,224,0.8)" }}>
-        Setting Teb
+        Settings
       </div>
     </motion.div>
   );
@@ -16297,6 +16304,10 @@ function BTLDashboardInner() {
            same feel as the Friend Celebration VS screen's hover bubble,
            done here in pure CSS (elastic easing) since these rows are
            deeply nested motion/drag components already. */
+        /* ---- Settings panel (this update) — desktop keeps its single wrapping
+           row of chips (the group wrappers vanish via display:contents); the
+           phone layout is defined in the max-width:768px block further down. ---- */
+        .btl-set-tabs, .btl-set-add, .btl-set-sys { display: contents; }
         .btl-goal-row { transition: background 220ms cubic-bezier(.34,1.56,.64,1), transform 220ms cubic-bezier(.34,1.56,.64,1), box-shadow 220ms cubic-bezier(.34,1.56,.64,1), border-radius 220ms ease; }
         .btl-goal-row:hover { background: rgba(252,163,17,0.14); transform: translateX(3px) scale(1.02); box-shadow: 0 4px 14px rgba(252,163,17,0.35); border-radius: 10px; }
         /* ---- completion pop (replaces the old full-screen shine wipe) ---- */
@@ -16406,6 +16417,39 @@ function BTLDashboardInner() {
              on mobile this bumps all of them to the spec's 44px minimum in
              one place instead of a one-off class per panel. */
           .btl-tap44 { width: 44px !important; height: 44px !important; }
+
+          /* ---------------- Settings panel — phone layout (this update) ----------------
+             Title row on top (close button pinned top-right), then the two
+             chip groups as tidy equal-width grids: 2x2 "Add …" actions and a
+             3-up Theme / Alarm / Background row. Lists stack one per row with
+             bigger text and 34px+ tap targets; inputs are 16px so iOS never
+             zooms; ringtone tiles go full-width so every name reads in full. */
+          .btl-set-modal { width: 94% !important; max-height: 90% !important; border-radius: 18px !important; }
+          .btl-set-head { flex-direction: column !important; align-items: stretch !important; flex-wrap: nowrap !important; gap: 8px !important; padding: 8px 14px 14px !important; }
+          .btl-set-head > span { min-height: 44px; padding-right: 52px; box-sizing: border-box; }
+          .btl-set-tabs { display: flex !important; flex-direction: column; gap: 8px; width: 100%; }
+          .btl-set-add { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; }
+          .btl-set-sys { display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+          .btl-set-chip { width: 100% !important; min-height: 40px; box-sizing: border-box; padding: 0 6px !important; font-size: 12.5px !important; gap: 4px; }
+          .btl-set-sys .btl-set-chip { font-size: 11.5px !important; }
+          .btl-set-body { padding: 14px 14px 18px !important; overflow-x: hidden; }
+          .btl-set-addbar { gap: 8px !important; }
+          .btl-set-addbar input { font-size: 16px !important; min-height: 44px; padding: 0 12px !important; border-radius: 10px !important; box-sizing: border-box; }
+          .btl-set-addbar button { font-size: 14px !important; min-height: 44px; padding: 0 18px !important; border-radius: 10px !important; font-weight: 800; }
+          .btl-set-cols { grid-template-columns: 1fr !important; gap: 16px !important; }
+          .btl-set-label { font-size: 12.5px !important; margin-bottom: 6px !important; }
+          .btl-set-list { max-height: 240px !important; border-radius: 12px !important; }
+          .btl-set-row { padding: 6px 6px 6px 12px !important; font-size: 13.5px !important; min-height: 44px; box-sizing: border-box; line-height: 1.35; }
+          .btl-set-row input { font-size: 16px !important; min-height: 36px; padding: 0 8px !important; box-sizing: border-box; }
+          .btl-set-icons { gap: 0 !important; }
+          .btl-set-icons svg { width: 18px !important; height: 18px !important; padding: 9px; box-sizing: content-box; }
+          .btl-set-hint { font-size: 11.5px !important; line-height: 1.45; max-width: none !important; }
+          .btl-ringtone-grid { grid-template-columns: 1fr !important; max-width: none !important; gap: 8px !important; }
+          .btl-ringtone-tile { min-height: 46px; padding: 6px 12px !important; border-radius: 12px !important; }
+          .btl-ringtone-tile > span:first-child { font-size: 13px !important; }
+          .btl-ringtone-tile button { width: 30px !important; height: 30px !important; }
+          .btl-ringtone-add { max-width: none !important; }
+          .btl-ringtone-add button { min-height: 44px; font-size: 12.5px !important; border-radius: 12px !important; }
 
           /* ---------------- Step 8 — Memories modal mobile stack ----------------
              Desktop: date sidebar (220px) sits left of the detail pane, side by
