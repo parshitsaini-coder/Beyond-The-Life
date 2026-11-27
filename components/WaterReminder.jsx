@@ -43,14 +43,19 @@ export function waterDayKey(d = new Date()) {
 const WATER_BLUE = "#3aa7e6";
 const WATER_DEEP = "#1f7fc4";
 const WATER_LIGHT = "#bfe6fa";
-const WATER_DEFAULT_TIMES = ["07:00", "09:00", "11:00", "13:00", "15:00", "17:00", "19:00", "21:00"];
+// Default day: every hour from 8 AM to 9 PM (14 reminders).
+const WATER_DEFAULT_TIMES = Array.from({ length: 14 }, (_, i) => `${pad2(8 + i)}:00`);
+const WATER_DEFAULT_GOAL = 3000;
+// The first release shipped this 2-hourly list; people who never touched it
+// are moved to the new hourly default (anyone who edited it keeps their own).
+const WATER_OLD_DEFAULT_TIMES = ["07:00", "09:00", "11:00", "13:00", "15:00", "17:00", "19:00", "21:00"];
 const ML_CHOICES = [150, 250, 330, 500, 750];
 
 /* ---------------- state shape ---------------- */
 export function normalizeWater(w) {
   const src = w && typeof w === "object" ? w : {};
   const glassMl = clampN(Math.round(numOr(src.glassMl, 250)), 50, 1000);
-  const goalMl = clampN(Math.round(numOr(src.goalMl, 2000)), 500, 10000);
+  let goalMl = clampN(Math.round(numOr(src.goalMl, WATER_DEFAULT_GOAL)), 500, 10000);
   let schedule;
   if (Array.isArray(src.schedule)) {
     const seen = new Set();
@@ -68,6 +73,11 @@ export function normalizeWater(w) {
     schedule = WATER_DEFAULT_TIMES.map((time) => ({ id: uid(), time, ml: glassMl, on: true }));
   }
   schedule.sort((a, b) => toMin(a.time) - toMin(b.time));
+  if (Array.isArray(src.schedule) && schedule.length === WATER_OLD_DEFAULT_TIMES.length
+    && schedule.every((sl, i) => sl.time === WATER_OLD_DEFAULT_TIMES[i] && sl.on)) {
+    schedule = WATER_DEFAULT_TIMES.map((time) => ({ id: uid(), time, ml: glassMl, on: true }));
+    if (goalMl === 2000) goalMl = WATER_DEFAULT_GOAL;
+  }
   // keep ~60 days of history so the saved doc never grows without bound
   const log = {};
   const rawLog = src.log && typeof src.log === "object" ? src.log : {};
@@ -113,8 +123,8 @@ export function waterDrink(w, ml, day = waterDayKey()) {
   const e = dayEntry(w, day);
   return { ...w, log: { ...w.log, [day]: { ml: Math.max(0, e.ml + ml), done: { ...e.done } } } };
 }
-/* Rebuilds the whole time table: every `everyH` hours from 07:00 to 22:00. */
-export function waterAutoFill(w, everyH, startH = 7, endH = 22) {
+/* Rebuilds the whole time table: every `everyH` hours from 08:00 to 21:00. */
+export function waterAutoFill(w, everyH, startH = 8, endH = 21) {
   const schedule = [];
   for (let m = startH * 60; m <= endH * 60; m += Math.max(1, everyH) * 60) {
     schedule.push({ id: uid(), time: fromMin(m), ml: w.glassMl, on: true });
@@ -156,6 +166,24 @@ function CountUp({ value }) {
   return <>{shown.toLocaleString("en-IN")}</>;
 }
 
+/* Endless ambient motion is plain CSS (not JS-driven framer loops) so it
+   costs the main thread nothing — important on phones, where it shares the
+   screen with the radial dial. Paused automatically when the tab is hidden
+   and disabled for people who ask for reduced motion. */
+const WATER_CSS = `
+@keyframes btlWvA { from { transform: translateX(0); } to { transform: translateX(-60px); } }
+@keyframes btlWvB { from { transform: translateX(-60px); } to { transform: translateX(0); } }
+@keyframes btlBubble { 0% { transform: translateY(0); opacity: 0; } 25% { opacity: 0.9; } 100% { transform: translateY(var(--rise)); opacity: 0; } }
+@keyframes btlShimmer { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+@keyframes btlGlow { 0%, 100% { opacity: 0.25; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.12); } }
+.btl-wv-a { animation: btlWvA 2.3s linear infinite; }
+.btl-wv-b { animation: btlWvB 3.4s linear infinite; }
+.btl-bubble { animation-name: btlBubble; animation-iteration-count: infinite; animation-timing-function: ease-out; }
+.btl-shimmer { animation: btlShimmer 1.8s linear infinite; }
+.btl-water-glow { animation: btlGlow 5s ease-in-out infinite; will-change: transform, opacity; }
+@media (prefers-reduced-motion: reduce) { .btl-wv-a, .btl-wv-b, .btl-bubble, .btl-shimmer, .btl-water-glow { animation: none !important; } }
+`;
+
 const WAVE_D = "M-60 0 Q-45 -5 -30 0 T0 0 T30 0 T60 0 T90 0 T120 0 T150 0 T180 0 T210 0 V140 H-60 Z";
 const BOTTLE_D = "M38 8 H62 V18 Q62 22 68 27 Q80 35 80 52 V124 Q80 134 70 134 H30 Q20 134 20 124 V52 Q20 35 32 27 Q38 22 38 18 Z";
 const BOT_BOTTOM = 134;
@@ -187,15 +215,13 @@ function WaterBottle({ pct, splashKey, splashLabel, size = 118, textStroke = "rg
           <path d={BOTTLE_D} fill="rgba(255,255,255,0.28)" />
           <g clipPath={`url(#${cid})`}>
             <motion.g initial={false} animate={{ y: surfaceY }} transition={{ type: "spring", stiffness: 55, damping: 13 }} style={{ opacity: pct > 0 ? 1 : 0 }}>
-              <motion.path d={WAVE_D} fill={`url(#${cid}g)`} opacity={0.55}
-                animate={{ x: [-60, 0] }} transition={{ duration: 3.4, repeat: Infinity, ease: "linear" }} />
-              <motion.path d={WAVE_D} fill={`url(#${cid}g)`}
-                animate={{ x: [0, -60] }} transition={{ duration: 2.3, repeat: Infinity, ease: "linear" }} />
+              <path d={WAVE_D} fill={`url(#${cid}g)`} opacity={0.55} className="btl-wv-b" />
+              <path d={WAVE_D} fill={`url(#${cid}g)`} className="btl-wv-a" />
               {pct > 0.06 && [0, 1, 2, 3].map((i) => (
-                <motion.circle
-                  key={i} cx={34 + i * 11} r={1.6 + (i % 2)} fill="rgba(255,255,255,0.85)"
-                  animate={{ cy: [Math.max(10, depth - 6), 8], opacity: [0, 0.9, 0] }}
-                  transition={{ duration: 2.4 + i * 0.5, repeat: Infinity, delay: i * 0.7, ease: "easeOut" }}
+                <circle
+                  key={i} cx={34 + i * 11} cy={Math.max(10, depth - 6)} r={1.6 + (i % 2)} fill="rgba(255,255,255,0.85)"
+                  className="btl-bubble"
+                  style={{ "--rise": `${-Math.max(0, depth - 14)}px`, animationDuration: `${2.4 + i * 0.5}s`, animationDelay: `${i * 0.7}s` }}
                 />
               ))}
             </motion.g>
@@ -337,7 +363,8 @@ export function WaterReminderWidget({ water: waterProp, onUpdate, onTest, cardSt
   return (
     <div style={{ borderRadius: 8, padding: 10, width: "100%", height: "100%", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 8, overflow: "hidden", position: "relative", ...cardStyle }}>
       {/* soft animated water-glow behind everything */}
-      <motion.div aria-hidden animate={{ opacity: [0.25, 0.5, 0.25], scale: [1, 1.12, 1] }} transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+      <style>{WATER_CSS}</style>
+      <div aria-hidden className="btl-water-glow"
         style={{ position: "absolute", width: 180, height: 180, right: -60, top: -50, borderRadius: "50%", background: `radial-gradient(circle, ${WATER_LIGHT}, transparent 70%)`, pointerEvents: "none" }} />
 
       {/* ---- header ---- */}
@@ -370,7 +397,7 @@ export function WaterReminderWidget({ water: waterProp, onUpdate, onTest, cardSt
           <div style={{ height: 6, borderRadius: 999, background: "rgba(58,167,230,0.18)", overflow: "hidden" }}>
             <motion.div initial={false} animate={{ width: `${pct * 100}%` }} transition={{ type: "spring", stiffness: 70, damping: 16 }}
               style={{ height: "100%", borderRadius: 999, background: `linear-gradient(90deg, #8fdcff, ${WATER_DEEP})`, position: "relative", overflow: "hidden" }}>
-              <motion.span animate={{ x: ["-100%", "220%"] }} transition={{ duration: 1.8, repeat: Infinity, ease: "linear" }}
+              <span className="btl-shimmer"
                 style={{ position: "absolute", top: 0, bottom: 0, width: "40%", background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.7), transparent)" }} />
             </motion.div>
           </div>
@@ -429,7 +456,7 @@ export function WaterReminderWidget({ water: waterProp, onUpdate, onTest, cardSt
         {panel === "auto" && (
           <motion.div key="auto" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: "hidden", flexShrink: 0, position: "relative", zIndex: 1 }}>
             <div style={{ border: "1px solid rgba(58,167,230,0.35)", background: "rgba(255,255,255,0.45)", borderRadius: 10, padding: 8 }}>
-              <div style={{ fontSize: 9.5, fontWeight: 800, color: mutedColor, marginBottom: 5 }}>Auto time table, 7 AM → 10 PM (replaces current times)</div>
+              <div style={{ fontSize: 9.5, fontWeight: 800, color: mutedColor, marginBottom: 5 }}>Auto time table, 8 AM → 9 PM (replaces current times)</div>
               <div style={{ display: "flex", gap: 6 }}>
                 {[1, 2, 3].map((h) => (
                   <motion.button key={h} whileTap={{ scale: 0.92 }} style={chipBtn(false)}

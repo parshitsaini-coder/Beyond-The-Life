@@ -1177,6 +1177,7 @@ function makeDefaultState() {
     // Which of the 4 built-in ALARM_RINGTONES (see below) plays when an
     // alarm fires — changeable from Setting → Alarm.
     clockRingtone: "classic",
+    waterRingtone: "water", // Drink Water alarm sound — see WATER_RINGTONES
     // Focus Timer widget (this update) — per-category stopwatches (Screen
     // time / Social media / Deep work / Study by default, plus any custom
     // ones added from the widget's "add" popup). `active` holds the single
@@ -1253,6 +1254,7 @@ async function loadState(user) {
     s.clockRingtone = ALARM_RINGTONES.some((r) => r.id === s.clockRingtone) ? s.clockRingtone : "classic";
     s.focusTimer = normalizeFocusTimer(s.focusTimer);
     s.water = normalizeWater(s.water);
+    s.waterRingtone = WATER_RINGTONES.some((r) => r.id === s.waterRingtone) ? s.waterRingtone : "water";
     s.fitnessLog = (s.fitnessLog && typeof s.fitnessLog === "object") ? s.fitnessLog : {};
     // liquidBg sanitize — old saved states won't have this field at all,
     // and a stored color could in theory be a bad/empty string, so each of
@@ -2797,6 +2799,9 @@ const ALARM_RINGTONES = [
   { id: "digital", label: "Digital Pulse" },
   { id: "bell", label: "Bell Toll" },
 ];
+// Drink Water alarm ringtone choices (this update): its own soft droplet
+// sound first, then every clock-alarm tone. Chosen in Setting → Alarm.
+const WATER_RINGTONES = [{ id: "water", label: "Water Drops 💧" }, ...ALARM_RINGTONES];
 function ringtoneLabel(id) { return (ALARM_RINGTONES.find((r) => r.id === id) || ALARM_RINGTONES[0]).label; }
 
 /* Schedules one oscillator note with a short attack/decay envelope so
@@ -4738,7 +4743,42 @@ function LiquidBgPanel({ liquidBg, onColorChange, onColorsReset, onSpeedChange, 
   );
 }
 
-function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onLiquidGlassOptionsChange, onLiquidGlassOptionsReset, onSetClockRingtone, onLiquidBgColorChange, onLiquidBgColorsReset, onLiquidBgSpeedChange, onLiquidBgSpeedReset, onLiquidBgEnabledChange, initialMode, initialThemeSection }) {
+/* Ringtone picker grid shared by the Clock and Drink Water sections of
+   Setting → Alarm. Tap a tile to choose, ▶ to preview. */
+function RingtoneGrid({ list, currentId, onPick }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxWidth: 420 }}>
+      {list.map((r) => {
+        const selected = currentId === r.id;
+        return (
+          <motion.div
+            key={r.id}
+            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+            onClick={() => onPick(r.id)}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6,
+              border: `1.5px solid ${selected ? C.accent : "rgba(64,61,57,0.15)"}`, borderRadius: 10,
+              padding: "8px 10px", background: selected ? hexToRgba(C.accent, 0.12) : "rgba(255,255,255,0.5)",
+              cursor: "pointer",
+            }}
+          >
+            <span style={{ fontSize: 11, fontWeight: 800, color: selected ? C.accent : C.text, display: "flex", alignItems: "center", gap: 6 }}>
+              {selected ? <CheckCircle2 size={13} /> : <Bell size={13} style={{ opacity: 0.5 }} />}
+              {r.label}
+            </span>
+            <motion.button
+              whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
+              onClick={(e) => { e.stopPropagation(); previewRingtone(r.id); }}
+              title="Preview"
+              style={{ border: "none", background: C.dark, color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
+            ><Play size={10} fill="#fff" /></motion.button>
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
+function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeScopeChange, onThemeScopeReset, onWidgetThemeChange, onWidgetThemeReset, onWidgetSizePreset, onAnalyticsSummaryChange, onAnalyticsSummaryReset, onAnalyticsSummaryColorChange, onAnalyticsSummaryColorReset, onAnalyticsColorChange, onAnalyticsColorReset, onMoneyColorChange, onMoneyColorReset, onApplyPanelPreset, onResetPanelPreset, onLiquidGlassOptionsChange, onLiquidGlassOptionsReset, onSetClockRingtone, onSetWaterRingtone, onLiquidBgColorChange, onLiquidBgColorsReset, onLiquidBgSpeedChange, onLiquidBgSpeedReset, onLiquidBgEnabledChange, initialMode, initialThemeSection }) {
   const [mode, setMode] = useState(initialMode || null); // "goal" | "extry" | "bigGoals" | "lifeRules" | "theme" | "alarm" | null
   const [val, setVal] = useState("");
   const [editing, setEditing] = useState(null); // { colKey, id } | null
@@ -4871,35 +4911,15 @@ function SettingsTab({ state, addItem, removeItem, editItem, onClose, onThemeSco
             <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 12, maxWidth: 420 }}>
               Plays when an alarm set on the Clock & Alarm widget goes off (rings up to 30s or until dismissed). Tap ▶ to preview, then pick one.
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxWidth: 420 }}>
-              {ALARM_RINGTONES.map((r) => {
-                const selected = (state.clockRingtone || "classic") === r.id;
-                return (
-                  <motion.div
-                    key={r.id}
-                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                    onClick={() => onSetClockRingtone(r.id)}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6,
-                      border: `1.5px solid ${selected ? C.accent : "rgba(64,61,57,0.15)"}`, borderRadius: 10,
-                      padding: "8px 10px", background: selected ? hexToRgba(C.accent, 0.12) : "rgba(255,255,255,0.5)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <span style={{ fontSize: 11, fontWeight: 800, color: selected ? C.accent : C.text, display: "flex", alignItems: "center", gap: 6 }}>
-                      {selected ? <CheckCircle2 size={13} /> : <Bell size={13} style={{ opacity: 0.5 }} />}
-                      {r.label}
-                    </span>
-                    <motion.button
-                      whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }}
-                      onClick={(e) => { e.stopPropagation(); previewRingtone(r.id); }}
-                      title="Preview"
-                      style={{ border: "none", background: C.dark, color: "#fff", borderRadius: "50%", width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
-                    ><Play size={10} fill="#fff" /></motion.button>
-                  </motion.div>
-                );
-              })}
+            <RingtoneGrid list={ALARM_RINGTONES} currentId={state.clockRingtone || "classic"} onPick={onSetClockRingtone} />
+
+            <div style={{ fontSize: 12, fontWeight: 800, color: C.dark, margin: "20px 0 4px", display: "flex", alignItems: "center", gap: 5 }}>
+              <Droplets size={14} /> Drink Water Ringtone
             </div>
+            <div style={{ fontSize: 10, color: "#8a8579", marginBottom: 12, maxWidth: 420 }}>
+              Plays when a Drink Water reminder time arrives (rings up to 25s or until you tap "I drank it" / Snooze). Tap ▶ to preview, then pick one.
+            </div>
+            <RingtoneGrid list={WATER_RINGTONES} currentId={state.waterRingtone || "water"} onPick={onSetWaterRingtone} />
           </div>
         ) : mode === "background" ? (
           <LiquidBgPanel
@@ -15462,7 +15482,7 @@ function BTLDashboardInner() {
   // Droplet-sound loop while the water popup is open; auto-closes after 25s.
   useEffect(() => {
     if (!activeWater) return;
-    const stopTone = startAlarmRingtone("water");
+    const stopTone = startAlarmRingtone(clockStateRef.current?.waterRingtone || "water");
     const t = setTimeout(() => setActiveWater(null), 25 * 1000);
     return () => { stopTone(); clearTimeout(t); };
   }, [activeWater]);
@@ -15704,6 +15724,10 @@ function BTLDashboardInner() {
   });
   const removeClockAlarm = (id) => update((s) => {
     s.clockAlarms = (s.clockAlarms || []).filter((a) => a.id !== id);
+    return s;
+  });
+  const setWaterRingtone = (ringtoneId) => update((s) => {
+    s.waterRingtone = WATER_RINGTONES.some((r) => r.id === ringtoneId) ? ringtoneId : "water";
     return s;
   });
   const setClockRingtone = (ringtoneId) => update((s) => {
@@ -16708,6 +16732,7 @@ function BTLDashboardInner() {
               onApplyPanelPreset={applyPanelPreset} onResetPanelPreset={resetPanelPreset}
               onLiquidGlassOptionsChange={setLiquidGlassOptions} onLiquidGlassOptionsReset={resetLiquidGlassOptions}
               onSetClockRingtone={setClockRingtone}
+              onSetWaterRingtone={setWaterRingtone}
               onLiquidBgColorChange={setLiquidBgColor}
               onLiquidBgColorsReset={resetLiquidBgColors}
               onLiquidBgSpeedChange={setLiquidBgSpeed}

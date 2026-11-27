@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2, ListChecks, Trophy, AlarmClock, ShieldCheck, Timer,
@@ -89,95 +89,225 @@ function buildLayout(items) {
 
 const LAYOUT = buildLayout(RADIAL_ITEMS);
 
+/* One dial chip. Memoized so a hover change only re-renders the two chips
+   whose state actually changed (not all 13) — and the pointer-move work is
+   batched to one update per animation frame below, which is what keeps the
+   drag buttery on phones. The hovered/confirmed chip gets a higher z-index
+   so its scale-up never gets painted under a neighbour. */
+const DialChip = memo(function DialChip({ item, isHover, isConfirm, dimmed, index }) {
+  const Icon = item.icon;
+  const hot = isHover || isConfirm;
+  return (
+    <motion.div
+      initial={{ x: 0, y: 0, opacity: 0, scale: 0.3 }}
+      animate={{
+        x: item.x,
+        y: item.y,
+        opacity: dimmed ? 0 : 1,
+        scale: isConfirm ? 1.28 : isHover ? 1.16 : 1,
+      }}
+      exit={{ x: 0, y: 0, opacity: 0, scale: 0.3, transition: { type: "spring", stiffness: 520, damping: 34 } }}
+      transition={{
+        type: "spring", stiffness: 420, damping: 30, mass: 0.8,
+        // gentle fan-out stagger on open only; hover/confirm changes stay instant
+        delay: isHover || isConfirm || dimmed ? 0 : Math.min(index, 12) * 0.008,
+      }}
+      style={{
+        position: "absolute",
+        left: "50%",
+        bottom: CIRCLE_SIZE / 2 + 4,
+        width: CHIP_SIZE,
+        height: CHIP_SIZE,
+        marginLeft: -CHIP_SIZE / 2,
+        borderRadius: "50%",
+        background: hot ? "#fca311" : "#fffcf2",
+        color: hot ? "#fff" : CIRCLE_COLOR,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+        zIndex: hot ? 20 : 1,
+        willChange: "transform, opacity",
+        transition: "background-color 120ms, color 120ms",
+      }}
+    >
+      <Icon size={22} />
+    </motion.div>
+  );
+});
+
+/* The hovered item's name. It lives on its OWN top layer (zIndex above every
+   chip) and sits just outside the chip, pushed away from the orb, so no
+   neighbouring chip can paint over it any more — and it is clamped to the
+   screen so labels on the far-left/right chips are never cut off. */
+function DialLabel({ item }) {
+  const len = Math.hypot(item.x, item.y) || 1;
+  const ux = item.x / len;
+  const uy = item.y / len;
+  const vw = typeof window !== "undefined" ? window.innerWidth : 400;
+  const half = (item.label.length * 6.6 + 26) / 2;
+  let lx = item.x + ux * (CHIP_SIZE / 2 + 22);
+  let ly = item.y + uy * (CHIP_SIZE / 2 + 18) - 6;
+  const maxX = vw / 2 - half - 8;
+  const clampedX = clamp(lx, -maxX, maxX);
+  if (clampedX !== lx) ly -= CHIP_SIZE / 2 + 6; // was pushed back over its chip → lift it clear
+  lx = clampedX;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: "50%",
+        bottom: CIRCLE_SIZE / 2 + 4 + CHIP_SIZE / 2,
+        width: 0,
+        height: 0,
+        transform: `translate(${lx}px, ${ly}px)`,
+        zIndex: 80,
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ position: "absolute", left: 0, top: 0, transform: "translate(-50%, -50%)" }}>
+        <motion.span
+          initial={{ opacity: 0, scale: 0.85, y: 4 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.14, ease: "easeOut" }}
+          style={{
+            display: "block",
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: 0.2,
+            color: "#fffcf2",
+            background: "rgba(37,36,34,0.94)",
+            padding: "5px 11px",
+            borderRadius: 999,
+            whiteSpace: "nowrap",
+            boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
+            willChange: "transform, opacity",
+          }}
+        >
+          {item.label}
+        </motion.span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * RadialDialMenu — bottom-center dial. Press and hold the circle,
  * drag toward an item, release over it to select. Purely presentational:
- * fires onSelect(item) and does no navigation itself, so it can be
- * dropped into the isolated test route first and wired into the real
- * dashboard in Step 7 unchanged.
+ * fires onSelect(item) and does no navigation itself.
+ *
+ * Smoothness (this update): pointermove is coalesced to one update per
+ * animation frame, chips are memoized, only transform/opacity animate, and
+ * the layer is hinted to the compositor — so dragging stays at the screen's
+ * refresh rate instead of re-rendering the whole dial on every raw event.
  */
 export default function RadialDialMenu({ onSelect }) {
   const [open, setOpen] = useState(false);
   const [hoverId, setHoverId] = useState(null);
   const [confirmId, setConfirmId] = useState(null);
   const [orbPulse, setOrbPulse] = useState(null);
-  // Raw pointer offset from the orb's own center, fed straight into
-  // LiquidOrbButton's `pull` prop for the drag-follow tail/mass-shift, and
-  // also used (scaled down) to give the whole button a small elastic
-  // leash-follow via framer-motion below — snaps back with a spring the
-  // instant this resets to {0,0} on release.
+  // Offset of the finger from the orb's centre — drives the orb's elastic
+  // leash and LiquidOrbButton's tail. Updated at most once per frame.
   const [pull, setPull] = useState({ x: 0, y: 0 });
   const circleRef = useRef(null);
   const originRef = useRef({ x: 0, y: 0 });
+  const rafRef = useRef(0);
+  const lastPtRef = useRef(null);
+  const hoverRef = useRef(null);
+  const pullRef = useRef({ x: 0, y: 0 });
 
   const nearestItem = useCallback((px, py) => {
     let best = null;
     let bestDist = Infinity;
     for (const item of LAYOUT) {
-      const ix = originRef.current.x + item.x;
-      const iy = originRef.current.y + item.y;
-      const d = Math.hypot(px - ix, py - iy);
-      if (d < bestDist) {
-        bestDist = d;
-        best = item;
-      }
+      const d = Math.hypot(px - (originRef.current.x + item.x), py - (originRef.current.y + item.y));
+      if (d < bestDist) { bestDist = d; best = item; }
     }
     return best;
   }, []);
 
+  const applyHover = useCallback((id) => {
+    if (hoverRef.current === id) return;
+    hoverRef.current = id;
+    setHoverId(id);
+    if (id) { try { navigator.vibrate && navigator.vibrate(6); } catch (e) { /* no haptics */ } }
+  }, []);
+
+  const processMove = useCallback(() => {
+    rafRef.current = 0;
+    const p = lastPtRef.current;
+    if (!p) return;
+    const dx = p.x - originRef.current.x;
+    const dy = p.y - originRef.current.y;
+    if (Math.abs(dx - pullRef.current.x) >= 0.5 || Math.abs(dy - pullRef.current.y) >= 0.5) {
+      pullRef.current = { x: dx, y: dy };
+      setPull(pullRef.current);
+    }
+    if (Math.hypot(dx, dy) < DEADZONE) { applyHover(null); return; }
+    const item = nearestItem(p.x, p.y);
+    applyHover(item ? item.id : null);
+  }, [applyHover, nearestItem]);
+
+  const stopTracking = useCallback((onMove, onUp, onCancel) => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    window.removeEventListener("pointercancel", onCancel);
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = 0; }
+  }, []);
+
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+
   const handlePointerDown = (e) => {
     const rect = circleRef.current.getBoundingClientRect();
     originRef.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    lastPtRef.current = { x: e.clientX, y: e.clientY };
+    pullRef.current = { x: 0, y: 0 };
+    hoverRef.current = null;
     setOpen(true);
     setHoverId(null);
     setOrbPulse({ key: Date.now(), variant: "press" });
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp, { once: true });
-  };
 
-  const handlePointerMove = (e) => {
-    const dx = e.clientX - originRef.current.x;
-    const dy = e.clientY - originRef.current.y;
-    const dist = Math.hypot(dx, dy);
-    // Liquid follow tracks the full raw drag every move — independent of
-    // the menu's own DEADZONE below, so the orb already starts stretching
-    // toward the finger before the menu itself commits to a hover target.
-    setPull({ x: dx, y: dy });
-    if (dist < DEADZONE) {
-      setHoverId(null);
-      return;
-    }
-    const item = nearestItem(e.clientX, e.clientY);
-    setHoverId(item ? item.id : null);
-  };
-
-  const handlePointerUp = (e) => {
-    window.removeEventListener("pointermove", handlePointerMove);
-    const dx = e.clientX - originRef.current.x;
-    const dy = e.clientY - originRef.current.y;
-    const dist = Math.hypot(dx, dy);
-    setPull({ x: 0, y: 0 });
-    if (dist < DEADZONE) {
-      // released back near the circle — cancel, no selection
-      setOpen(false);
-      setHoverId(null);
-      return;
-    }
-    const item = nearestItem(e.clientX, e.clientY);
-    if (item) {
-      setConfirmId(item.id);
-      setOrbPulse({ key: Date.now(), variant: "confirm" });
-      setTimeout(() => {
-        onSelect && onSelect(item);
+    const onMove = (ev) => {
+      lastPtRef.current = { x: ev.clientX, y: ev.clientY };
+      if (!rafRef.current) rafRef.current = requestAnimationFrame(processMove);
+    };
+    const onUp = (ev) => {
+      stopTracking(onMove, onUp, onCancel);
+      const dx = ev.clientX - originRef.current.x;
+      const dy = ev.clientY - originRef.current.y;
+      pullRef.current = { x: 0, y: 0 };
+      setPull({ x: 0, y: 0 });
+      hoverRef.current = null;
+      if (Math.hypot(dx, dy) < DEADZONE) { setOpen(false); setHoverId(null); return; }
+      const item = nearestItem(ev.clientX, ev.clientY);
+      if (item) {
+        setConfirmId(item.id);
+        setHoverId(null);
+        setOrbPulse({ key: Date.now(), variant: "confirm" });
+        setTimeout(() => {
+          onSelect && onSelect(item);
+          setOpen(false);
+          setConfirmId(null);
+        }, 180);
+      } else {
         setOpen(false);
         setHoverId(null);
-        setConfirmId(null);
-      }, 180);
-    } else {
+      }
+    };
+    const onCancel = () => { // e.g. the browser took over the touch — never leave the dial stuck open
+      stopTracking(onMove, onUp, onCancel);
+      pullRef.current = { x: 0, y: 0 };
+      hoverRef.current = null;
+      setPull({ x: 0, y: 0 });
       setOpen(false);
       setHoverId(null);
-    }
+    };
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
   };
+
+  const labelItem = LAYOUT.find((i) => i.id === (confirmId || hoverId)) || null;
 
   return (
     <div
@@ -198,64 +328,20 @@ export default function RadialDialMenu({ onSelect }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+            transition={{ duration: 0.12 }}
+            style={{ position: "absolute", inset: 0, pointerEvents: "none", willChange: "opacity" }}
           >
-            {LAYOUT.map((item) => {
-              const isHover = hoverId === item.id;
-              const isConfirm = confirmId === item.id;
-              const Icon = item.icon;
-              return (
-                <motion.div
-                  key={item.id}
-                  initial={{ x: 0, y: 0, opacity: 0, scale: 0.3 }}
-                  animate={{
-                    x: item.x,
-                    y: item.y,
-                    opacity: confirmId && !isConfirm ? 0 : 1,
-                    scale: isConfirm ? 1.28 : isHover ? 1.16 : 1,
-                  }}
-                  exit={{ x: 0, y: 0, opacity: 0, scale: 0.3 }}
-                  transition={{ type: "spring", stiffness: 420, damping: 30 }}
-                  style={{
-                    position: "absolute",
-                    left: "50%",
-                    bottom: CIRCLE_SIZE / 2 + 4,
-                    width: CHIP_SIZE,
-                    height: CHIP_SIZE,
-                    marginLeft: -CHIP_SIZE / 2,
-                    borderRadius: "50%",
-                    background: isHover || isConfirm ? "#fca311" : "#fffcf2",
-                    color: isHover || isConfirm ? "#fff" : CIRCLE_COLOR,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
-                  }}
-                >
-                  <Icon size={22} />
-                  <span
-                    style={{
-                      position: "absolute",
-                      top: "calc(100% + 4px)",
-                      left: "50%",
-                      transform: "translateX(-50%)",
-                      fontSize: 10,
-                      fontWeight: 600,
-                      color: CIRCLE_COLOR,
-                      background: "#fffcf2",
-                      padding: "2px 6px",
-                      borderRadius: 6,
-                      whiteSpace: "nowrap",
-                      opacity: isHover || isConfirm ? 1 : 0,
-                      transition: "opacity 120ms",
-                      pointerEvents: "none",
-                    }}
-                  >
-                    {item.label}
-                  </span>
-                </motion.div>
-              );
-            })}
+            {LAYOUT.map((item, index) => (
+              <DialChip
+                key={item.id}
+                item={item}
+                index={index}
+                isHover={hoverId === item.id}
+                isConfirm={confirmId === item.id}
+                dimmed={!!confirmId && confirmId !== item.id}
+              />
+            ))}
+            {labelItem && <DialLabel key={labelItem.id} item={labelItem} />}
           </motion.div>
         )}
       </AnimatePresence>
@@ -270,11 +356,7 @@ export default function RadialDialMenu({ onSelect }) {
         }}
         transition={{
           scale: { type: "spring", stiffness: 400, damping: 24 },
-          // Snappier while actively being dragged so the orb feels
-          // "leashed" to the finger with barely any lag; springs back with
-          // a soft overshoot the moment pull resets to {0,0} on release —
-          // that overshoot is what reads as elastic/liquid rather than a
-          // rigid disc just re-centering.
+          // tight while dragging (finger-locked), soft elastic overshoot on release
           x: open ? { type: "spring", stiffness: 900, damping: 26 } : { type: "spring", stiffness: 260, damping: 14 },
           y: open ? { type: "spring", stiffness: 900, damping: 26 } : { type: "spring", stiffness: 260, damping: 14 },
         }}
@@ -292,6 +374,10 @@ export default function RadialDialMenu({ onSelect }) {
             ? "0 0 0 8px rgba(30,150,160,0.18)"
             : "0 3px 14px rgba(6,20,28,0.45)",
           zIndex: 61,
+          willChange: "transform",
+          WebkitTapHighlightColor: "transparent",
+          userSelect: "none",
+          WebkitUserSelect: "none",
         }}
         aria-label="Open navigation dial"
       >

@@ -241,13 +241,15 @@ export default function LiquidOrbButton({ size = 76, active = false, pulse = nul
           height: size * 0.22,
           left: "50%",
           top: "50%",
-          marginLeft: -size * 0.17 - dx * 0.12,
-          marginTop: -size * 0.32 - dy * 0.12,
+          marginLeft: -size * 0.17,
+          marginTop: -size * 0.32,
+          transform: `translate(${-dx * 0.12}px, ${-dy * 0.12}px)`,
+          willChange: "transform",
           borderRadius: "50%",
           background: "radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.55), rgba(255,255,255,0) 75%)",
           filter: "blur(1px)",
           opacity: active ? 0.85 : 0.6,
-          transition: "opacity 200ms ease, margin 260ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+          transition: "opacity 200ms ease, transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1)",
           pointerEvents: "none",
         }}
       />
