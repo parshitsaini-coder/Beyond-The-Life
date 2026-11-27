@@ -16597,9 +16597,9 @@ function BTLDashboardInner() {
           <div className="btl-mobile-quickgoals">
             <div style={{
               flex: 1, minWidth: 0,
-              // Drink Water gets the extra room down to just above the dial orb (grows with the phone's height);
-              // the other quick views keep their usual 340px.
-              height: mobileQuickView === "water" ? "clamp(340px, calc(100dvh - 400px), 600px)" : 340,
+              // Every quick view (Daily Goals, Time Table, Focus Timer, Drink Water) now stretches down to
+              // just above the dial orb — it grows with the phone's height, never below 340px.
+              height: "clamp(340px, calc(100dvh - 400px), 640px)",
               transition: "height 320ms cubic-bezier(0.22, 1, 0.36, 1)",
               borderRadius: 10, padding: 8, boxSizing: "border-box", overflow: "hidden", position: "relative", ...glassCardStyle(theme.widgets[mobileQuickView]?.bg) }}>
               {/* ---- animated corner pill (this update) — fades/slides in the
