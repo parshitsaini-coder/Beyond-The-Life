@@ -16374,7 +16374,9 @@ function BTLDashboardInner() {
           .btl-app-root { background: var(--btl-radial-bg) !important; }
           .btl-desktop-only-fab { display: none !important; }
           .btl-desktop-only-grid { display: none !important; }
-          .btl-mobile-dial-home { display: block !important; flex: 1; min-height: 0; }
+          /* The dial's own area is now just a fixed strip reserved for the orb (76px orb + its 28px bottom
+             gap + a little air); the quick card above takes ALL the remaining height instead of leaving it empty. */
+          .btl-mobile-dial-home { display: block !important; flex: 0 0 auto; height: calc(116px + env(safe-area-inset-bottom, 0px)); min-height: 0; }
           .btl-mobile-topbar {
             display: flex; align-items: center; justify-content: space-between;
             flex-shrink: 0; padding: calc(6px + env(safe-area-inset-top, 0px)) 2px 6px;
@@ -16391,7 +16393,7 @@ function BTLDashboardInner() {
              height — AnalyticsSummaryWidget's own content (up to 8 metrics now that
              every id is forced on) decides how tall it needs to be. */
           .btl-mobile-analytics-summary { display: block !important; flex-shrink: 0; padding: 0 4px 10px; }
-          .btl-mobile-quickgoals { display: flex !important; gap: 10px; flex-shrink: 0; padding: 0 4px 12px; }
+          .btl-mobile-quickgoals { display: flex !important; gap: 10px; flex: 1 1 auto; min-height: 300px; padding: 0 4px 12px; }
           /* Quick-glance stats (streak / save status / progress rings) — kept as their own
              slim row just below the top bar rather than crammed into it, per the "always
              visible" decision. Horizontally scrollable so it never wraps or clips on the
@@ -16597,10 +16599,9 @@ function BTLDashboardInner() {
           <div className="btl-mobile-quickgoals">
             <div style={{
               flex: 1, minWidth: 0,
-              // Every quick view (Daily Goals, Time Table, Focus Timer, Drink Water) now stretches down to
-              // just above the dial orb — it grows with the phone's height, never below 340px.
-              height: "clamp(340px, calc(100dvh - 400px), 640px)",
-              transition: "height 320ms cubic-bezier(0.22, 1, 0.36, 1)",
+              // Height is layout-driven: the card stretches (row align-items: stretch) to fill whatever room
+              // the parent column has left above the dial orb — works on any phone size, no guessing.
+              minHeight: 300,
               borderRadius: 10, padding: 8, boxSizing: "border-box", overflow: "hidden", position: "relative", ...glassCardStyle(theme.widgets[mobileQuickView]?.bg) }}>
               {/* ---- animated corner pill (this update) — fades/slides in the
                    name of the view that just swapped into place, so the flip
